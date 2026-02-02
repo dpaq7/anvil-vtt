@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Scene mode colors */
+  --color-scene-battle: #ef4444;
+  --color-scene-story: #a855f7;
+  --color-scene-montage: #f59e0b;
+  --color-scene-negotiation: #3b82f6;
+  --color-scene-respite: #22c55e;
+
+  /* Accent */
+  --color-anvil-accent: #f59e0b;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  margin: 0;
+}

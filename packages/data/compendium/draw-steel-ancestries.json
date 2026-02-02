@@ -1,0 +1,322 @@
+{
+  "_meta": {
+    "description": "Draw Steel Ancestries data for Mettle/Anvil development",
+    "usage": "LLM-optimized format. Contains signature traits, purchased traits with costs, and ancestry points.",
+    "source": "Steel Compendium (MCDM Draw Steel)",
+    "license": "Draw Steel Creator License",
+    "totalAncestries": 12
+  },
+  "ancestries": [
+    {
+      "id": "devil",
+      "name": "Devil",
+      "description": "The native ancestry of the Seven Cities of Hell, devils are humanoids with red or blue skin expressed in a wide variety of hues, from bright crimson to deep purple. Each devil is born with some hellmarkâ€”horns, a tail, cloven hooves, a forked tongue, fanged incisors, or even wings.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Silver Tongue",
+        "description": "Your innate magic allows you to twist how your words are perceived to get a better read on people and convince them to see things your way. You have one skill of your choice from the interpersonal skill group, and you gain an edge on tests when attempting to discover an NPC's motivations and pitfalls during a negotiation."
+      },
+      "purchasedTraits": [
+        {
+          "id": "barbed-tail",
+          "name": "Barbed Tail",
+          "cost": 1,
+          "description": "Your pointy tail allows you to punctuate all your actions. Once per round when you make a melee strike, you can deal extra damage with the strike equal to your highest characteristic score."
+        },
+        {
+          "id": "beast-legs",
+          "name": "Beast Legs",
+          "cost": 1,
+          "description": "Your powerful legs make you faster. You have speed 6."
+        },
+        {
+          "id": "glowing-eyes",
+          "name": "Glowing Eyes",
+          "cost": 1,
+          "description": "Your eyes are a solid, vibrant color that flares to show your excitement or rage. Whenever you take damage from a creature, you can use a triggered action to curse that creature for daring to do you harm. The creature takes 1d10 psychic damage."
+        },
+        {
+          "id": "hellsight",
+          "name": "Hellsight",
+          "cost": 1,
+          "description": "Your eyes let you see through the dark, fog, and other types of concealment. You don't take a bane on attacks against concealed, unhidden creatures."
+        },
+        {
+          "id": "impressive-horns",
+          "name": "Impressive Horns",
+          "cost": 2,
+          "description": "Your cherished horns are a hardened representation of your force of will, granting you an edge on Presence resistance rolls."
+        },
+        {
+          "id": "prehensile-tail",
+          "name": "Prehensile Tail",
+          "cost": 2,
+          "description": "Your prehensile tail allows you to challenge foes on all sides. You can't be flanked."
+        },
+        {
+          "id": "wings",
+          "name": "Wings",
+          "cost": 2,
+          "description": "You possess wings powerful enough to take you airborne. As a maneuver, you can switch between walking and flying when you are touching the ground, or vice versa when you are within 1 square of the ground. While flying, your stability drops to 0 and you have damage weakness 5. While using your wings to fly, you can stay aloft for a number of rounds equal to your Might (minimum of 1 round) before you fall prone."
+        }
+      ],
+      "quickBuild": ["Beast Legs", "Impressive Horns"]
+    },
+    {
+      "id": "dwarf",
+      "name": "Dwarf",
+      "description": "Possessed of a strength that belies their size, dwarves have flesh infused with stoneâ€”a silico-organic hybrid making them physically denser than other humanoids. They enjoy a reputation in Orden as savvy engineers and technologists thanks to the lore they inherited from their elder siblings, the long-extinct steel dwarves.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Runic Carving",
+        "description": "You can carve a rune onto your skin with 10 uninterrupted minutes of work, which is activated by the magic within your body. The rune you carve determines the benefit you receive: Detection (pick a creature/object type, rune glows within 20 squares), Light (skin sheds light for 10 squares), or Voice (telepathic communication with a willing creature within 1 mile)."
+      },
+      "purchasedTraits": [
+        {
+          "id": "grounded",
+          "name": "Grounded",
+          "cost": 1,
+          "description": "Your hearty constitution prevents you from losing strength. You can't be made weakened."
+        },
+        {
+          "id": "immovable",
+          "name": "Immovable",
+          "cost": 1,
+          "description": "Your heavy stone body and connection to the earth make it difficult for others to move you. You have a +1 bonus to stability."
+        },
+        {
+          "id": "spark-off-your-skin",
+          "name": "Spark Off Your Skin",
+          "cost": 1,
+          "description": "Your stone skin affords you potent protection. You have a +6 bonus to Stamina, and that bonus increases by 6 at 4th, 7th, and 10th levels."
+        },
+        {
+          "id": "stand-like-stone",
+          "name": "Stand Like Stone",
+          "cost": 1,
+          "description": "Your body is made to withstand the blows of your enemies. Your Might score is treated as 1 higher for the purpose of resisting potencies, and you gain an edge on Might tests when called for to resist environmental effects or a creature's traits or abilities."
+        },
+        {
+          "id": "stone-singer",
+          "name": "Stone Singer",
+          "cost": 2,
+          "description": "You have a magic connection to the earth. When you spend 1 uninterrupted hour singing, you can reshape any unworked mundane stone within 3 squares."
+        }
+      ],
+      "quickBuild": ["Grounded", "Spark Off Your Skin"]
+    },
+    {
+      "id": "time-raider",
+      "name": "Time Raider",
+      "description": "The original servitor species of the synliroiâ€”evil psions with near godlike powerâ€”the kuran'zoi liberated themselves during the First Psychic War. In the centuries since, they built their own culture and civilization as nomads of the timescape. The exonym 'time raiders' was given to them by denizens of the lower worlds who, seeing the advanced technology the kuran'zoi wield, concluded they must be from the future.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Psychic Scar",
+        "description": "Your mind is a formidable layer of defense. You have psychic immunity equal to your level."
+      },
+      "purchasedTraits": [
+        {
+          "id": "beyondsight",
+          "name": "Beyondsight",
+          "cost": 1,
+          "description": "As a maneuver, you can adjust your vision to allow you to see through mundane obstructions that are 1 square thick or less. While your vision is adjusted this way, you can't see the area within 1 square of you and you don't have line of effect to any creature or object in that area. You can restore your usual vision as a maneuver."
+        },
+        {
+          "id": "foresight",
+          "name": "Foresight",
+          "cost": 1,
+          "description": "Your senses extend past mundane obscuration and the veil of the future alike. You automatically know the location of any creature with concealment who isn't hidden from you within 20, and you negate the usual bane on strikes against such creatures. Additionally, whenever you are targeted by a strike, you can use a triggered action to impose a bane on the power roll."
+        },
+        {
+          "id": "four-armed-athletics",
+          "name": "Four-Armed Athletics",
+          "cost": 1,
+          "description": "Your unique physiology enhances your movement. You gain an edge on tests that use the Climb, Gymnastics, or Swim skills when you can use all your arms in the attempt."
+        },
+        {
+          "id": "four-armed-martial-arts",
+          "name": "Four-Armed Martial Arts",
+          "cost": 2,
+          "description": "Your multiple arms let you take on multiple tasks at the same time. Whenever you use the Grab or Knockback maneuver against an adjacent creature, you can target one additional adjacent creature, using the same power roll for both targets. Additionally, you can have up to two creatures grabbed at a time."
+        },
+        {
+          "id": "psionic-gift",
+          "name": "Psionic Gift",
+          "cost": 2,
+          "description": "Choose one signature ability from the following options: Concussive Slam, Psionic Bolt, or Minor Acceleration. Signature abilities can be used at will."
+        },
+        {
+          "id": "unstoppable-mind",
+          "name": "Unstoppable Mind",
+          "cost": 2,
+          "description": "Your mind allows you to maintain your focus in any situation. You can't be made dazed."
+        }
+      ],
+      "quickBuild": ["Beyondsight", "Psionic Gift (Psionic Bolt)"]
+    },
+    {
+      "id": "revenant",
+      "name": "Revenant",
+      "description": "No hero starts their life as a revenant. Rather, these undead creatures return to the world of the living because they have dire business that must be finished. A character of any ancestry can become a revenant.",
+      "size": "varies",
+      "speed": 5,
+      "ancestryPoints": 2,
+      "ancestryPointsNote": "3 ancestry points if your size is 1S",
+      "signatureTrait": {
+        "name": "Former Life",
+        "description": "Choose the ancestry you were before you died. Your size is that ancestry's size and your speed is 5. Unless you select one of the Previous Life traits, you don't receive any other ancestral traits from your original ancestry. Your undead body grants you immunity to cold, corruption, lightning, and poison damage equal to your level, but you have fire weakness 5. You can't suffocate, and you don't need to eat or drink to stay alive. When your Stamina reaches the negative of your winded value, you become inert instead of dying."
+      },
+      "purchasedTraits": [
+        {
+          "id": "bloodless",
+          "name": "Bloodless",
+          "cost": 1,
+          "description": "For you, an open wound is indistinguishable from a scratch. You can't be made bleeding even while dying."
+        },
+        {
+          "id": "previous-life-1",
+          "name": "Previous Life (1 Point)",
+          "cost": 1,
+          "description": "You select a purchased trait that costs 1 ancestry point from your previous ancestry. You can take this trait multiple times, selecting a different 1 point trait from your previous ancestry each time."
+        },
+        {
+          "id": "previous-life-2",
+          "name": "Previous Life (2 Points)",
+          "cost": 2,
+          "description": "You select a purchased trait that costs 2 ancestry points from your previous ancestry."
+        },
+        {
+          "id": "undead-influence",
+          "name": "Undead Influence",
+          "cost": 1,
+          "description": "Your supernatural gifts allow you to influence other undead. You gain an edge on Reason, Intuition, and Presence tests made to interact with undead creatures."
+        },
+        {
+          "id": "vengeance-mark",
+          "name": "Vengeance Mark",
+          "cost": 1,
+          "description": "As a maneuver, you place a magic sigil on a creature within 10 squares. When you place a sigil, you decide where it appears on the creature's body, and whether the sigil is visible to only you or to all creatures."
+        }
+      ],
+      "quickBuild": ["Bloodless", "Undead Influence (if size 1S)"]
+    },
+    {
+      "id": "dragon-knight",
+      "name": "Dragon Knight",
+      "description": "Dragon knights are muscled draconic humanoids who stand between 6 and 7 feet tall. The scales covering their reptilian heads, bodies, and tails can be almost any color. All dragon knights have wings, but on only a few are those wings big enough to let them fly.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Draconic Resilience",
+        "description": "You have resistance to one damage type based on your draconic heritage."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "wode-elf",
+      "name": "Wode Elf",
+      "description": "Lithe humanoids with finely furred skin in all shades of blue, wode elves have angular features and large, pointed ears akin to a bat's.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Otherworldly Grace",
+        "description": "Elves have an inherent magical grace."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "high-elf",
+      "name": "High Elf",
+      "description": "High elves are tall, slender humanoids with pointed ears and an innate connection to arcane magic.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Arcane Heritage",
+        "description": "High elves have an innate connection to magic."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "human",
+      "name": "Human",
+      "description": "Humans are the most numerous people in Orden and many other fantasy worlds! In Draw Steel, humans have all the diversity that our species displays in real lifeâ€”and they can sense the presence of supernatural energy!",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Detect the Supernatural",
+        "description": "You can sense the presence of magic and undead."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "orc",
+      "name": "Orc",
+      "description": "Orcs have skin in green tones and stand slightly taller and wider than humans. A supernatural energy they call 'the blood fire' flows through their veins, igniting colorful lines in an orc's skin during life-or-death battles.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Blood Fire",
+        "description": "The blood fire grants orcs supernatural resilience in combat."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "polder",
+      "name": "Polder",
+      "description": "The smallest of the ancestries in this book, polders stand no taller than 3-1/2 feet. They look like smaller humans, and they have the ability to blend in with the shadows.",
+      "size": "1S",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Shadow Meld",
+        "description": "Polders have a natural ability to blend with shadows."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "hakaan",
+      "name": "Hakaan",
+      "description": "Descended from stone giants, the mighty hakaan stand over 9 feet tall and have well-muscled bodies made of organic stone. They are the largest ancestry in this book!",
+      "size": "1L",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Giant Heritage",
+        "description": "Your stone giant heritage grants you increased size and strength."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    },
+    {
+      "id": "memonek",
+      "name": "Memonek",
+      "description": "Originating on Axiom, the Plane of Uttermost Law, memonek are a machine people made of metal, marble, glass, and other inorganic materials. Their bodies are lightweight, making them easier to move and letting them fall at slower speeds.",
+      "size": "1M",
+      "speed": 5,
+      "ancestryPoints": 3,
+      "signatureTrait": {
+        "name": "Constructed Body",
+        "description": "Your mechanical body has unique properties."
+      },
+      "purchasedTraits": [],
+      "note": "Full trait list pending data import"
+    }
+  ]
+}

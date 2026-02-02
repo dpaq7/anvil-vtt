@@ -1,0 +1,336 @@
+{
+  "skillGroups": [
+    {
+      "id": "crafting-skills",
+      "name": "Crafting Skills",
+      "group": "crafting",
+      "scc": [
+        "mcdm.heroes.v1:skill:crafting-skills"
+      ],
+      "skillCount": 10
+    },
+    {
+      "id": "exploration-skills",
+      "name": "Exploration Skills",
+      "group": "exploration",
+      "scc": [
+        "mcdm.heroes.v1:skill:exploration-skills"
+      ],
+      "skillCount": 10
+    },
+    {
+      "id": "interpersonal-skills",
+      "name": "Interpersonal Skills",
+      "group": "interpersonal",
+      "scc": [
+        "mcdm.heroes.v1:skill:interpersonal-skills"
+      ],
+      "skillCount": 13
+    },
+    {
+      "id": "intrigue-skills",
+      "name": "Intrigue Skills",
+      "group": "intrigue",
+      "scc": [
+        "mcdm.heroes.v1:skill:intrigue-skills"
+      ],
+      "skillCount": 12
+    },
+    {
+      "id": "lore-skills",
+      "name": "Lore Skills",
+      "group": "lore",
+      "scc": [
+        "mcdm.heroes.v1:skill:lore-skills"
+      ],
+      "skillCount": 12
+    }
+  ],
+  "skills": [
+    {
+      "name": "Alchemy",
+      "use": "Make bombs and potions",
+      "group": "crafting"
+    },
+    {
+      "name": "Architecture",
+      "use": "Create buildings and vehicles",
+      "group": "crafting"
+    },
+    {
+      "name": "Blacksmithing",
+      "use": "Forge metal armor and weapons",
+      "group": "crafting"
+    },
+    {
+      "name": "Carpentry",
+      "use": "Create items out of wood",
+      "group": "crafting"
+    },
+    {
+      "name": "Cooking",
+      "use": "Create delicious dishes",
+      "group": "crafting"
+    },
+    {
+      "name": "Fletching",
+      "use": "Make ranged weapons and ammunition",
+      "group": "crafting"
+    },
+    {
+      "name": "Forgery",
+      "use": "Create false badges, documents, and other items",
+      "group": "crafting"
+    },
+    {
+      "name": "Jewelry",
+      "use": "Create bracelets, crowns, rings, and other jewelry",
+      "group": "crafting"
+    },
+    {
+      "name": "Mechanics",
+      "use": "Build machines and clockwork items",
+      "group": "crafting"
+    },
+    {
+      "name": "Tailoring",
+      "use": "Craft clothing of cloth or leather",
+      "group": "crafting"
+    },
+    {
+      "name": "Climb",
+      "use": "Move up vertical surfaces",
+      "group": "exploration"
+    },
+    {
+      "name": "Drive",
+      "use": "Control vehicles",
+      "group": "exploration"
+    },
+    {
+      "name": "Endurance",
+      "use": "Remain engaged in strenuous activity over a long period of time",
+      "group": "exploration"
+    },
+    {
+      "name": "Gymnastics",
+      "use": "Move across unsteady or narrow surfaces; tumble",
+      "group": "exploration"
+    },
+    {
+      "name": "Heal",
+      "use": "Use mundane first aid",
+      "group": "exploration"
+    },
+    {
+      "name": "Jump",
+      "use": "Leap vertical and horizontal distances",
+      "group": "exploration"
+    },
+    {
+      "name": "Lift",
+      "use": "Pick up, carry, and throw heavy objects",
+      "group": "exploration"
+    },
+    {
+      "name": "Navigate",
+      "use": "Read a map and travel without becoming lost",
+      "group": "exploration"
+    },
+    {
+      "name": "Ride",
+      "use": "Ride and control a nonsapient mount, such as a horse",
+      "group": "exploration"
+    },
+    {
+      "name": "Swim",
+      "use": "Move through deep liquid",
+      "group": "exploration"
+    },
+    {
+      "name": "Brag",
+      "use": "Impress others with stories of your deeds",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Empathize",
+      "use": "Relate to someone on a personal level",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Flirt",
+      "use": "Attract romantic attention from someone",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Gamble",
+      "use": "Make bets with others",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Handle Animals",
+      "use": "Interact with nonsapient animal wildlife",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Interrogate",
+      "use": "Obtain information from a creature withholding it",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Intimidate",
+      "use": "Awe or scare a creature",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Lead",
+      "use": "Inspire people to action",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Lie",
+      "use": "Convince someone that a falsehood is true",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Music",
+      "use": "Perform music vocally or with an instrument",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Perform",
+      "use": "Engage in dance, oratory, acting, or some other physical performance",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Persuade",
+      "use": "Convince someone to agree with you through use of your charms and grace",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Read Person",
+      "use": "Read the emotions and body language of other creatures",
+      "group": "interpersonal"
+    },
+    {
+      "name": "Alertness",
+      "use": "Intuitively sense the details of your surroundings",
+      "group": "intrigue"
+    },
+    {
+      "name": "Conceal Object",
+      "use": "Hide an object on your person or in your environment",
+      "group": "intrigue"
+    },
+    {
+      "name": "Disguise",
+      "use": "Change your appearance to look like a different person",
+      "group": "intrigue"
+    },
+    {
+      "name": "Eavesdrop",
+      "use": "Actively listen to something that is hard to hear, such as a whispered conversation through a door",
+      "group": "intrigue"
+    },
+    {
+      "name": "Escape Artist",
+      "use": "Escape from bonds such as rope or manacles",
+      "group": "intrigue"
+    },
+    {
+      "name": "Hide",
+      "use": "Conceal yourself from others' observation",
+      "group": "intrigue"
+    },
+    {
+      "name": "Pick Lock",
+      "use": "Open a lock without using the key",
+      "group": "intrigue"
+    },
+    {
+      "name": "Pick Pocket",
+      "use": "Steal an item that another person wears or carries without them noticing",
+      "group": "intrigue"
+    },
+    {
+      "name": "Sabotage",
+      "use": "Disable a mechanical device such as a trap",
+      "group": "intrigue"
+    },
+    {
+      "name": "Search",
+      "use": "Actively search an environment for important details and items",
+      "group": "intrigue"
+    },
+    {
+      "name": "Sneak",
+      "use": "Move silently",
+      "group": "intrigue"
+    },
+    {
+      "name": "Track",
+      "use": "Follow a trail that another creature has left behind",
+      "group": "intrigue"
+    },
+    {
+      "name": "Criminal Underworld",
+      "use": "Knowing about criminal organizations, their crimes, their relationships, and their leaders",
+      "group": "lore"
+    },
+    {
+      "name": "Culture",
+      "use": "Knowing about a culture's customs, folktales, and taboos",
+      "group": "lore"
+    },
+    {
+      "name": "History",
+      "use": "Knowing about significant past events",
+      "group": "lore"
+    },
+    {
+      "name": "Magic",
+      "use": "Knowing about magical places, spells, rituals, items, and phenomena",
+      "group": "lore"
+    },
+    {
+      "name": "Monsters",
+      "use": "Knowing monster ecology, strengths, and weaknesses",
+      "group": "lore"
+    },
+    {
+      "name": "Nature",
+      "use": "Knowing about natural flora, fauna, and weather",
+      "group": "lore"
+    },
+    {
+      "name": "Psionics",
+      "use": "Knowing about psionic places, spells, rituals, items, and phenomena",
+      "group": "lore"
+    },
+    {
+      "name": "Religion",
+      "use": "Knowing about religious mythology, practices, and rituals",
+      "group": "lore"
+    },
+    {
+      "name": "Rumors",
+      "use": "Knowing gossip, legends, and uncertain truths",
+      "group": "lore"
+    },
+    {
+      "name": "Society",
+      "use": "Knowing noble etiquette and the leadership and power dynamics of noble families",
+      "group": "lore"
+    },
+    {
+      "name": "Strategy",
+      "use": "Knowing about battle tactics and logistics",
+      "group": "lore"
+    },
+    {
+      "name": "Timescape",
+      "use": "Knowing about the many worlds of the timescape",
+      "group": "lore"
+    }
+  ]
+}

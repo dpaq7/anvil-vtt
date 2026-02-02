@@ -1,0 +1,41 @@
+{
+  "name": "@anvil/data",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Draw Steel compendium data for Anvil VTT - abilities, monsters, ancestries, logic modules",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./compendium": {
+      "types": "./dist/compendium/index.d.ts",
+      "import": "./dist/compendium/index.js"
+    }
+  },
+  "files": ["dist", "compendium"],
+  "scripts": {
+    "build": "tsc && npm run copy-json",
+    "copy-json": "mkdir -p dist/game-data/generated && cp src/game-data/generated/*.json dist/game-data/generated/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "consolidate-data": "node scripts/consolidate-game-data.mjs",
+    "parse-data": "node scripts/parse-md-data.mjs",
+    "generate-data": "npm run consolidate-data && npm run parse-data"
+  },
+  "dependencies": {
+    "@anvil/types": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^1.6.1",
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.1"
+  }
+}

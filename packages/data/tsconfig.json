@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "resolveJsonModule": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "verbatimModuleSyntax": false,
+    "noUncheckedIndexedAccess": false,
+    "isolatedModules": false
+  },
+  "include": ["src/**/*", "src/**/*.json"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/rules/classes/**/*",
+    "src/rules/conditions.ts",
+    "src/rules/progression.ts",
+    "scripts/**/*"
+  ],
+  "references": [{ "path": "../types" }]
+}
