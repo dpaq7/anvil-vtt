@@ -9,7 +9,7 @@ ENVIRONMENT = "development"
 [[d1_databases]]
 binding = "DB"
 database_name = "anvil-db"
-database_id = "placeholder-replace-with-real-id"
+database_id = "f0307751-2cae-4e53-9d44-18a332f868e4"
 migrations_dir = "migrations"
 
 # R2 Bucket
