@@ -92,6 +92,9 @@ export type {
   GrantedItem,
   GrantedItems,
   StepValidationResult,
+  LevelUpChoice,
+  StepStatus,
+  WizardStepDefinition,
 } from './wizard-logic.js';
 
 // Kit Logic types

@@ -119,6 +119,7 @@ export function getEffectiveFailureLimit(
  *
  * - Total success: successes >= successLimit
  * - Total failure: failures >= failureLimit
+ * - Partial success: both limits reached simultaneously
  * - Pending: neither limit reached
  *
  * @param successes - Current successes
@@ -133,8 +134,13 @@ export function calculateOutcome(
   successLimit: number,
   failureLimit: number
 ): MontageOutcome {
-  if (successes >= successLimit) return 'total_success';
-  if (failures >= failureLimit) return 'total_failure';
+  const hitSuccess = successes >= successLimit;
+  const hitFailure = failures >= failureLimit;
+
+  // Partial success: achieved goal but also hit failure limit
+  if (hitSuccess && hitFailure) return 'partial_success';
+  if (hitSuccess) return 'total_success';
+  if (hitFailure) return 'total_failure';
   return 'pending';
 }
 

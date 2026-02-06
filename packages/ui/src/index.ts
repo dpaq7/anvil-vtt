@@ -24,12 +24,36 @@ export {
   TooltipTrigger,
   TooltipContent,
 } from './components/Tooltip.js';
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from './components/Collapsible.js';
+
+// Sidebar
+export {
+  SidebarProvider,
+  useSidebar,
+  Sidebar,
+  SidebarNav,
+  SidebarNavItem,
+  SidebarToggle,
+} from './components/Sidebar.js';
+export type { SidebarNavItemProps, SidebarProviderProps } from './components/Sidebar.js';
 
 // Game UI
 export { StaminaBar } from './components/StaminaBar.js';
 export type { StaminaBarProps } from './components/StaminaBar.js';
 export { SceneTypeIcon, SCENE_COLORS, SCENE_BG_COLORS, SCENE_BORDER_COLORS } from './components/SceneTypeIcon.js';
 export type { SceneType, SceneTypeIconProps } from './components/SceneTypeIcon.js';
+
+// Role Toggle
+export { RoleToggle } from './components/RoleToggle.js';
+export type { RoleToggleProps, UserRole } from './components/RoleToggle.js';
+
+// Icons
+export { AnvilIcon } from './components/icons/AnvilIcon.js';
+export type { AnvilIconProps } from './components/icons/AnvilIcon.js';
 
 // Utilities
 export { cn } from './lib/utils.js';

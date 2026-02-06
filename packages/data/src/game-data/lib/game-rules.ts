@@ -89,6 +89,7 @@ import {
  * Each class has a base stamina at level 1 and gains per level after.
  */
 const CLASS_STAMINA_CONFIG: Record<HeroClass, { level1: number; perLevel: number; recoveries: number }> = {
+  beastheart: { level1: 21, perLevel: 12, recoveries: 12 },
   censor: { level1: 21, perLevel: 9, recoveries: 8 },
   conduit: { level1: 18, perLevel: 9, recoveries: 8 },
   elementalist: { level1: 15, perLevel: 6, recoveries: 8 },

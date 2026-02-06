@@ -124,6 +124,35 @@ export const PERKS: Perk[] = [
     description:
       'When you make a test using a skill from the exploration skill group and at least one of the d10s rolled is a 1, you can reroll one d10. You can use this perk only once per test.',
   },
+  // Beastheart-specific exploration perks
+  {
+    id: 'born-tracker',
+    name: 'Born Tracker',
+    category: 'exploration',
+    description:
+      '(Beastheart only) You and your companion have an edge on tests made to track creatures, find your way, or search for hidden creatures.',
+  },
+  {
+    id: 'ride-along',
+    name: 'Ride Along',
+    category: 'exploration',
+    description:
+      "(Beastheart only) Your body disappears, and your consciousness shares your companion's body. While in this state, you can control your companion, take actions, and cast your abilities through them. You can return to your own body as a maneuver. Your body reappears within 3 squares of your companion. While this perk is active, your body is unconscious and can't be targeted. If your companion dies while you're in this state, you return to your body and are dazed until the end of your next turn.",
+  },
+  {
+    id: 'wild-rumpus',
+    name: 'Wild Rumpus',
+    category: 'exploration',
+    description:
+      "(Beastheart only) As a maneuver, until the end of your next turn you and your companion gain each other's movement tags and use whichever speed is higher between the two of you.",
+  },
+  {
+    id: 'wilds-explorer',
+    name: 'Wilds Explorer',
+    category: 'exploration',
+    description:
+      '(Beastheart only) You and your companion have an edge on tests made to overcome environmental challenges, use knowledge of nature, or find food and water in the wilds.',
+  },
 
   // ============================================
   // INTERPERSONAL PERKS (10)
@@ -198,6 +227,27 @@ export const PERKS: Perk[] = [
     description:
       'Whenever you make a test to read a person and obtain a tier 3 outcome, you notice several tells that give away their true feelings. Any test you make to read that person in the future gains an edge.',
   },
+  // Beastheart-specific interpersonal perks
+  {
+    id: 'people-sense',
+    name: 'People Sense',
+    category: 'interpersonal',
+    description:
+      "(Beastheart only) While within 5 squares of your companion, when you make a test to determine a creature's motives, your partner can make the same test and you use the better of the two results.",
+  },
+  {
+    id: 'voice-of-the-wild',
+    name: 'Voice of the Wild',
+    category: 'interpersonal',
+    description: '(Beastheart only) Your companion can speak any language you can speak.',
+  },
+  {
+    id: 'you-can-pet-them',
+    name: "You Can Pet Them, They're Friendly",
+    category: 'interpersonal',
+    description:
+      "(Beastheart only) While within 5 squares of your companion, you can use your companion's Presence score instead of your own for tests.",
+  },
 
   // ============================================
   // INTRIGUE PERKS (6)
@@ -243,6 +293,14 @@ export const PERKS: Perk[] = [
     category: 'intrigue',
     description:
       "You gain an edge on tests made to escape bonds. Given 1 uninterrupted minute, you can escape any mundane bonds without making a test. Additionally, it's not immediately obvious when you've escaped bonds until you do something that makes it clear you have done so (cast them off, use an ability that harms one or more creatures, and so forth).",
+  },
+  // Beastheart-specific intrigue perk
+  {
+    id: 'trained-thief',
+    name: 'Trained Thief',
+    category: 'intrigue',
+    description:
+      '(Beastheart only) You gain the Conceal Object or Pick Pocket skill. Your companion can make a test using the gained skill as a maneuver.',
   },
 
   // ============================================

@@ -5,14 +5,9 @@
 
 export type ConditionId =
   | 'bleeding'
-  | 'burning'
-  | 'charmed'
   | 'dazed'
-  | 'dying'
   | 'frightened'
   | 'grabbed'
-  | 'invisible'
-  | 'petrified'
   | 'prone'
   | 'restrained'
   | 'slowed'
@@ -62,14 +57,9 @@ export interface ActiveCondition {
  */
 export const CONDITION_IDS: readonly ConditionId[] = [
   'bleeding',
-  'burning',
-  'charmed',
   'dazed',
-  'dying',
   'frightened',
   'grabbed',
-  'invisible',
-  'petrified',
   'prone',
   'restrained',
   'slowed',

@@ -16,7 +16,16 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function loadWizardState(): Promise<{ step: number; character: CharacterInProgress } | null> {
+/**
+ * Saved wizard state structure.
+ * Note: `step` can be a number (legacy format) or string (new step ID format).
+ */
+interface SavedWizardState {
+  step: number | string;
+  character: CharacterInProgress;
+}
+
+export async function loadWizardState(): Promise<SavedWizardState | null> {
   try {
     const db = await openDB();
     return new Promise((resolve) => {
@@ -31,7 +40,7 @@ export async function loadWizardState(): Promise<{ step: number; character: Char
   }
 }
 
-export async function saveWizardState(step: number, character: CharacterInProgress): Promise<void> {
+export async function saveWizardState(step: number | string, character: CharacterInProgress): Promise<void> {
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -52,7 +61,7 @@ export async function clearWizardState(): Promise<void> {
 }
 
 export function useWizardPersistence(
-  step: number,
+  step: number | string,
   character: CharacterInProgress,
 ) {
   const initialized = useRef(false);

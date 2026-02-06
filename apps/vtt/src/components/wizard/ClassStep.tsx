@@ -1,6 +1,7 @@
 import { GameData } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
-import { Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
+import { Card, CardHeader, CardTitle, CardContent, cn } from '@anvil/ui';
+import { Check } from 'lucide-react';
 
 interface Props {
   character: CharacterInProgress;
@@ -21,16 +22,26 @@ export function ClassStep({ character, onChange }: Props) {
           return (
             <Card
               key={cls.id}
-              className={`cursor-pointer transition ${selected ? 'border-blue-500 bg-zinc-800/50' : 'hover:border-zinc-600'}`}
+              className={cn(
+                'cursor-pointer transition-all bg-creator-card',
+                selected
+                  ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20'
+                  : 'border-creator-border hover:border-creator-text-muted hover:bg-creator-card-hover'
+              )}
               onClick={() => onChange({ heroClass: cls.id as CharacterInProgress['heroClass'], subclass: null })}
             >
               <CardHeader className="py-3">
-                <CardTitle className="text-base">{cls.name}</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className={cn('text-base', selected && 'text-creator-highlight')}>
+                    {cls.name}
+                  </CardTitle>
+                  {selected && <Check className="h-5 w-5 text-creator-highlight shrink-0" />}
+                </div>
               </CardHeader>
               <CardContent className="pt-0">
-                {cls.description && <p className="text-sm text-zinc-400">{cls.description}</p>}
+                {cls.description && <p className="text-sm text-creator-text-muted">{cls.description}</p>}
                 {cls.role && (
-                  <p className="mt-1 text-xs text-zinc-500">Role: {cls.role}</p>
+                  <p className="mt-1 text-xs text-creator-text-muted/70">Role: {cls.role}</p>
                 )}
               </CardContent>
             </Card>

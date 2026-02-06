@@ -1,6 +1,7 @@
 import { GameData } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
-import { Card, CardHeader, CardTitle, CardContent, Input } from '@anvil/ui';
+import { Card, CardHeader, CardTitle, CardContent, Input, cn } from '@anvil/ui';
+import { Check } from 'lucide-react';
 
 interface Props {
   character: CharacterInProgress;
@@ -21,15 +22,25 @@ export function CareerStep({ character, onChange }: Props) {
           return (
             <Card
               key={c.id}
-              className={`cursor-pointer transition ${selected ? 'border-blue-500 bg-zinc-800/50' : 'hover:border-zinc-600'}`}
+              className={cn(
+                'cursor-pointer transition-all bg-creator-card',
+                selected
+                  ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20'
+                  : 'border-creator-border hover:border-creator-text-muted hover:bg-creator-card-hover'
+              )}
               onClick={() => onChange({ career: c.id })}
             >
               <CardHeader className="py-3">
-                <CardTitle className="text-base">{c.name}</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className={cn('text-base', selected && 'text-creator-highlight')}>
+                    {c.name}
+                  </CardTitle>
+                  {selected && <Check className="h-5 w-5 text-creator-highlight shrink-0" />}
+                </div>
               </CardHeader>
               {c.description && (
                 <CardContent className="pt-0">
-                  <p className="text-sm text-zinc-400">{c.description}</p>
+                  <p className="text-sm text-creator-text-muted">{c.description}</p>
                 </CardContent>
               )}
             </Card>

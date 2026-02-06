@@ -103,16 +103,17 @@ export interface CompendiumAbility extends CompendiumItemBase {
  * Hero class resource names (lowercase)
  */
 export const CLASS_RESOURCES: Record<string, string> = {
+  beastheart: 'rage',
   censor: 'wrath',
   conduit: 'piety',
   elementalist: 'essence',
   fury: 'ferocity',
-  null: 'nature',
+  null: 'discipline',
   shadow: 'insight',
-  summoner: 'rage',
+  summoner: 'essence',
   tactician: 'focus',
   talent: 'clarity',
-  troubadour: 'valor',
+  troubadour: 'drama',
 } as const;
 
 /**

@@ -209,15 +209,21 @@ export class SessionRoom extends DurableObject<Env> {
     if (!session) return;
 
     const scenes = await db.prepare(
-      'SELECT id, name, scene_type, order_index FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
+      'SELECT id, name, scene_type, order_index, data FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
     )
       .bind(sessionId)
-      .all<SceneRef>();
+      .all<SceneRef & { data?: string }>();
 
     this.sessionState = {
       sessionId,
       campaignId: session.campaign_id,
-      scenes: scenes.results.map((s) => ({ id: s.id, name: s.name, type: s.type, order_index: s.order_index })),
+      scenes: scenes.results.map((s) => {
+        let data: Record<string, unknown> | undefined;
+        if (typeof s.data === 'string') {
+          try { data = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
+        }
+        return { id: s.id, name: s.name, type: s.type, order_index: s.order_index, data };
+      }),
       activeSceneId: scenes.results[0]?.id ?? null,
       entities: [],
       combat: null,

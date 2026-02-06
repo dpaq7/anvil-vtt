@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 
+type UserRole = 'director' | 'player';
+
 interface AuthUser {
   id: string;
   discordId: string;
   username: string;
   avatarUrl: string | null;
+  role: UserRole;
 }
 
 interface AuthState {
@@ -13,6 +16,7 @@ interface AuthState {
   error: string | null;
   checkAuth: () => Promise<void>;
   logout: () => Promise<void>;
+  setRole: (role: UserRole) => Promise<void>;
 }
 
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
@@ -45,6 +49,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
     } finally {
       set({ user: null });
+    }
+  },
+
+  setRole: async (role: UserRole) => {
+    const res = await fetch(`${API_BASE}/api/auth/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ role }),
+    });
+    if (res.ok) {
+      set((state) => ({ user: state.user ? { ...state.user, role } : null }));
     }
   },
 }));

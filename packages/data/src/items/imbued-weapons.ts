@@ -173,13 +173,13 @@ export const WEAPON_IMBUEMENTS: Imbuement[] = [
   {
     id: 'imbuement-devastating',
     name: 'Devastating',
-    description: 'Your weapon deals extra damage on critical hits.',
+    description: 'Your weapon reduces the critical hit threshold.',
     type: 'weapon',
     level: 5,
     feature: textFeature(
       'imbuement-devastating-feature',
       'Devastating',
-      'Whenever you roll a natural 19 or 20 on a power roll using this weapon, the ability deals an extra 10 damage.'
+      'Whenever you make an ability roll using this weapon, the number you need to roll to score a critical hit is reduced by 1.'
     ),
     craftingProjectId: 'project-devastating',
   },
@@ -234,6 +234,35 @@ export const WEAPON_IMBUEMENTS: Imbuement[] = [
       'Whenever you use a damage-dealing ability using this weapon against a creature who has dealt damage to you since the end of your last turn, the ability deals an extra 5 damage. This replaces the benefit of Vengeance I.'
     ),
     craftingProjectId: 'project-vengeance-ii',
+  },
+  {
+    id: 'imbuement-metamorphic',
+    name: 'Metamorphic',
+    description: 'Your weapon can change shape to grant different benefits.',
+    type: 'weapon',
+    level: 5,
+    feature: textFeature(
+      'imbuement-metamorphic-feature',
+      'Metamorphic',
+      `As a maneuver, you can change this weapon's shape and form, granting one of the following benefits of your choice:
+• Concealed: The weapon shrinks to the size of a piece of jewelry and can be worn as an earring, necklace, or similar accessory. While in this form, the weapon can't be used for weapon abilities.
+• Large: Abilities using this weapon gain a +1 melee distance bonus or a +3 ranged distance bonus.
+• Vicious: Whenever you damage a creature using this weapon, you deal an extra 1 damage on a tier 1 outcome, an extra 2 damage on a tier 2 outcome, and an extra 3 damage on a tier 3 outcome.`
+    ),
+    craftingProjectId: 'project-metamorphic',
+  },
+  {
+    id: 'imbuement-silencing',
+    name: 'Silencing',
+    description: 'Your weapon can prevent targets from using magic.',
+    type: 'weapon',
+    level: 5,
+    feature: textFeature(
+      'imbuement-silencing-feature',
+      'Silencing',
+      "Whenever you damage a creature with an ability using this weapon and obtain a tier 3 outcome, that creature also can't use magic abilities until the end of their next turn."
+    ),
+    craftingProjectId: 'project-silencing',
   },
 
   // =============================================================================
@@ -303,6 +332,58 @@ export const WEAPON_IMBUEMENTS: Imbuement[] = [
       'Whenever you use a damage-dealing ability using this weapon against a creature who has dealt damage to you since the end of your last turn, the ability deals an extra 8 damage. This replaces the benefit of Vengeance II.'
     ),
     craftingProjectId: 'project-vengeance-iii',
+  },
+  {
+    id: 'imbuement-draining',
+    name: 'Draining',
+    description: 'Your weapon weakens foes and grants you surges.',
+    type: 'weapon',
+    level: 9,
+    feature: textFeature(
+      'imbuement-draining-feature',
+      'Draining',
+      'Whenever you damage a creature with an ability using this weapon and obtain a tier 3 outcome, that creature is also weakened (save ends). Each time you weaken a creature with this weapon, you gain 1 surge.'
+    ),
+    craftingProjectId: 'project-draining',
+  },
+  {
+    id: 'imbuement-imprisoning',
+    name: 'Imprisoning',
+    description: 'Your weapon restrains foes and prevents magical escape.',
+    type: 'weapon',
+    level: 9,
+    feature: textFeature(
+      'imbuement-imprisoning-feature',
+      'Imprisoning',
+      "Whenever you damage a creature with an ability using this weapon and obtain a tier 3 outcome, that creature is also restrained (save ends). While restrained in this way, the creature can't use magic or psionic abilities."
+    ),
+    craftingProjectId: 'project-imprisoning',
+  },
+  {
+    id: 'imbuement-nova',
+    name: 'Nova',
+    description: 'Your weapon can unleash a devastating burst of fire.',
+    type: 'weapon',
+    level: 9,
+    feature: textFeature(
+      'imbuement-nova-feature',
+      'Nova',
+      'As a main action, you unleash a burst of fire. Make a power roll using Might, Agility, Reason, Intuition, or Presence against each enemy in a 3-square burst centered on you. Keywords: Area, Magic. Tier 1: 7 fire damage. Tier 2: 11 fire damage. Tier 3: 16 fire damage.'
+    ),
+    craftingProjectId: 'project-nova',
+  },
+  {
+    id: 'imbuement-windcutting',
+    name: 'Windcutting',
+    description: 'Your melee signature ability can target multiple enemies.',
+    type: 'weapon',
+    level: 9,
+    feature: textFeature(
+      'imbuement-windcutting-feature',
+      'Windcutting',
+      "Whenever you use a melee signature ability that usually targets one creature, you can take a bane on the ability to target each enemy in a cube 3 within distance. If your signature ability would usually cause its target to become grabbed or restrained, each target in the area is instead slowed until the end of their next turn."
+    ),
+    craftingProjectId: 'project-windcutting',
   },
 ];
 

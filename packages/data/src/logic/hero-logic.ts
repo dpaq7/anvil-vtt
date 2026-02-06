@@ -17,6 +17,7 @@ import { GameData } from '../game-data/index.js';
  * Hero class identifiers (Draw Steel classes).
  */
 export type HeroClass =
+  | 'beastheart'
   | 'censor'
   | 'conduit'
   | 'elementalist'
@@ -37,21 +38,22 @@ export type Echelon = 1 | 2 | 3 | 4;
  * Heroic resource types by class.
  */
 export type HeroicResourceType =
-  | 'focus'      // Talent
+  | 'ferocity'   // Fury
   | 'piety'      // Conduit
-  | 'rage'       // Fury
-  | 'insight'    // Tactician
-  | 'shadow'     // Shadow
-  | 'clarity'    // Null
-  | 'judgment'   // Censor
-  | 'inspiration'// Troubadour
+  | 'focus'      // Tactician
+  | 'insight'    // Shadow
+  | 'discipline' // Null
+  | 'wrath'      // Censor
+  | 'clarity'    // Talent
+  | 'drama'      // Troubadour
   | 'essence'    // Elementalist, Summoner
+  | 'rage'       // Beastheart
   | 'heroic';    // Generic fallback
 
 /**
  * Health status based on stamina.
  */
-export type HealthStatus = 'healthy' | 'winded' | 'dying' | 'dead';
+export type HealthStatus = 'healthy' | 'injured' | 'winded' | 'dying' | 'dead';
 
 /**
  * Characteristics (the 5 attributes).
@@ -75,48 +77,51 @@ export type CharacteristicName = keyof Characteristics;
  * Source of truth for class-based stat calculations.
  */
 const CLASS_STAMINA_CONFIG: Record<HeroClass, { level1: number; perLevel: number; recoveries: number }> = {
-  censor: { level1: 21, perLevel: 9, recoveries: 8 },
-  conduit: { level1: 18, perLevel: 9, recoveries: 8 },
-  elementalist: { level1: 15, perLevel: 6, recoveries: 8 },
-  fury: { level1: 21, perLevel: 9, recoveries: 8 },
+  beastheart: { level1: 21, perLevel: 12, recoveries: 12 },
+  censor: { level1: 21, perLevel: 9, recoveries: 12 },
+  conduit: { level1: 18, perLevel: 6, recoveries: 8 },
+  elementalist: { level1: 18, perLevel: 6, recoveries: 8 },
+  fury: { level1: 21, perLevel: 9, recoveries: 10 },
   null: { level1: 18, perLevel: 9, recoveries: 8 },
-  shadow: { level1: 18, perLevel: 9, recoveries: 8 },
+  shadow: { level1: 18, perLevel: 6, recoveries: 8 },
   summoner: { level1: 15, perLevel: 6, recoveries: 8 },
   tactician: { level1: 21, perLevel: 9, recoveries: 10 },
-  talent: { level1: 18, perLevel: 9, recoveries: 8 },
-  troubadour: { level1: 18, perLevel: 9, recoveries: 8 },
+  talent: { level1: 18, perLevel: 6, recoveries: 8 },
+  troubadour: { level1: 18, perLevel: 6, recoveries: 8 },
 };
 
 /**
  * Heroic resource type by class.
  */
 const CLASS_HEROIC_RESOURCE: Record<HeroClass, HeroicResourceType> = {
-  censor: 'judgment',
+  beastheart: 'rage',
+  censor: 'wrath',
   conduit: 'piety',
   elementalist: 'essence',
-  fury: 'rage',
-  null: 'clarity',
-  shadow: 'shadow',
+  fury: 'ferocity',
+  null: 'discipline',
+  shadow: 'insight',
   summoner: 'essence',
-  tactician: 'insight',
-  talent: 'focus',
-  troubadour: 'inspiration',
+  tactician: 'focus',
+  talent: 'clarity',
+  troubadour: 'drama',
 };
 
 /**
  * Potency characteristic by class.
  */
-const CLASS_POTENCY_CHARACTERISTIC: Record<HeroClass, CharacteristicName> = {
-  censor: 'intuition',
-  conduit: 'intuition',
-  elementalist: 'reason',
-  fury: 'might',
-  null: 'presence',
-  shadow: 'agility',
-  summoner: 'presence',
-  tactician: 'reason',
-  talent: 'presence',
-  troubadour: 'presence',
+const CLASS_POTENCY_CHARACTERISTICS: Record<HeroClass, CharacteristicName[]> = {
+  beastheart: ['might', 'agility'],
+  censor: ['intuition', 'presence'],
+  conduit: ['intuition'],
+  elementalist: ['reason'],
+  fury: ['might', 'agility'],
+  null: ['reason', 'intuition', 'presence'],
+  shadow: ['agility'],
+  summoner: ['presence'],
+  tactician: ['reason', 'presence'],
+  talent: ['presence'],
+  troubadour: ['presence'],
 };
 
 // ---------------------------------------------------------------------------
@@ -314,6 +319,7 @@ export function getHealthStatus(currentStamina: number, maxStamina: number): Hea
   if (currentStamina <= deathThreshold) return 'dead';
   if (currentStamina <= 0) return 'dying';
   if (currentStamina <= windedThreshold) return 'winded';
+  if (currentStamina < maxStamina) return 'injured';
   return 'healthy';
 }
 
@@ -373,15 +379,16 @@ export function getHeroicResourceType(heroClass: HeroClass): HeroicResourceType 
  */
 export function getHeroicResourceName(resourceType: HeroicResourceType): string {
   const names: Record<HeroicResourceType, string> = {
-    focus: 'Focus',
+    ferocity: 'Ferocity',
     piety: 'Piety',
-    rage: 'Rage',
+    focus: 'Focus',
     insight: 'Insight',
-    shadow: 'Shadow',
+    discipline: 'Discipline',
+    wrath: 'Wrath',
     clarity: 'Clarity',
-    judgment: 'Judgment',
-    inspiration: 'Inspiration',
+    drama: 'Drama',
     essence: 'Essence',
+    rage: 'Rage',
     heroic: 'Heroic Resource',
   };
   return names[resourceType];
@@ -423,8 +430,18 @@ export function getHeroicResourceGainExpression(heroClass: HeroClass): string {
  * @param heroClass - The hero's class
  * @returns The characteristic used for potency calculations
  */
+export function getPotencyCharacteristics(heroClass: HeroClass): CharacteristicName[] {
+  return CLASS_POTENCY_CHARACTERISTICS[heroClass] ?? ['might'];
+}
+
+/**
+ * Get the primary potency characteristic for a class (first in list).
+ *
+ * @param heroClass - The hero's class
+ * @returns The primary characteristic used for potency calculations
+ */
 export function getPotencyCharacteristic(heroClass: HeroClass): CharacteristicName {
-  return CLASS_POTENCY_CHARACTERISTIC[heroClass] ?? 'might';
+  return CLASS_POTENCY_CHARACTERISTICS[heroClass]?.[0] ?? 'might';
 }
 
 /**

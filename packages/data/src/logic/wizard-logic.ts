@@ -43,10 +43,22 @@ export interface Title {
 }
 
 /**
+ * A single choice made during level-up.
+ */
+export interface LevelUpChoice {
+  featureId: string;
+  choiceId: string;
+  category?: string;
+}
+
+/**
  * Character in progress during wizard steps.
  * Contains nullable fields as selections are made step by step.
  */
 export interface CharacterInProgress {
+  // Step 0: Level Selection (1-10)
+  level: number;
+
   // Step 1: Ancestry
   ancestry: string | null;
   ancestryTraits: string[];
@@ -75,6 +87,14 @@ export interface CharacterInProgress {
 
   // Step 9: Skills
   selectedSkills: string[];
+  // Skills selected from culture sources (environment, organization, upbringing)
+  cultureSkills?: {
+    environment?: string;
+    organization?: string;
+    upbringing?: string;
+  };
+  // Skills selected from career choice options (e.g., "Crafting/Exploration")
+  careerSkillChoices?: string[];
 
   // Step 10: Languages
   selectedLanguages: string[];
@@ -94,6 +114,9 @@ export interface CharacterInProgress {
   backstory: string;
   appearance: string;
   portraitUrl: string | null;
+
+  // Level-up choices (for levels 2-10)
+  levelUpChoices: Record<number, LevelUpChoice[]>;
 }
 
 /**
@@ -133,6 +156,22 @@ export interface StepValidationResult {
   warnings: string[];
 }
 
+/**
+ * Status of a wizard step.
+ */
+export type StepStatus = 'complete' | 'incomplete' | 'not-begun';
+
+/**
+ * Definition of a wizard step.
+ */
+export interface WizardStepDefinition {
+  id: string;
+  label: string;
+  required: boolean;
+  /** For level-up steps, the level number (2-10) */
+  levelUpLevel?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Derived Stats Calculation
 // ---------------------------------------------------------------------------
@@ -161,6 +200,9 @@ export function calculateDerivedStats(character: CharacterInProgress): DerivedSt
     return { ...DEFAULT_DERIVED_STATS };
   }
 
+  const level = character.level || 1;
+  const echelon = HeroLogic.getEchelon(level);
+
   // Get ancestry data for speed and size
   const ancestry = character.ancestry
     ? GameData.getAncestry(character.ancestry)
@@ -171,11 +213,11 @@ export function calculateDerivedStats(character: CharacterInProgress): DerivedSt
     ? GameData.getKit(character.kit)
     : null;
 
-  // Calculate base stamina from class (level 1)
-  const baseStamina = HeroLogic.getMaxStaminaForClass(character.heroClass, 1);
+  // Calculate base stamina from class at character's level
+  const baseStamina = HeroLogic.getMaxStaminaForClass(character.heroClass, level);
 
-  // Add kit stamina bonus (kit stamina is per echelon, level 1 is echelon 1 = 1x)
-  const kitStaminaBonus = kit?.staminaPerEchelon ?? 0;
+  // Add kit stamina bonus (kit stamina is per echelon)
+  const kitStaminaBonus = (kit?.staminaPerEchelon ?? 0) * echelon;
 
   // Get recoveries from class
   const recoveries = HeroLogic.getMaxRecoveries(character.heroClass);
@@ -314,7 +356,207 @@ export function getLanguageSelectionsNeeded(character: CharacterInProgress): num
 // ---------------------------------------------------------------------------
 
 /**
- * Wizard step numbers for reference.
+ * Wizard step IDs for the new breadcrumb-based wizard.
+ */
+export const WIZARD_STEP_IDS = {
+  LEVEL: 'level',
+  ANCESTRY: 'ancestry',
+  CULTURE: 'culture',
+  CAREER: 'career',
+  CLASS: 'class',
+  SUBCLASS: 'subclass',
+  COMPLICATION: 'complication',
+  CHARACTERISTICS: 'characteristics',
+  KIT: 'kit',
+  SKILLS: 'skills',
+  LANGUAGES: 'languages',
+  PERKS: 'perks',
+  TITLES: 'titles',
+  ABILITIES: 'abilities',
+  PERSONAL: 'personal',
+  REVIEW: 'review',
+} as const;
+
+/**
+ * Base wizard steps (before level-up steps are added).
+ */
+export const BASE_WIZARD_STEPS: WizardStepDefinition[] = [
+  { id: WIZARD_STEP_IDS.LEVEL, label: 'Level', required: true },
+  { id: WIZARD_STEP_IDS.ANCESTRY, label: 'Ancestry', required: true },
+  { id: WIZARD_STEP_IDS.CULTURE, label: 'Culture', required: true },
+  { id: WIZARD_STEP_IDS.CAREER, label: 'Career', required: true },
+  { id: WIZARD_STEP_IDS.CLASS, label: 'Class', required: true },
+  { id: WIZARD_STEP_IDS.SUBCLASS, label: 'Subclass', required: true },
+  { id: WIZARD_STEP_IDS.COMPLICATION, label: 'Complication', required: false },
+  { id: WIZARD_STEP_IDS.CHARACTERISTICS, label: 'Characteristics', required: true },
+  { id: WIZARD_STEP_IDS.KIT, label: 'Kit', required: true },
+  { id: WIZARD_STEP_IDS.SKILLS, label: 'Skills', required: true },
+  { id: WIZARD_STEP_IDS.LANGUAGES, label: 'Languages', required: true },
+  { id: WIZARD_STEP_IDS.PERKS, label: 'Perks', required: false },
+  { id: WIZARD_STEP_IDS.TITLES, label: 'Titles', required: false },
+  { id: WIZARD_STEP_IDS.ABILITIES, label: 'Abilities', required: false },
+  { id: WIZARD_STEP_IDS.PERSONAL, label: 'Personal', required: true },
+];
+
+/**
+ * Generate wizard steps based on selected level.
+ * For level > 1, adds level-up steps (L2, L3, ...) after the base steps.
+ *
+ * @param level - The character's level (1-10)
+ * @returns Array of step definitions including level-up steps
+ */
+export function generateWizardSteps(level: number): WizardStepDefinition[] {
+  const steps = [...BASE_WIZARD_STEPS];
+
+  // Add level-up steps for levels 2 and above
+  for (let lvl = 2; lvl <= level; lvl++) {
+    steps.push({
+      id: `level-${lvl}`,
+      label: `L${lvl}`,
+      required: true,
+      levelUpLevel: lvl,
+    });
+  }
+
+  // Always end with Review
+  steps.push({ id: WIZARD_STEP_IDS.REVIEW, label: 'Review', required: false });
+
+  return steps;
+}
+
+/**
+ * Get the step status based on character state.
+ *
+ * @param character - The character in progress
+ * @param stepId - The step ID to check
+ * @returns Step status: 'complete', 'incomplete', or 'not-begun'
+ */
+export function getStepStatus(
+  character: CharacterInProgress,
+  stepId: string
+): StepStatus {
+  // Handle level-up steps
+  if (stepId.startsWith('level-')) {
+    const lvl = parseInt(stepId.replace('level-', ''), 10);
+    const choices = character.levelUpChoices[lvl] || [];
+    // Consider complete if at least one choice was made (simplified; can be enhanced)
+    if (choices.length > 0) return 'complete';
+    // Check if previous steps have started
+    if (character.heroClass) return 'incomplete';
+    return 'not-begun';
+  }
+
+  switch (stepId) {
+    case WIZARD_STEP_IDS.LEVEL:
+      return character.level >= 1 ? 'complete' : 'incomplete';
+
+    case WIZARD_STEP_IDS.ANCESTRY:
+      if (character.ancestry) return 'complete';
+      if (character.level >= 1) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.CULTURE:
+      if (
+        character.culture.environment &&
+        character.culture.organization &&
+        character.culture.upbringing
+      ) {
+        return 'complete';
+      }
+      if (character.ancestry) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.CAREER:
+      if (character.career) return 'complete';
+      if (character.culture.environment) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.CLASS:
+      if (character.heroClass) return 'complete';
+      if (character.career) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.SUBCLASS:
+      if (character.subclass) {
+        if (character.heroClass) {
+          const selectCount = GameData.getSubclassSelectCount(character.heroClass);
+          const selectedCount = Array.isArray(character.subclass)
+            ? character.subclass.length
+            : 1;
+          if (selectedCount >= selectCount) return 'complete';
+        }
+        return 'incomplete';
+      }
+      if (character.heroClass) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.COMPLICATION:
+      // Optional step - complete if visited or has content
+      if (character.complication) return 'complete';
+      if (character.subclass) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.CHARACTERISTICS:
+      if (character.characteristics) {
+        const total = HeroLogic.getTotalCharacteristics(character.characteristics);
+        if (total === 2) return 'complete';
+        return 'incomplete';
+      }
+      if (character.subclass) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.KIT:
+      if (character.kit) return 'complete';
+      if (character.characteristics) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.SKILLS:
+      const skillsNeeded = getSkillSelectionsNeeded(character);
+      if (character.selectedSkills.length >= skillsNeeded) return 'complete';
+      if (character.kit) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.LANGUAGES:
+      const langsNeeded = getLanguageSelectionsNeeded(character);
+      if (character.selectedLanguages.length >= langsNeeded) return 'complete';
+      if (character.selectedSkills.length > 0) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.PERKS:
+      // Optional step
+      if (character.selectedPerks.length > 0) return 'complete';
+      if (character.selectedLanguages.length > 0) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.TITLES:
+      // Optional step
+      if (character.selectedTitles.length > 0) return 'complete';
+      if (character.selectedLanguages.length > 0) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.ABILITIES:
+      // Optional step
+      if (character.selectedAbilities.length > 0) return 'complete';
+      if (character.selectedLanguages.length > 0) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.PERSONAL:
+      if (character.name.trim()) return 'complete';
+      if (character.selectedLanguages.length > 0) return 'incomplete';
+      return 'not-begun';
+
+    case WIZARD_STEP_IDS.REVIEW:
+      // Review is complete if character is complete
+      return isCharacterComplete(character) ? 'complete' : 'incomplete';
+
+    default:
+      return 'not-begun';
+  }
+}
+
+/**
+ * Legacy wizard step numbers for reference.
+ * @deprecated Use WIZARD_STEP_IDS and generateWizardSteps for the new wizard.
  */
 export const WIZARD_STEPS = {
   ANCESTRY: 1,
@@ -522,6 +764,7 @@ export function getFirstIncompleteStep(character: CharacterInProgress): number |
  */
 export function createEmptyCharacter(): CharacterInProgress {
   return {
+    level: 1,
     ancestry: null,
     ancestryTraits: [],
     culture: {
@@ -537,6 +780,8 @@ export function createEmptyCharacter(): CharacterInProgress {
     characteristics: null,
     kit: null,
     selectedSkills: [],
+    cultureSkills: {},
+    careerSkillChoices: [],
     selectedLanguages: [],
     selectedPerks: [],
     selectedTitles: [],
@@ -546,6 +791,7 @@ export function createEmptyCharacter(): CharacterInProgress {
     backstory: '',
     appearance: '',
     portraitUrl: null,
+    levelUpChoices: {},
   };
 }
 

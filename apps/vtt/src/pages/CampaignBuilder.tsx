@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input } from '@anvil/ui';
 import { api } from '../lib/api.js';
 import { TreeSidebar } from '../components/builder/TreeSidebar.js';
@@ -7,7 +7,7 @@ import { CardGrid } from '../components/builder/CardGrid.js';
 import { SceneEditorSheet } from '../components/builder/SceneEditorSheet.js';
 
 interface Module { id: string; name: string; description: string; order_index: number; }
-interface Session { id: string; name: string; description: string; module_id: string | null; order_index: number; }
+interface Session { id: string; name: string; description: string; module_id: string | null; order_index: number; status?: string; }
 interface Scene { id: string; title: string; type: string; data: string; order_index: number; game_session_id: string; }
 
 interface TreeNode {
@@ -18,8 +18,18 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
+function generateRoomCode(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let code = '';
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  for (const b of bytes) code += chars[b % chars.length];
+  return code;
+}
+
 export function CampaignBuilder() {
   const { id: campaignId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [campaign, setCampaign] = useState<{ name: string; description: string } | null>(null);
   const [modules, setModules] = useState<Module[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -34,6 +44,8 @@ export function CampaignBuilder() {
   const [addSceneOpen, setAddSceneOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newSceneType, setNewSceneType] = useState('story');
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!campaignId) return;
@@ -142,6 +154,30 @@ export function CampaignBuilder() {
     await load();
   };
 
+  const handleGoLive = async () => {
+    if (!selectedId || selectedType !== 'session') return;
+    const session = sessions.find((s) => s.id === selectedId);
+    if (session?.status && session.status !== 'draft') return;
+    const roomCode = generateRoomCode();
+    await api.put(`/api/sessions/${selectedId}/go-live`, { roomCode });
+    navigate(`/app/session/${selectedId}/lobby`);
+  };
+
+  const handleRejoin = () => {
+    if (!selectedId || selectedType !== 'session') return;
+    navigate(`/app/session/${selectedId}`);
+  };
+
+  const handleInvite = async () => {
+    if (!campaignId) return;
+    const result = await api.post<{ invite: { code: string } }>(`/api/campaigns/${campaignId}/invites`, {});
+    const link = `${window.location.origin}/join/${result.invite.code}`;
+    setInviteLink(link);
+    setInviteOpen(true);
+  };
+
+  const selectedSession = selectedType === 'session' ? sessions.find((s) => s.id === selectedId) : null;
+
   if (!campaign) return <div className="p-8 text-zinc-400">Loading...</div>;
 
   return (
@@ -163,7 +199,7 @@ export function CampaignBuilder() {
         <div className="flex items-center gap-2 border-b border-zinc-800 p-4">
           {selectedType === 'campaign' && (
             <Dialog open={addModuleOpen} onOpenChange={setAddModuleOpen}>
-              <DialogTrigger asChild><Button size="sm">Add Module</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Module</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>New Module</DialogTitle>
                 <div className="mt-4 flex flex-col gap-4">
@@ -176,9 +212,9 @@ export function CampaignBuilder() {
               </DialogContent>
             </Dialog>
           )}
-          {(selectedType === 'campaign' || selectedType === 'module') && (
+          {selectedType === 'module' && (
             <Dialog open={addSessionOpen} onOpenChange={setAddSessionOpen}>
-              <DialogTrigger asChild><Button size="sm" variant="secondary">Add Session</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Session</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>New Session</DialogTitle>
                 <div className="mt-4 flex flex-col gap-4">
@@ -193,7 +229,7 @@ export function CampaignBuilder() {
           )}
           {selectedType === 'session' && (
             <Dialog open={addSceneOpen} onOpenChange={setAddSceneOpen}>
-              <DialogTrigger asChild><Button size="sm" variant="secondary">Add Scene</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Scene</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>New Scene</DialogTitle>
                 <div className="mt-4 flex flex-col gap-4">
@@ -216,6 +252,20 @@ export function CampaignBuilder() {
                 </div>
               </DialogContent>
             </Dialog>
+          )}
+          {selectedType === 'campaign' && (
+            <Button size="sm" variant="outline" onClick={handleInvite}>Invite Players</Button>
+          )}
+          {selectedSession && (!selectedSession.status || selectedSession.status === 'draft') && (
+            <Button size="sm" variant="default" onClick={handleGoLive}>Go Live</Button>
+          )}
+          {selectedSession && selectedSession.status === 'active' && (
+            <Button size="sm" variant="secondary" onClick={handleRejoin}>Rejoin</Button>
+          )}
+          {selectedSession?.status && selectedSession.status !== 'draft' && (
+            <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 capitalize">
+              {selectedSession.status}
+            </span>
           )}
         </div>
 
@@ -250,6 +300,28 @@ export function CampaignBuilder() {
           onClose={() => setEditingScene(null)}
         />
       )}
+
+      {/* Invite Dialog */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogTitle>Invite Players</DialogTitle>
+          <div className="mt-4 flex flex-col gap-4">
+            <p className="text-sm text-zinc-400">Share this link with your players:</p>
+            <div className="flex gap-2">
+              <Input readOnly value={inviteLink ?? ''} className="font-mono text-xs" />
+              <Button
+                size="sm"
+                onClick={() => { if (inviteLink) navigator.clipboard.writeText(inviteLink); }}
+              >
+                Copy
+              </Button>
+            </div>
+            <div className="flex justify-end">
+              <DialogClose asChild><Button variant="ghost">Close</Button></DialogClose>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

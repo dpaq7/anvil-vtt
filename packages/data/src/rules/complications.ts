@@ -1483,8 +1483,8 @@ export const COMPLICATIONS: Complication[] = [
     rollNumber: 88,
   },
   {
-    id: 'vampire-scion',
-    name: 'Vampire Scion',
+    id: 'vampire-sire',
+    name: 'Vampire Sire',
     description:
       "A vampire has bitten you. You're not undead—or not yet, anyway—but your connection with your vampire progenitor fills you with urges you fight to control.",
     benefit:

@@ -1,9 +1,16 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
 import { api } from '../lib/api.js';
 import { useAuthStore } from '../stores/authStore.js';
-import type { ParticipantInfo } from '../types/protocol.js';
+import { useSessionSocket } from '../hooks/useSessionSocket.js';
+
+interface HeroSummary {
+  id: string;
+  name: string;
+  hero_class: string | null;
+  level: number;
+}
 
 interface SessionInfo {
   id: string;
@@ -14,27 +21,21 @@ interface SessionInfo {
   director_id?: string;
 }
 
-interface HeroSummary {
-  id: string;
-  name: string;
-  hero_class: string | null;
-  level: number;
-}
-
 export function Lobby() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const { state, send, sessionStarted } = useSessionSocket(id ?? null);
   const [session, setSession] = useState<SessionInfo | null>(null);
-  const [participants, setParticipants] = useState<ParticipantInfo[]>([]);
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isDirector = session && user && session.director_id === user.id;
+  const participants = state?.participants ?? [];
 
-  // Load session info
+  // Load session info (one-time for metadata like room_code)
   useEffect(() => {
     if (!id) return;
     api.get<{ session: SessionInfo }>(`/api/sessions/${id}`)
@@ -48,27 +49,25 @@ export function Lobby() {
     api.get<HeroSummary[]>('/api/heroes').then(setHeroes).catch(() => {});
   }, [isDirector]);
 
-  // Poll participants
+  // Navigate to session when session_started fires
   useEffect(() => {
-    if (!id) return;
-    const poll = () => {
-      api.get<{ participants: ParticipantInfo[] }>(`/api/sessions/${id}/participants`)
-        .then((d) => setParticipants(d.participants))
-        .catch(() => {});
-    };
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => clearInterval(interval);
-  }, [id]);
+    if (sessionStarted && id) {
+      navigate(`/app/session/${id}`);
+    }
+  }, [sessionStarted, id, navigate]);
 
-  // Toggle ready
-  const toggleReady = useCallback(async () => {
-    if (!id) return;
+  // Toggle ready via WebSocket
+  const toggleReady = () => {
     const newReady = !ready;
     setReady(newReady);
-    // Update participant status
-    await api.post(`/api/sessions/${id}/join`, { hero_id: selectedHeroId }).catch(() => {});
-  }, [id, ready, selectedHeroId]);
+    send({ type: 'ready', ready: newReady });
+  };
+
+  // Select hero via WebSocket
+  const handleHeroSelect = (heroId: string | null) => {
+    setSelectedHeroId(heroId);
+    if (heroId) send({ type: 'select_hero', heroId });
+  };
 
   // Start session (director only)
   const startSession = async () => {
@@ -81,16 +80,10 @@ export function Lobby() {
     }
   };
 
-  // Cancel (director only)
-  const cancel = async () => {
-    navigate(-1);
-  };
+  const cancel = () => { navigate(-1); };
 
-  // Copy room code
   const copyCode = () => {
-    if (session?.room_code) {
-      navigator.clipboard.writeText(session.room_code);
-    }
+    if (session?.room_code) navigator.clipboard.writeText(session.room_code);
   };
 
   if (error) return <div className="flex h-full items-center justify-center text-red-400">{error}</div>;
@@ -149,7 +142,7 @@ export function Lobby() {
                 <select
                   className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                   value={selectedHeroId ?? ''}
-                  onChange={(e) => setSelectedHeroId(e.target.value || null)}
+                  onChange={(e) => handleHeroSelect(e.target.value || null)}
                 >
                   <option value="">Choose a hero...</option>
                   {heroes.map((h) => (

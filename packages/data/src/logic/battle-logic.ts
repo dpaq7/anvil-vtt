@@ -10,6 +10,8 @@
  * Reference: Draw Steel Combat rules
  */
 
+import type { HeroClass } from '@anvil/types';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -76,15 +78,32 @@ export function getMalicePerRound(heroCount: number): number {
 }
 
 /**
+ * Calculate starting malice at round 0 based on party victories.
+ * Draw Steel rule: Director starts with floor(average party victories) malice.
+ *
+ * @param avgPartyVictories - Average victories across party members
+ * @returns Starting malice for round 0
+ */
+export function getStartingMalice(avgPartyVictories: number): number {
+  return Math.floor(Math.max(0, avgPartyVictories));
+}
+
+/**
  * Calculate total malice at start of round N.
- * Assumes no malice spent.
+ * Includes round-0 seeding from party victories.
  *
  * @param heroCount - Number of heroes
- * @param roundNumber - Current round (1-indexed)
+ * @param roundNumber - Current round (0-indexed for start, 1+ for later rounds)
+ * @param avgPartyVictories - Average victories across party (for round-0 seeding)
  * @returns Total accumulated malice
  */
-export function getMaliceAtRound(heroCount: number, roundNumber: number): number {
-  return getMalicePerRound(heroCount) * roundNumber;
+export function getMaliceAtRound(
+  heroCount: number,
+  roundNumber: number,
+  avgPartyVictories: number = 0
+): number {
+  const startingMalice = getStartingMalice(avgPartyVictories);
+  return startingMalice + getMalicePerRound(heroCount) * roundNumber;
 }
 
 /**
@@ -372,35 +391,188 @@ export function getRemainingCombatants(actedCount: number, totalCount: number): 
 // ---------------------------------------------------------------------------
 
 /**
- * Calculate heroic resource generated at turn start.
- * Heroes generate 1d3 of their heroic resource.
+ * Heroic resource generation trigger types.
+ * Each class has specific triggers for gaining their resource.
+ */
+export type HeroicResourceTrigger =
+  | 'turn-start'        // Most classes: gain at start of turn
+  | 'damage-taken'      // Fury: Ferocity on taking damage
+  | 'flanking'          // Shadow: Insight on flanking
+  | 'hiding'            // Shadow: Insight on successfully hiding
+  | 'ally-triggered'    // Tactician: Focus when ally uses triggered action
+  | 'kill'              // Various: some classes gain on defeating enemy
+  | 'winded'            // Fury: bonus Ferocity when becoming winded
+  | 'prayer'            // Conduit: Piety from Pray maneuver
+  | 'judgment'          // Censor: Wrath from Judgment feature
+  | 'minion-summoned'   // Summoner: Essence tracking
+  | 'routine-active';   // Troubadour: Drama from active routines
+
+/**
+ * Per-class heroic resource configuration.
+ */
+export interface HeroicResourceConfig {
+  /** Resource name (e.g., "Ferocity", "Clarity") */
+  name: string;
+  /** Maximum resource (null = no cap) */
+  maxResource: number | null;
+  /** Minimum resource (most are 0, Talent can go negative) */
+  minResource: number;
+  /** Triggers that generate this resource */
+  gainTriggers: HeroicResourceTrigger[];
+  /** Base amount gained at turn start (0 if no turn-start trigger) */
+  turnStartGain: number;
+}
+
+/**
+ * Resource configuration per class.
+ */
+export const CLASS_HEROIC_RESOURCE_CONFIG: Record<HeroClass, HeroicResourceConfig> = {
+  beastheart: {
+    name: 'Rage',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['turn-start', 'damage-taken'],
+    turnStartGain: 1,
+  },
+  censor: {
+    name: 'Wrath',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['judgment', 'turn-start'],
+    turnStartGain: 1,
+  },
+  conduit: {
+    name: 'Piety',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['prayer', 'turn-start'],
+    turnStartGain: 1,
+  },
+  elementalist: {
+    name: 'Essence',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['turn-start'],
+    turnStartGain: 3,
+  },
+  fury: {
+    name: 'Ferocity',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['damage-taken', 'winded', 'kill'],
+    turnStartGain: 0, // Fury doesn't gain at turn start
+  },
+  null: {
+    name: 'Discipline',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['turn-start'],
+    turnStartGain: 2,
+  },
+  shadow: {
+    name: 'Insight',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['flanking', 'hiding', 'turn-start'],
+    turnStartGain: 1,
+  },
+  summoner: {
+    name: 'Essence',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['turn-start'],
+    turnStartGain: 2,
+  },
+  tactician: {
+    name: 'Focus',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['turn-start', 'ally-triggered'],
+    turnStartGain: 2,
+  },
+  talent: {
+    name: 'Clarity',
+    maxResource: null,
+    minResource: -10, // Can go negative (Strained state)
+    gainTriggers: ['turn-start'],
+    turnStartGain: 2,
+  },
+  troubadour: {
+    name: 'Drama',
+    maxResource: null,
+    minResource: 0,
+    gainTriggers: ['turn-start', 'routine-active'],
+    turnStartGain: 1,
+  },
+};
+
+/**
+ * Get heroic resource configuration for a class.
  *
- * @param d3Roll - Result of 1d3
- * @returns Resource generated
+ * @param heroClass - The hero class
+ * @returns Resource configuration
+ */
+export function getHeroicResourceConfig(heroClass: HeroClass): HeroicResourceConfig {
+  return CLASS_HEROIC_RESOURCE_CONFIG[heroClass];
+}
+
+/**
+ * Calculate heroic resource gained at turn start for a class.
+ *
+ * @param heroClass - The hero class
+ * @returns Resource generated at turn start
+ */
+export function calculateTurnStartResource(heroClass: HeroClass): number {
+  return CLASS_HEROIC_RESOURCE_CONFIG[heroClass].turnStartGain;
+}
+
+/**
+ * @deprecated Use calculateTurnStartResource with heroClass instead.
+ * Calculate heroic resource generated at turn start (legacy generic 1d3).
  */
 export function calculateHeroicResourceGeneration(d3Roll: number): number {
   return Math.max(1, Math.min(3, d3Roll));
 }
 
 /**
- * Get maximum heroic resource cap.
- * Most classes cap at 5 heroic resource.
+ * Get maximum heroic resource cap for a class.
+ * Most classes have no cap (returns null).
  *
- * @returns Maximum heroic resource
+ * @param heroClass - The hero class
+ * @returns Maximum heroic resource or null if no cap
  */
-export function getMaxHeroicResource(): number {
-  return 5;
+export function getMaxHeroicResource(heroClass?: HeroClass): number | null {
+  if (!heroClass) return null; // Legacy: no cap
+  return CLASS_HEROIC_RESOURCE_CONFIG[heroClass].maxResource;
 }
 
 /**
- * Apply heroic resource cap.
+ * Get minimum heroic resource for a class.
+ * Most classes have min 0, Talent can go negative.
+ *
+ * @param heroClass - The hero class
+ * @returns Minimum heroic resource
+ */
+export function getMinHeroicResource(heroClass: HeroClass): number {
+  return CLASS_HEROIC_RESOURCE_CONFIG[heroClass].minResource;
+}
+
+/**
+ * Apply heroic resource bounds.
  *
  * @param current - Current resource
- * @param max - Maximum resource (default 5)
- * @returns Capped resource value
+ * @param heroClass - The hero class (optional for legacy support)
+ * @returns Bounded resource value
  */
-export function capHeroicResource(current: number, max = 5): number {
-  return Math.min(max, Math.max(0, current));
+export function capHeroicResource(current: number, heroClass?: HeroClass): number {
+  const min = heroClass ? getMinHeroicResource(heroClass) : 0;
+  const max = heroClass ? getMaxHeroicResource(heroClass) : null;
+
+  let result = Math.max(min, current);
+  if (max !== null) {
+    result = Math.min(max, result);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

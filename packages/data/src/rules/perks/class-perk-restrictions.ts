@@ -6,104 +6,103 @@ import { ALL_PERK_CATEGORIES } from './perk-categories.js';
  * Based on Draw Steel class features
  */
 export const CLASS_PERK_PROGRESSIONS: Record<HeroClass, ClassPerkProgression> = {
-  censor: {
-    perkLevels: [2, 4, 6, 8, 10],
+  beastheart: {
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['exploration', 'interpersonal', 'intrigue'],
       4: 'any',
       6: ['exploration', 'interpersonal', 'intrigue'],
       8: 'any',
-      10: ['exploration', 'interpersonal', 'intrigue'],
+    },
+  },
+  censor: {
+    perkLevels: [2, 4, 6, 8],
+    restrictions: {
+      2: ['exploration', 'interpersonal', 'intrigue'],
+      4: 'any',
+      6: ['exploration', 'interpersonal', 'intrigue'],
+      8: 'any',
     },
   },
   conduit: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['crafting', 'lore', 'supernatural'],
       4: 'any',
       6: ['crafting', 'lore', 'supernatural'],
       8: 'any',
-      10: ['crafting', 'lore', 'supernatural'],
     },
   },
   elementalist: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['crafting', 'lore', 'supernatural'],
       4: 'any',
       6: ['crafting', 'lore', 'supernatural'],
       8: 'any',
-      10: ['crafting', 'lore', 'supernatural'],
     },
   },
   fury: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['crafting', 'exploration', 'intrigue'],
       4: 'any',
       6: ['crafting', 'exploration', 'intrigue'],
       8: 'any',
-      10: ['crafting', 'exploration', 'intrigue'],
     },
   },
   null: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['exploration', 'interpersonal', 'intrigue'],
       4: 'any',
       6: ['exploration', 'interpersonal', 'intrigue'],
       8: 'any',
-      10: ['exploration', 'interpersonal', 'intrigue'],
     },
   },
   shadow: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: 'any',
       4: 'any',
       6: 'any',
       8: 'any',
-      10: 'any',
     },
   },
   summoner: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['crafting', 'lore', 'supernatural'],
       4: 'any',
       6: ['crafting', 'lore', 'supernatural'],
       8: 'any',
-      10: ['crafting', 'lore', 'supernatural'],
     },
   },
   tactician: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['exploration', 'interpersonal', 'intrigue'],
       4: 'any',
       6: ['exploration', 'interpersonal', 'intrigue'],
       8: 'any',
-      10: ['exploration', 'interpersonal', 'intrigue'],
     },
   },
   talent: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['interpersonal', 'lore', 'supernatural'],
       4: 'any',
       6: ['interpersonal', 'lore', 'supernatural'],
       8: 'any',
-      10: ['interpersonal', 'lore', 'supernatural'],
     },
   },
   troubadour: {
-    perkLevels: [2, 4, 6, 8, 10],
+    perkLevels: [2, 4, 6, 8],
     restrictions: {
       2: ['interpersonal', 'lore', 'supernatural'],
       4: 'any',
       6: ['interpersonal', 'lore', 'supernatural'],
       8: 'any',
-      10: ['interpersonal', 'lore', 'supernatural'],
     },
   },
 };

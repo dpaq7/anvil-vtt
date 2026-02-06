@@ -96,4 +96,5 @@ export interface SceneRef {
   name: string;
   type: string;
   order_index: number;
+  data?: Record<string, unknown>;
 }

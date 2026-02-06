@@ -102,4 +102,4 @@ Game data (ancestries, classes, monsters, abilities) is an **immutable source of
 - **Edge/Bane:** Roll 3d10, keep highest/lowest 2
 - **Winded:** current stamina ≤ 50% max. **Dying:** stamina ≤ 0
 - **Recovery:** `floor(maxStamina / 3)`
-- **Malice:** Director resource, +2 per round
+- **Malice:** Director resource, +(heroCount + roundNumber) per round; round 0 also adds avg party victories

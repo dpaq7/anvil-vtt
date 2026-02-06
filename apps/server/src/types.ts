@@ -10,11 +10,14 @@ export interface Env {
   ENVIRONMENT: string;
 }
 
+export type UserRole = 'director' | 'player';
+
 export interface AuthUser {
   id: string;
   discordId: string;
   username: string;
   avatarUrl: string | null;
+  role: UserRole;
 }
 
 export interface AppVariables {

@@ -1,5 +1,7 @@
 import { GameData, WizardLogic } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
+import { cn } from '@anvil/ui';
+import { Check } from 'lucide-react';
 
 interface Props {
   character: CharacterInProgress;
@@ -32,20 +34,22 @@ export function LanguagesStep({ character, onChange }: Props) {
           return (
             <button
               key={lang.id}
-              className={`rounded-md border px-3 py-1.5 text-sm transition ${
+              className={cn(
+                'rounded-md border px-3 py-1.5 text-sm transition-all flex items-center gap-1.5',
                 isSelected
-                  ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                  : 'border-zinc-700 text-zinc-300 hover:border-zinc-600'
-              }`}
+                  ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20 text-creator-highlight'
+                  : 'border-creator-border text-creator-text hover:border-creator-text-muted hover:bg-creator-card-hover'
+              )}
               onClick={() => toggle(lang.id)}
             >
               {lang.name}
+              {isSelected && <Check className="h-3.5 w-3.5 text-creator-highlight" />}
             </button>
           );
         })}
       </div>
 
-      <p className="mt-3 text-xs text-zinc-500">
+      <p className="mt-3 text-xs text-creator-text-muted">
         {character.selectedLanguages.length} / {needed} selected
       </p>
     </div>

@@ -14,7 +14,17 @@
 /**
  * Ability distance types (Draw Steel distance keywords).
  */
-export type DistanceType = 'melee' | 'ranged' | 'aura' | 'burst' | 'line' | 'wall' | 'self' | 'special';
+export type DistanceType =
+  | 'melee'     // Adjacent targets
+  | 'ranged'    // Distance in squares
+  | 'aura'      // Emanates from caster, moves with them
+  | 'burst'     // Area around a point
+  | 'cube'      // Cube-shaped area (distinct from burst)
+  | 'line'      // Line from caster
+  | 'wall'      // Wall formation
+  | 'self'      // Self-targeting only
+  | 'within'    // Within distance (typically for allies)
+  | 'special';  // Special/variable distance
 
 /**
  * Parsed distance from ability text.
@@ -79,8 +89,10 @@ export type CoverLevel = 'none' | 'half' | 'three-quarters' | 'full';
 
 /**
  * Ability keyword from Draw Steel.
+ * Categories: Attack types, elements, class-specific, item types, combat keywords
  */
 export type AbilityKeyword =
+  // Attack & targeting keywords
   | 'melee'
   | 'ranged'
   | 'magic'
@@ -88,13 +100,69 @@ export type AbilityKeyword =
   | 'strike'
   | 'area'
   | 'charge'
-  | 'psionic'
+
+  // Elemental keywords (damage types are separate from keywords)
+  | 'air'
+  | 'earth'
   | 'fire'
-  | 'cold'
-  | 'lightning'
-  | 'psychic'
-  | 'poison'
-  | 'persistent';
+  | 'green'
+  | 'void'
+  | 'water'
+
+  // Psionic keywords
+  | 'psionic'
+  | 'animapathy'
+  | 'chronopathy'
+  | 'metamorphosis'
+  | 'psychokinesis'
+  | 'resopathy'
+  | 'telekinesis'
+  | 'telepathy'
+
+  // Class-specific keywords
+  | 'animalistic'      // Beastheart
+  | 'beast'            // Beastheart
+  | 'beastheart'       // Class keyword
+  | 'censor'           // Class keyword
+  | 'conduit'          // Class keyword
+  | 'domain'           // Conduit domains
+  | 'elementalist'     // Class keyword
+  | 'fury'             // Class keyword
+  | 'null'             // Class keyword
+  | 'routine'          // Troubadour
+  | 'shadow'           // Class keyword
+  | 'summoner'         // Class keyword
+  | 'tactician'        // Class keyword
+  | 'talent'           // Class keyword
+  | 'troubadour'       // Class keyword
+
+  // Combat keywords
+  | 'persistent'
+  | 'resistance'
+
+  // Item slot keywords
+  | 'armor'
+  | 'shield'
+  | 'implement'
+  | 'light-weapon'
+  | 'medium-weapon'
+  | 'heavy-weapon'
+  | 'whip'
+  | 'polearm'
+  | 'unarmed'
+
+  // Ancestry/culture keywords
+  | 'devil'
+  | 'dwarf'
+  | 'elf'
+  | 'hakaan'
+  | 'human'
+  | 'memonek'
+  | 'orc'
+  | 'polder'
+  | 'revenant'
+  | 'time-raider'
+  | 'wode-elf';
 
 /**
  * Ability category based on keywords.
@@ -162,16 +230,28 @@ export function parseDistance(distanceString: string): ParsedDistance {
     return { type: 'ranged', baseValue: parseInt(rangedMatch[1]!, 10) };
   }
 
-  // N burst / N-cube aura
-  const burstMatch = normalized.match(/^(\d+)\s*(?:burst|cube|aura)$/);
+  // N burst
+  const burstMatch = normalized.match(/^(\d+)\s*burst$/);
   if (burstMatch) {
     return { type: 'burst', baseValue: parseInt(burstMatch[1]!, 10) };
   }
 
-  // Aura N
-  const auraMatch = normalized.match(/^aura\s*(\d+)$/);
-  if (auraMatch) {
+  // N cube (distinct from burst)
+  const cubeMatch = normalized.match(/^(\d+)\s*cube$/);
+  if (cubeMatch) {
+    return { type: 'cube', baseValue: parseInt(cubeMatch[1]!, 10) };
+  }
+
+  // Aura N / N aura
+  const auraMatch = normalized.match(/^(?:aura\s*)?(\d+)\s*(?:aura)?$/);
+  if (auraMatch && normalized.includes('aura')) {
     return { type: 'aura', baseValue: parseInt(auraMatch[1]!, 10) };
+  }
+
+  // Within N
+  const withinMatch = normalized.match(/^within\s*(\d+)$/);
+  if (withinMatch) {
+    return { type: 'within', baseValue: parseInt(withinMatch[1]!, 10) };
   }
 
   // Line NxM (e.g., "Line 5x1")
@@ -227,8 +307,12 @@ export function formatDistance(distance: ParsedDistance): string {
       return `Ranged ${distance.baseValue}`;
     case 'burst':
       return `${distance.baseValue} burst`;
+    case 'cube':
+      return `${distance.baseValue} cube`;
     case 'aura':
       return `${distance.baseValue} aura`;
+    case 'within':
+      return `Within ${distance.baseValue}`;
     case 'line':
       return distance.width && distance.width > 1
         ? `Line ${distance.baseValue}×${distance.width}`

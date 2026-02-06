@@ -1,130 +1,456 @@
-interface NegotiationStageProps {
-  npcName: string;
-  interest: number;
-  targetInterest: number;
-  patience: number;
-  maxPatience: number;
-  phase: string;
-  motivations: { type: string; description: string }[];
-  arguments: { hero: string; skill: string; tier: number; result: string }[];
-  isDirector: boolean;
-  pitfalls?: { description: string; revealed: boolean }[];
+import { useCallback, useMemo } from 'react';
+import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
+import { NegotiationLogic } from '@anvil/data';
+import type { MotivationType } from '@anvil/types';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface NegotiationMotivationRuntime {
+  id: string;
+  type: MotivationType;
+  description: string;
+  revealed: boolean;
 }
+
+export interface NegotiationPitfallRuntime {
+  id: string;
+  type: MotivationType;
+  description: string;
+  revealed: boolean;
+}
+
+export interface NegotiationStageProps {
+  // NPC Info
+  npcName: string;
+  npcPortrait?: string;
+  npcAttitude: string;
+
+  // Tracks
+  interest: number;
+  patience: number;
+  maxInterest?: number;
+  maxPatience: number;
+
+  // Phase
+  phase: 'active' | 'success' | 'failure';
+
+  // Motivations & Pitfalls
+  motivations: NegotiationMotivationRuntime[];
+  pitfalls: NegotiationPitfallRuntime[];
+
+  // Outcome responses
+  outcomes: Record<number, string>;
+
+  // Role
+  isDirector: boolean;
+
+  // Callbacks (Director only)
+  onInterestChange?: (delta: number) => void;
+  onPatienceChange?: (delta: number) => void;
+  onRevealMotivation?: (id: string) => void;
+  onRevealPitfall?: (id: string) => void;
+  onEndNegotiation?: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+interface TrackDotsProps {
+  current: number;
+  max: number;
+  color: 'purple' | 'amber';
+  label: string;
+}
+
+function TrackDots({ current, max, color, label }: TrackDotsProps) {
+  const colorClasses = {
+    purple: {
+      filled: 'bg-purple-500',
+      empty: 'bg-zinc-700',
+      text: 'text-purple-400',
+    },
+    amber: {
+      filled: 'bg-amber-500',
+      empty: 'bg-zinc-700',
+      text: 'text-amber-400',
+    },
+  };
+  const c = colorClasses[color];
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className={`text-xs font-medium uppercase tracking-wider ${c.text}`}>
+        {label}
+      </span>
+      <div className="flex items-center gap-1.5">
+        {Array.from({ length: max + 1 }, (_, i) => (
+          <div
+            key={i}
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors ${
+              i <= current ? c.filled + ' text-white' : c.empty + ' text-zinc-500'
+            }`}
+          >
+            {i}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface MotivationItemProps {
+  motivation: NegotiationMotivationRuntime;
+  isDirector: boolean;
+  onReveal?: () => void;
+}
+
+function MotivationItem({ motivation, isDirector, onReveal }: MotivationItemProps) {
+  const typeLabel = formatMotivationType(motivation.type);
+
+  if (!motivation.revealed) {
+    return (
+      <div className="flex items-center gap-2 rounded bg-zinc-800 px-3 py-2">
+        <span className="text-sm text-zinc-500">? Hidden motivation</span>
+        {isDirector && onReveal && (
+          <Button variant="ghost" size="sm" onClick={onReveal} className="ml-auto">
+            Reveal
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded bg-purple-500/10 px-3 py-2">
+      <span className="text-sm font-medium text-purple-400">{typeLabel}</span>
+      <p className="mt-1 text-sm text-zinc-300">{motivation.description}</p>
+    </div>
+  );
+}
+
+interface PitfallItemProps {
+  pitfall: NegotiationPitfallRuntime;
+  isDirector: boolean;
+  onReveal?: () => void;
+}
+
+function PitfallItem({ pitfall, isDirector, onReveal }: PitfallItemProps) {
+  const typeLabel = formatMotivationType(pitfall.type);
+
+  if (!pitfall.revealed) {
+    return (
+      <div className="flex items-center gap-2 rounded bg-zinc-800 px-3 py-2">
+        <span className="text-sm text-zinc-500">? Hidden pitfall</span>
+        {isDirector && onReveal && (
+          <Button variant="ghost" size="sm" onClick={onReveal} className="ml-auto">
+            Reveal
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded bg-red-500/10 px-3 py-2">
+      <span className="text-sm font-medium text-red-400">{typeLabel}</span>
+      <p className="mt-1 text-sm text-zinc-300">{pitfall.description}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 export function NegotiationStage({
   npcName,
+  npcPortrait,
+  npcAttitude,
   interest,
-  targetInterest,
   patience,
+  maxInterest = 5,
   maxPatience,
   phase,
   motivations,
-  arguments: args,
-  isDirector,
   pitfalls,
+  outcomes,
+  isDirector,
+  onInterestChange,
+  onPatienceChange,
+  onRevealMotivation,
+  onRevealPitfall,
+  onEndNegotiation,
 }: NegotiationStageProps) {
-  const interestPct = targetInterest > 0 ? (interest / targetInterest) * 100 : 0;
-  const patiencePct = maxPatience > 0 ? (patience / maxPatience) * 100 : 0;
+  // Clamp values for display
+  const displayInterest = NegotiationLogic.clampInterest(interest, maxInterest);
+  const displayPatience = NegotiationLogic.clampPatience(patience, maxPatience);
+
+  // Get outcome text based on current interest
+  const outcomeText = useMemo(() => {
+    const level = Math.max(0, Math.min(5, Math.round(interest)));
+    return outcomes[level] ?? '';
+  }, [interest, outcomes]);
+
+  // Get interest level label
+  const interestLabel = useMemo(() => {
+    return NegotiationLogic.getInterestDescription(displayInterest);
+  }, [displayInterest]);
+
+  // Handlers
+  const handleInterestUp = useCallback(() => {
+    if (interest < maxInterest) onInterestChange?.(1);
+  }, [interest, maxInterest, onInterestChange]);
+
+  const handleInterestDown = useCallback(() => {
+    if (interest > 0) onInterestChange?.(-1);
+  }, [interest, onInterestChange]);
+
+  const handlePatienceUp = useCallback(() => {
+    if (patience < maxPatience) onPatienceChange?.(1);
+  }, [patience, maxPatience, onPatienceChange]);
+
+  const handlePatienceDown = useCallback(() => {
+    if (patience > 0) onPatienceChange?.(-1);
+  }, [patience, onPatienceChange]);
+
+  // Get initials for avatar fallback
+  const initials = useMemo(() => {
+    return npcName
+      .split(' ')
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  }, [npcName]);
 
   return (
-    <div className="flex h-full flex-col gap-6 p-8">
-      {/* NPC */}
-      <div className="text-center">
-        <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/20 text-2xl">
-          {npcName[0]?.toUpperCase() ?? '?'}
-        </div>
-        <p className="text-lg font-medium text-zinc-100">{npcName}</p>
-        {phase !== 'active' && (
-          <span className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-medium ${
-            phase === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-          }`}>
-            {phase.toUpperCase()}
-          </span>
-        )}
-      </div>
-
-      {/* Meters */}
-      <div className="mx-auto flex w-full max-w-md flex-col gap-4">
-        {/* Interest */}
-        <div>
-          <div className="mb-1 flex justify-between text-xs">
-            <span className="text-purple-400">Interest</span>
-            <span className="text-zinc-400">{interest} / {targetInterest}</span>
-          </div>
-          <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-purple-500 transition-all"
-              style={{ width: `${Math.min(100, interestPct)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Patience */}
-        <div>
-          <div className="mb-1 flex justify-between text-xs">
-            <span className="text-amber-400">Patience</span>
-            <span className="text-zinc-400">{patience} / {maxPatience}</span>
-          </div>
-          <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-amber-500 transition-all"
-              style={{ width: `${Math.min(100, patiencePct)}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto flex w-full max-w-2xl gap-6">
-        {/* Motivations */}
-        <div className="flex-1">
-          <p className="mb-2 text-sm font-medium text-zinc-300">Motivations</p>
-          <div className="flex flex-col gap-1">
-            {motivations.map((m, i) => (
-              <div key={i} className="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300">
-                <span className="font-medium text-purple-400">{m.type}</span>: {m.description}
+    <div className="flex h-full flex-col gap-6 overflow-auto p-6">
+      {/* Header: NPC Info + Tracks */}
+      <div className="flex flex-col items-center gap-6 md:flex-row md:items-start md:justify-between">
+        {/* NPC Card */}
+        <Card className="w-full md:w-72">
+          <CardContent className="flex flex-col items-center gap-3 pt-6">
+            {/* Portrait */}
+            {npcPortrait ? (
+              <img
+                src={npcPortrait}
+                alt={npcName}
+                className="h-20 w-20 rounded-full border-2 border-purple-500/50 object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-500/20 text-2xl font-bold text-purple-400">
+                {initials || '?'}
               </div>
-            ))}
-            {motivations.length === 0 && <p className="text-xs text-zinc-500">None revealed</p>}
-          </div>
-        </div>
+            )}
 
-        {/* Pitfalls (director only) */}
-        {isDirector && pitfalls && (
-          <div className="flex-1">
-            <p className="mb-2 text-sm font-medium text-zinc-300">Pitfalls</p>
-            <div className="flex flex-col gap-1">
-              {pitfalls.map((p, i) => (
-                <div key={i} className="rounded bg-red-500/10 px-3 py-1.5 text-xs text-red-300">
-                  {p.description}
-                </div>
-              ))}
+            {/* Name & Attitude */}
+            <div className="text-center">
+              <h2 className="text-lg font-semibold text-zinc-100">{npcName}</h2>
+              <span className="text-sm capitalize text-zinc-400">{npcAttitude}</span>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* Argument log */}
-      {args.length > 0 && (
-        <div className="mx-auto w-full max-w-2xl">
-          <p className="mb-2 text-sm font-medium text-zinc-300">Arguments</p>
-          <div className="flex flex-col gap-1">
-            {args.map((a, i) => (
-              <div key={i} className="flex items-center gap-2 rounded bg-zinc-800 px-3 py-1.5 text-xs">
-                <span className="font-medium text-zinc-200">{a.hero}</span>
-                <span className="text-zinc-500">used</span>
-                <span className="text-zinc-300">{a.skill}</span>
-                <span className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                  a.tier >= 3 ? 'bg-emerald-500/20 text-emerald-400' :
-                  a.tier >= 2 ? 'bg-amber-500/20 text-amber-400' :
-                  'bg-red-500/20 text-red-400'
-                }`}>
-                  T{a.tier}
+            {/* Phase Badge */}
+            {phase !== 'active' && (
+              <span
+                className={`rounded px-3 py-1 text-sm font-medium ${
+                  phase === 'success'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-red-500/20 text-red-400'
+                }`}
+              >
+                {phase === 'success' ? 'DEAL REACHED' : 'NEGOTIATION FAILED'}
+              </span>
+            )}
+
+            {/* Director Controls */}
+            {isDirector && phase === 'active' && (
+              <div className="mt-2 flex flex-col gap-2 pt-2 border-t border-zinc-700 w-full">
+                <div className="flex items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleInterestDown}
+                    disabled={interest <= 0}
+                  >
+                    -Int
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleInterestUp}
+                    disabled={interest >= maxInterest}
+                  >
+                    +Int
+                  </Button>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePatienceDown}
+                    disabled={patience <= 0}
+                  >
+                    -Pat
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePatienceUp}
+                    disabled={patience >= maxPatience}
+                  >
+                    +Pat
+                  </Button>
+                </div>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onEndNegotiation}
+                  className="mt-2 bg-purple-600 hover:bg-purple-700"
+                >
+                  End Negotiation
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Tracks */}
+        <div className="flex flex-1 flex-col gap-6">
+          <Card>
+            <CardContent className="flex flex-col gap-4 pt-6">
+              <TrackDots
+                current={displayInterest}
+                max={maxInterest}
+                color="purple"
+                label="Interest"
+              />
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-400">Current outcome:</span>
+                <span
+                  className={`rounded px-2 py-0.5 font-medium ${getInterestLevelColor(displayInterest)}`}
+                >
+                  {interestLabel}
                 </span>
               </div>
-            ))}
-          </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="flex flex-col gap-4 pt-6">
+              <TrackDots
+                current={displayPatience}
+                max={maxPatience}
+                color="amber"
+                label="Patience"
+              />
+              <p className="text-sm text-zinc-400">
+                {displayPatience === 0
+                  ? 'NPC has lost patience - negotiation ends!'
+                  : `${displayPatience} argument${displayPatience === 1 ? '' : 's'} remaining`}
+              </p>
+            </CardContent>
+          </Card>
         </div>
+      </div>
+
+      {/* Motivations & Pitfalls */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Motivations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-purple-400">Motivations</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {motivations.length === 0 ? (
+              <p className="text-sm text-zinc-500">No motivations configured</p>
+            ) : (
+              motivations.map((m) => (
+                <MotivationItem
+                  key={m.id}
+                  motivation={m}
+                  isDirector={isDirector}
+                  onReveal={() => onRevealMotivation?.(m.id)}
+                />
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pitfalls */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-400">Pitfalls</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {pitfalls.length === 0 ? (
+              <p className="text-sm text-zinc-500">No pitfalls configured</p>
+            ) : (
+              pitfalls.map((p) => (
+                <PitfallItem
+                  key={p.id}
+                  pitfall={p}
+                  isDirector={isDirector}
+                  onReveal={() => onRevealPitfall?.(p.id)}
+                />
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Outcome Display */}
+      {phase !== 'active' && outcomeText && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Outcome</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded bg-zinc-800 p-4">
+              <p className="mb-2">
+                <span
+                  className={`rounded px-2 py-0.5 text-sm font-medium ${getInterestLevelColor(displayInterest)}`}
+                >
+                  {interestLabel}
+                </span>
+              </p>
+              <p className="text-zinc-300 italic">"{outcomeText}"</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatMotivationType(type: MotivationType): string {
+  const labels: Record<MotivationType, string> = {
+    benevolence: 'Benevolence',
+    discovery: 'Discovery',
+    freedom: 'Freedom',
+    greed: 'Greed',
+    higher_authority: 'Higher Authority',
+    justice: 'Justice',
+    legacy: 'Legacy',
+    peace: 'Peace',
+    power: 'Power',
+    protection: 'Protection',
+    revelry: 'Revelry',
+    vengeance: 'Vengeance',
+  };
+  return labels[type] ?? type;
+}
+
+function getInterestLevelColor(level: number): string {
+  if (level <= 1) return 'bg-red-500/20 text-red-400';
+  if (level === 2) return 'bg-orange-500/20 text-orange-400';
+  if (level === 3) return 'bg-yellow-500/20 text-yellow-400';
+  if (level === 4) return 'bg-emerald-500/20 text-emerald-400';
+  return 'bg-blue-500/20 text-blue-400';
 }

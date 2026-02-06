@@ -14,6 +14,13 @@ export interface HeroicResourceConfig {
 }
 
 export const CLASS_RESOURCE_CONFIG: Record<HeroClass, HeroicResourceConfig> = {
+  beastheart: {
+    name: 'Rage',
+    abbreviation: 'RAG',
+    color: 'var(--color-beastheart, #8d6e63)',
+    minValue: 0,
+    characteristic: 'might',
+  },
   fury: {
     name: 'Ferocity',
     abbreviation: 'FER',

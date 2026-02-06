@@ -11,6 +11,7 @@ export function useSessionSocket(sessionId: string | null) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [combatLog, setCombatLog] = useState<AbilityResult[]>([]);
+  const [sessionStarted, setSessionStarted] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,6 +109,9 @@ export function useSessionSocket(sessionId: string | null) {
       case 'participant_update':
         setState((prev) => prev ? { ...prev, participants: msg.participants } : prev);
         break;
+      case 'session_started':
+        setSessionStarted(true);
+        break;
       case 'session_ended':
         setState(null);
         setError('Session has ended.');
@@ -144,5 +148,5 @@ export function useSessionSocket(sessionId: string | null) {
     return () => clearInterval(interval);
   }, [status, send]);
 
-  return { state, status, error, send, combatLog };
+  return { state, status, error, send, combatLog, sessionStarted };
 }

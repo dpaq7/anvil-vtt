@@ -475,7 +475,7 @@ export function getConditionSeverity(conditionName: string): ConditionSeverity {
   const name = conditionName.toLowerCase();
 
   // Critical conditions
-  if (['dying', 'dead', 'petrified', 'unconscious'].includes(name)) {
+  if (['dying', 'dead', 'unconscious'].includes(name)) {
     return 'critical';
   }
 

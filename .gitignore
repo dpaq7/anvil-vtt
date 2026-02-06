@@ -8,3 +8,4 @@ coverage/
 .env.local
 .dev.vars
 .wrangler/
+docs/forgesteel-ref/

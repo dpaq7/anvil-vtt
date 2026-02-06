@@ -24,9 +24,11 @@ export * from './encounter-objectives.js';
 // Rules Reference (39 core game rules for in-app lookup)
 export * from './rules-reference.js';
 
+// Progression (level-up features)
+export * from './progression.js';
+
 // TODO: These require more work to integrate properly
 // - conditions.js has type mismatches
 // - classes/index.js doesn't exist
 // export * from './conditions.js';
-// export * from './progression.js';
 // export * from './classes/index.js';

@@ -227,6 +227,45 @@ export const IMPLEMENT_IMBUEMENTS: Imbuement[] = [
     feature: bonusFeature('imbuement-warding-ii-feature', 'Warding II', 'stamina', 12),
     craftingProjectId: 'project-warding-ii',
   },
+  {
+    id: 'imbuement-erupting-i',
+    name: 'Erupting I',
+    description: 'Your implement causes explosive damage.',
+    type: 'implement',
+    level: 5,
+    feature: textFeature(
+      'imbuement-erupting-i-feature',
+      'Erupting I',
+      "Whenever you damage a creature using a magic or psionic ability that targets only a single creature and obtain a tier 3 outcome, each enemy within 2 squares of the creature takes 3 fire damage after the ability's effects resolve."
+    ),
+    craftingProjectId: 'project-erupting-i',
+  },
+  {
+    id: 'imbuement-hallucinatory',
+    name: 'Hallucinatory',
+    description: 'Your implement creates areas of sensory distortion.',
+    type: 'implement',
+    level: 5,
+    feature: textFeature(
+      'imbuement-hallucinatory-feature',
+      'Hallucinatory',
+      'As a maneuver, you create an area of sensory instability in a 2 aura centered on yourself. The area is difficult terrain for your enemies until the end of the encounter.'
+    ),
+    craftingProjectId: 'project-hallucinatory',
+  },
+  {
+    id: 'imbuement-lingering-i',
+    name: 'Lingering I',
+    description: 'Your implement causes delayed damage.',
+    type: 'implement',
+    level: 5,
+    feature: textFeature(
+      'imbuement-lingering-i-feature',
+      'Lingering I',
+      'Whenever you damage a creature using a magic or psionic ability and obtain a tier 3 outcome, that creature takes 8 damage at the start of your next turn.'
+    ),
+    craftingProjectId: 'project-lingering-i',
+  },
 
   // =============================================================================
   // LEVEL 9 IMPLEMENT IMBUEMENTS
@@ -278,6 +317,71 @@ export const IMPLEMENT_IMBUEMENTS: Imbuement[] = [
     level: 9,
     feature: bonusFeature('imbuement-warding-iii-feature', 'Warding III', 'stamina', 18),
     craftingProjectId: 'project-warding-iii',
+  },
+  {
+    id: 'imbuement-anathema',
+    name: 'Anathema',
+    description: 'Your implement weakens enemies and allows follow-up strikes.',
+    type: 'implement',
+    level: 9,
+    feature: textFeature(
+      'imbuement-anathema-feature',
+      'Anathema',
+      'Whenever you damage a creature using a magic or psionic ability and obtain a tier 3 outcome, that creature is also weakened (save ends). If the creature is within 10 squares when this weakened effect ends, you can use a free triggered action to make a free strike against them.'
+    ),
+    craftingProjectId: 'project-anathema',
+  },
+  {
+    id: 'imbuement-erupting-ii',
+    name: 'Erupting II',
+    description: 'Your implement causes enhanced explosive damage.',
+    type: 'implement',
+    level: 9,
+    feature: textFeature(
+      'imbuement-erupting-ii-feature',
+      'Erupting II',
+      "The fire damage dealt by the implement's Erupting I enhancement increases to 6."
+    ),
+    craftingProjectId: 'project-erupting-ii',
+  },
+  {
+    id: 'imbuement-lingering-ii',
+    name: 'Lingering II',
+    description: 'Your implement causes enhanced delayed damage.',
+    type: 'implement',
+    level: 9,
+    feature: textFeature(
+      'imbuement-lingering-ii-feature',
+      'Lingering II',
+      'Whenever you damage a creature using a magic or psionic ability and obtain a tier 3 outcome, that creature takes 15 damage at the start of your next turn. This replaces the benefit of Lingering I.'
+    ),
+    craftingProjectId: 'project-lingering-ii',
+  },
+  {
+    id: 'imbuement-piercing',
+    name: 'Piercing',
+    description: 'Your implement ignores damage immunities.',
+    type: 'implement',
+    level: 9,
+    feature: textFeature(
+      'imbuement-piercing-feature',
+      'Piercing',
+      'Your magic and psionic abilities ignore damage immunities.'
+    ),
+    craftingProjectId: 'project-piercing',
+  },
+  {
+    id: 'imbuement-psionic-siphon',
+    name: 'Psionic Siphon',
+    description: 'Your implement heals you and deals extra damage.',
+    type: 'implement',
+    level: 9,
+    feature: textFeature(
+      'imbuement-psionic-siphon-feature',
+      'Psionic Siphon',
+      'Once per turn when you damage one or more creatures using a magic or psionic ability and obtain a tier 3 outcome, you gain Stamina equal to your highest characteristic score, and one creature you damage takes an extra 5 damage.'
+    ),
+    craftingProjectId: 'project-psionic-siphon',
   },
 ];
 

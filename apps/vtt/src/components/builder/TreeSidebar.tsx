@@ -1,4 +1,5 @@
-import { cn } from '@anvil/ui';
+import { SceneTypeIcon, SCENE_COLORS, type SceneType } from '@anvil/ui';
+import { FileTreeRoot, FileTreeFolder, FileTreeFile } from './FileTree.js';
 
 interface TreeNode {
   id: string;
@@ -15,51 +16,65 @@ interface TreeSidebarProps {
 }
 
 export function TreeSidebar({ nodes, selectedId, onSelect }: TreeSidebarProps) {
+  const handleSelect = (id: string) => {
+    // Find the node to get its type
+    const findNode = (nodes: TreeNode[]): TreeNode | undefined => {
+      for (const node of nodes) {
+        if (node.id === id) return node;
+        if (node.children) {
+          const found = findNode(node.children);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+
+    const node = findNode(nodes);
+    if (node) {
+      onSelect(id, node.type);
+    }
+  };
+
   return (
     <nav className="flex flex-col gap-1 p-2">
-      {nodes.map((node) => (
-        <TreeItem key={node.id} node={node} selectedId={selectedId} onSelect={onSelect} depth={0} />
-      ))}
+      <FileTreeRoot selectedId={selectedId} onSelect={handleSelect}>
+        {nodes.map((node) => (
+          <TreeNodeRenderer key={node.id} node={node} depth={0} />
+        ))}
+      </FileTreeRoot>
     </nav>
   );
 }
 
-function TreeItem({
-  node,
-  selectedId,
-  onSelect,
-  depth,
-}: {
-  node: TreeNode;
-  selectedId: string | null;
-  onSelect: (id: string, type: TreeNode['type']) => void;
-  depth: number;
-}) {
-  const sceneColors: Record<string, string> = {
-    battle: 'text-red-400',
-    story: 'text-purple-400',
-    montage: 'text-amber-400',
-    negotiation: 'text-blue-400',
-    respite: 'text-green-400',
-  };
+function TreeNodeRenderer({ node, depth }: { node: TreeNode; depth: number }) {
+  const hasChildren = node.children && node.children.length > 0;
 
+  // Scenes are leaf nodes (files)
+  if (node.type === 'scene') {
+    const sceneType = node.sceneType as SceneType | undefined;
+    return (
+      <FileTreeFile
+        id={node.id}
+        label={node.label}
+        depth={depth}
+        icon={sceneType ? <SceneTypeIcon type={sceneType} className="size-4" /> : undefined}
+        colorClass={sceneType ? SCENE_COLORS[sceneType] : undefined}
+      />
+    );
+  }
+
+  // Campaigns, modules, and sessions are folder nodes
   return (
-    <div>
-      <button
-        onClick={() => onSelect(node.id, node.type)}
-        className={cn(
-          'w-full rounded px-2 py-1 text-left text-sm transition hover:bg-zinc-800',
-          selectedId === node.id && 'bg-zinc-800 text-zinc-100',
-          selectedId !== node.id && 'text-zinc-400',
-          node.sceneType && sceneColors[node.sceneType],
-        )}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
-      >
-        {node.label}
-      </button>
-      {node.children?.map((child) => (
-        <TreeItem key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
-      ))}
-    </div>
+    <FileTreeFolder
+      id={node.id}
+      label={node.label}
+      depth={depth}
+      defaultOpen={node.type === 'campaign'}
+    >
+      {hasChildren &&
+        node.children!.map((child) => (
+          <TreeNodeRenderer key={child.id} node={child} depth={depth + 1} />
+        ))}
+    </FileTreeFolder>
   );
 }

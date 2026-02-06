@@ -118,3 +118,19 @@ authRoutes.get('/me', authMiddleware, (c) => {
   const user = c.get('user') as AuthUser;
   return c.json({ user });
 });
+
+// Update user role
+authRoutes.patch('/role', authMiddleware, async (c) => {
+  const user = c.get('user') as AuthUser;
+  const body = await c.req.json<{ role: string }>();
+
+  if (body.role !== 'director' && body.role !== 'player') {
+    return c.json({ error: 'Invalid role' }, 400);
+  }
+
+  await c.env.DB.prepare('UPDATE users SET role = ?, updated_at = datetime(\'now\') WHERE id = ?')
+    .bind(body.role, user.id)
+    .run();
+
+  return c.json({ success: true, role: body.role });
+});

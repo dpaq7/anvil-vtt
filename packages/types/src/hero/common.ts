@@ -20,23 +20,14 @@ export interface GridPosition {
 
 export type ConditionId =
   | 'bleeding'
-  | 'burning'
-  | 'charmed'
   | 'dazed'
-  | 'dying'
   | 'frightened'
   | 'grabbed'
-  | 'invisible'
-  | 'petrified'
   | 'prone'
   | 'restrained'
   | 'slowed'
   | 'taunted'
   | 'weakened';
-
-// Note: ConditionName is exported from conditions.ts with the 9 core conditions
-// ConditionId here includes extended conditions (burning, charmed, etc.)
-// Use ConditionId for hero data, ConditionName for VTT/combat
 
 /**
  * How a condition ends
@@ -81,6 +72,7 @@ export interface Ancestry {
   signatureFeature: AncestryFeature;
   purchasedTraits: AncestryFeature[];
   ancestryPoints: number;
+  quickBuild?: string[];
 }
 
 export type EnvironmentType = 'nomadic' | 'rural' | 'secluded' | 'urban' | 'wilderness';

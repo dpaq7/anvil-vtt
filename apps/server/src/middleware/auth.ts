@@ -11,12 +11,12 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   }
 
   const row = await c.env.DB.prepare(
-    `SELECT u.id, u.discord_id, u.username, u.avatar_url
+    `SELECT u.id, u.discord_id, u.username, u.avatar_url, u.role
      FROM sessions s JOIN users u ON s.user_id = u.id
      WHERE s.id = ? AND s.expires_at > datetime('now')`,
   )
     .bind(sessionId)
-    .first<{ id: string; discord_id: string; username: string; avatar_url: string | null }>();
+    .first<{ id: string; discord_id: string; username: string; avatar_url: string | null; role: string | null }>();
 
   if (!row) {
     return c.json({ error: 'Unauthorized' }, 401);
@@ -27,6 +27,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     discordId: row.discord_id,
     username: row.username,
     avatarUrl: row.avatar_url,
+    role: (row.role as 'director' | 'player') ?? 'director',
   } satisfies AuthUser);
 
   await next();

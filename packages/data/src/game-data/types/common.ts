@@ -17,14 +17,9 @@ export interface GridPosition {
 
 export type ConditionId =
   | 'bleeding'
-  | 'burning'
-  | 'charmed'
   | 'dazed'
-  | 'dying'
   | 'frightened'
   | 'grabbed'
-  | 'invisible'
-  | 'petrified'
   | 'prone'
   | 'restrained'
   | 'slowed'

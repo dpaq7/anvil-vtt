@@ -12,8 +12,9 @@ import type { ActiveProject, InventoryItem } from './projects.js';
 import type { EquippedItem } from './equipment.js';
 import type { SelectedPerk } from './perk.js';
 
-// All 10 Draw Steel hero classes
+// All 11 Draw Steel hero classes
 export type HeroClass =
+  | 'beastheart'
   | 'censor'
   | 'conduit'
   | 'elementalist'
@@ -35,7 +36,8 @@ export type HeroicResourceType =
   | 'insight'    // Shadow
   | 'focus'      // Tactician
   | 'clarity'    // Talent
-  | 'drama';     // Troubadour
+  | 'drama'      // Troubadour
+  | 'rage';      // Beastheart
 
 // Shared stamina pool interface
 export interface StaminaPool {
@@ -156,6 +158,7 @@ export type Subclass =
 
 // Helper type to get subclass type for a given hero class
 export type SubclassForHeroClass<T extends HeroClass> =
+  T extends 'beastheart' ? never :
   T extends 'censor' ? CensorOrder :
   T extends 'conduit' ? ConduitDomain :
   T extends 'elementalist' ? ElementalistElement :
@@ -491,6 +494,7 @@ export function isTroubadourHero(hero: Hero): hero is TroubadourHero {
 
 // Get heroic resource type for a class
 export type HeroicResourceForClass<T extends HeroClass> =
+  T extends 'beastheart' ? 'rage' :
   T extends 'censor' ? 'wrath' :
   T extends 'conduit' ? 'piety' :
   T extends 'elementalist' ? 'essence' :

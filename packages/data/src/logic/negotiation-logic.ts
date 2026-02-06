@@ -19,7 +19,7 @@ export type NegotiationPhase = 'active' | 'success' | 'failure';
 /**
  * NPC starting attitude.
  */
-export type NPCAttitude = 'hostile' | 'unfriendly' | 'neutral' | 'friendly' | 'helpful';
+export type NPCAttitude = 'hostile' | 'suspicious' | 'neutral' | 'open' | 'friendly' | 'trusting';
 
 /**
  * Roll tier (1, 2, or 3).
@@ -268,10 +268,11 @@ export function motivationGivesEdge(
  *
  * Starting impression affects the negotiation:
  * - Hostile: -2
- * - Unfriendly: -1
+ * - Suspicious: -1
  * - Neutral: 0
- * - Friendly: +1
- * - Helpful: +2
+ * - Open: +1
+ * - Friendly: +2
+ * - Trusting: +3
  *
  * @param attitude - NPC starting attitude
  * @returns Impression modifier
@@ -280,14 +281,16 @@ export function getImpressionModifier(attitude: NPCAttitude): number {
   switch (attitude) {
     case 'hostile':
       return -2;
-    case 'unfriendly':
+    case 'suspicious':
       return -1;
     case 'neutral':
       return 0;
-    case 'friendly':
+    case 'open':
       return 1;
-    case 'helpful':
+    case 'friendly':
       return 2;
+    case 'trusting':
+      return 3;
   }
 }
 
@@ -295,19 +298,22 @@ export function getImpressionModifier(attitude: NPCAttitude): number {
  * Get starting interest based on NPC attitude.
  *
  * - Hostile: 0
- * - Unfriendly: 0
+ * - Suspicious: 0
  * - Neutral: 0
- * - Friendly: 1
- * - Helpful: 2
+ * - Open: 1
+ * - Friendly: 2
+ * - Trusting: 3
  *
  * @param attitude - NPC starting attitude
  * @returns Starting interest
  */
 export function getStartingInterest(attitude: NPCAttitude): number {
   switch (attitude) {
-    case 'helpful':
-      return 2;
+    case 'trusting':
+      return 3;
     case 'friendly':
+      return 2;
+    case 'open':
       return 1;
     default:
       return 0;
@@ -317,11 +323,12 @@ export function getStartingInterest(attitude: NPCAttitude): number {
 /**
  * Get starting patience based on NPC attitude.
  *
- * - Hostile: 3
- * - Unfriendly: 4
- * - Neutral: 5
+ * - Hostile: 2
+ * - Suspicious: 3
+ * - Neutral: 4
+ * - Open: 5
  * - Friendly: 6
- * - Helpful: 7
+ * - Trusting: 7
  *
  * @param attitude - NPC starting attitude
  * @returns Starting patience
@@ -329,14 +336,16 @@ export function getStartingInterest(attitude: NPCAttitude): number {
 export function getStartingPatience(attitude: NPCAttitude): number {
   switch (attitude) {
     case 'hostile':
+      return 2;
+    case 'suspicious':
       return 3;
-    case 'unfriendly':
-      return 4;
     case 'neutral':
+      return 4;
+    case 'open':
       return 5;
     case 'friendly':
       return 6;
-    case 'helpful':
+    case 'trusting':
       return 7;
   }
 }

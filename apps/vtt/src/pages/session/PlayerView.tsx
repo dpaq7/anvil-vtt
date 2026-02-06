@@ -3,6 +3,7 @@ import { AppShell } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
+import { useAuthStore } from '../../stores/authStore.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
 import { StatusBar } from '../../components/session/StatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
@@ -23,22 +24,28 @@ interface PlayerViewProps {
 }
 
 export function PlayerView({ sessionState, connectionStatus, send, combatLog }: PlayerViewProps) {
+  const user = useAuthStore((s) => s.user);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const { scenes, activeSceneId, participants, entities, combat } = sessionState;
   const activeScene = scenes.find((s) => s.id === activeSceneId);
   const sceneType = (activeScene?.type as SceneType) ?? null;
+  const sceneData = activeScene?.data ?? {};
   const entityNames = useMemo(() => new Map(entities.map((e) => [e.id, e.name])), [entities]);
+
+  // Find this player's hero entity
+  const me = participants.find((p) => p.userId === user?.id);
+  const heroEntity = entities.find((e) => e.id === me?.heroId) ?? entities.find((e) => e.type === 'hero');
+  const heroAbilities = (heroEntity?.['abilities'] as { id: string; name: string; keywords: string[]; actionType: string; distance: string; damage: string; cost: string; tier1Effect: string; tier2Effect: string; tier3Effect: string }[]) ?? [];
 
   const handleUseAbility = useCallback(
     (abilityId: string) => {
-      // For now, send use_ability with self as source and first enemy as target (placeholder)
-      const heroEntity = entities.find((e) => e.type === 'hero');
+      if (!heroEntity) return;
       const targetEntity = entities.find((e) => e.type !== 'hero');
-      if (heroEntity && targetEntity) {
+      if (targetEntity) {
         send({ type: 'use_ability', sourceId: heroEntity.id, targetId: targetEntity.id, abilityId });
       }
     },
-    [entities, send],
+    [heroEntity, entities, send],
   );
 
   const renderStage = () => {
@@ -52,40 +59,49 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
 
     switch (sceneType) {
       case 'story':
-        return <StoryStage readAloudText="" isDirector={false} />;
+        return <StoryStage readAloudText={(sceneData['readAloud'] as string) ?? ''} isDirector={false} />;
       case 'montage':
         return (
           <MontageStage
-            goal=""
+            goal={(sceneData['goal'] as string) ?? ''}
             currentSuccesses={0}
-            successLimit={5}
+            successLimit={(sceneData['successesNeeded'] as number) ?? 5}
             currentFailures={0}
-            failureLimit={3}
+            failureLimit={(sceneData['failureLimit'] as number) ?? 3}
             outcome="pending"
-            challenges={[]}
+            challenges={(sceneData['challenges'] as { id: string; name: string; completed: boolean }[]) ?? []}
             isDirector={false}
           />
         );
       case 'negotiation':
         return (
           <NegotiationStage
-            npcName="NPC"
-            interest={0}
-            targetInterest={5}
-            patience={3}
-            maxPatience={3}
-            phase="active"
-            motivations={[]}
-            arguments={[]}
+            npcName={(sceneData['npcName'] as string) ?? 'NPC'}
+            npcAttitude={(sceneData['npcAttitude'] as string) ?? 'neutral'}
+            interest={(sceneData['interest'] as number) ?? 0}
+            patience={(sceneData['patience'] as number) ?? 3}
+            maxPatience={(sceneData['maxPatience'] as number) ?? 5}
+            phase={(sceneData['phase'] as 'active' | 'success' | 'failure') ?? 'active'}
+            motivations={
+              (sceneData['motivations'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
+                (m) => ({ ...m, type: m.type as import('@anvil/types').MotivationType })
+              ) ?? []
+            }
+            pitfalls={
+              (sceneData['pitfalls'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
+                (p) => ({ ...p, type: p.type as import('@anvil/types').MotivationType })
+              ) ?? []
+            }
+            outcomes={(sceneData['outcomes'] as Record<number, string>) ?? {}}
             isDirector={false}
           />
         );
       case 'respite':
         return (
           <RespiteStage
-            location=""
-            activities={[]}
-            projects={[]}
+            location={(sceneData['location'] as string) ?? ''}
+            activities={(sceneData['activities'] as { heroName: string; activityType: string; completed: boolean }[]) ?? []}
+            projects={(sceneData['projects'] as { id: string; name: string; currentPoints: number; goalPoints: number }[]) ?? []}
             completed={false}
             isDirector={false}
           />
@@ -114,16 +130,16 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
     <AppShell
       topBar={
         <VitalsBar
-          name="Hero"
-          heroClass={null}
-          level={1}
-          currentStamina={20}
-          maxStamina={20}
+          name={(heroEntity?.name as string) ?? 'Hero'}
+          heroClass={(heroEntity?.['heroClass'] as string) ?? null}
+          level={(heroEntity?.['level'] as number) ?? 1}
+          currentStamina={(heroEntity?.['currentStamina'] as number) ?? 20}
+          maxStamina={(heroEntity?.['maxStamina'] as number) ?? 20}
         />
       }
       leftRail={
         <AbilityPanel
-          abilities={[]}
+          abilities={heroAbilities}
           usedActionTypes={[]}
           onUseAbility={handleUseAbility}
         />

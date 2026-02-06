@@ -178,9 +178,10 @@ export interface MontageSceneTemplate extends BaseTemplate {
 }
 
 /**
- * NPC attitude type.
+ * NPC attitude type - imported from negotiation-logic.
  */
-export type NPCAttitude = 'hostile' | 'unfriendly' | 'neutral' | 'friendly' | 'helpful';
+import type { NPCAttitude } from './negotiation-logic.js';
+export type { NPCAttitude };
 
 /**
  * Negotiation scene template.

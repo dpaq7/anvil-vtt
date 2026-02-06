@@ -1,10 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WizardLogic } from '@anvil/data';
-import type { CharacterInProgress } from '@anvil/data';
-import { useWizardPersistence, loadWizardState, clearWizardState } from '../hooks/useWizardPersistence.js';
-import { WizardLayout } from '../components/wizard/WizardLayout.js';
-import { WizardPreview } from '../components/wizard/WizardPreview.js';
+import { useWizardStore } from '../stores/wizardStore.js';
+import { loadWizardState, clearWizardState, useWizardPersistence } from '../hooks/useWizardPersistence.js';
+import { HeroCreatorLayout, LevelSelectStep, LevelUpStep } from '../components/creator/index.js';
 import { AncestryStep } from '../components/wizard/AncestryStep.js';
 import { CultureStep } from '../components/wizard/CultureStep.js';
 import { CareerStep } from '../components/wizard/CareerStep.js';
@@ -22,53 +21,53 @@ import { PersonalStep } from '../components/wizard/PersonalStep.js';
 import { ReviewStep } from '../components/wizard/ReviewStep.js';
 import { api } from '../lib/api.js';
 
-const STEP_LABELS = [
-  'Ancestry', 'Culture', 'Career', 'Class', 'Subclass',
-  'Complications', 'Characteristics', 'Kit', 'Skills',
-  'Languages', 'Perks', 'Titles', 'Abilities', 'Personal', 'Review',
-];
-
-const TOTAL_STEPS = STEP_LABELS.length;
-
 export function HeroWizard() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [character, setCharacter] = useState<CharacterInProgress>(() =>
-    WizardLogic.createEmptyCharacter(),
-  );
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  // Restore from IndexedDB on mount
+  const character = useWizardStore((state) => state.character);
+  const currentStepId = useWizardStore((state) => state.currentStepId);
+  const patch = useWizardStore((state) => state.patch);
+  const loadFromSaved = useWizardStore((state) => state.loadFromSaved);
+  const reset = useWizardStore((state) => state.reset);
+
+  // Load saved state from IndexedDB on mount
   useEffect(() => {
     loadWizardState().then((saved) => {
       if (saved) {
-        setStep(saved.step);
-        setCharacter(saved.character);
+        // Need to migrate old saved state to new format if needed
+        const savedCharacter = saved.character;
+        // Ensure level and levelUpChoices exist
+        if (!('level' in savedCharacter)) {
+          (savedCharacter as { level?: number }).level = 1;
+        }
+        if (!('levelUpChoices' in savedCharacter)) {
+          (savedCharacter as { levelUpChoices?: Record<number, unknown[]> }).levelUpChoices = {};
+        }
+        // Convert old numeric step to step ID
+        const stepId = typeof saved.step === 'number'
+          ? convertLegacyStepToId(saved.step)
+          : saved.step;
+        loadFromSaved(savedCharacter, stepId);
       }
+      setLoaded(true);
     });
-  }, []);
+  }, [loadFromSaved]);
 
-  // Persist to IndexedDB on change
-  useWizardPersistence(step, character);
+  // Persist to IndexedDB on change (after initial load)
+  useWizardPersistence(currentStepId, character);
 
-  const patch = useCallback((updates: Partial<CharacterInProgress>) => {
-    setCharacter((prev) => ({ ...prev, ...updates }));
-  }, []);
-
-  const canGoNext = step === TOTAL_STEPS
-    ? WizardLogic.isCharacterComplete(character)
-    : WizardLogic.isStepComplete(character, step);
-
-  const handleNext = async () => {
-    if (step < TOTAL_STEPS) {
-      setStep(step + 1);
+  const handleSave = async () => {
+    if (!WizardLogic.isCharacterComplete(character)) {
       return;
     }
-    // Final step: save
+
     setSaving(true);
     try {
       const result = await api.post<{ id: string }>('/api/heroes', {
         name: character.name,
+        level: character.level,
         ancestry: character.ancestry,
         culture: JSON.stringify(character.culture),
         career: character.career,
@@ -89,52 +88,100 @@ export function HeroWizard() {
           pronouns: character.pronouns,
           backstory: character.backstory,
           appearance: character.appearance,
+          levelUpChoices: character.levelUpChoices,
         },
       });
       await clearWizardState();
+      reset();
       navigate(`/app/heroes/${result.id}`);
     } catch {
       setSaving(false);
     }
   };
 
-  const handleBack = () => {
-    if (step > 1) setStep(step - 1);
-  };
+  // Wait for IndexedDB load before rendering
+  if (!loaded) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-zinc-400">Loading...</div>
+      </div>
+    );
+  }
 
   const renderStep = () => {
-    const props = { character, onChange: patch };
-    switch (step) {
-      case 1: return <AncestryStep {...props} />;
-      case 2: return <CultureStep {...props} />;
-      case 3: return <CareerStep {...props} />;
-      case 4: return <ClassStep {...props} />;
-      case 5: return <SubclassStep {...props} />;
-      case 6: return <ComplicationStep {...props} />;
-      case 7: return <CharacteristicsStep {...props} />;
-      case 8: return <KitStep {...props} />;
-      case 9: return <SkillsStep {...props} />;
-      case 10: return <LanguagesStep {...props} />;
-      case 11: return <PerksStep {...props} />;
-      case 12: return <TitlesStep {...props} />;
-      case 13: return <AbilitiesStep {...props} />;
-      case 14: return <PersonalStep {...props} />;
-      case 15: return <ReviewStep character={character} />;
-      default: return null;
+    const stepProps = { character, onChange: patch };
+
+    // Handle level-up steps
+    if (currentStepId.startsWith('level-')) {
+      const lvl = parseInt(currentStepId.replace('level-', ''), 10);
+      return <LevelUpStep level={lvl} />;
+    }
+
+    switch (currentStepId) {
+      case WizardLogic.WIZARD_STEP_IDS.LEVEL:
+        return <LevelSelectStep />;
+      case WizardLogic.WIZARD_STEP_IDS.ANCESTRY:
+        return <AncestryStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.CULTURE:
+        return <CultureStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.CAREER:
+        return <CareerStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.CLASS:
+        return <ClassStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.SUBCLASS:
+        return <SubclassStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.COMPLICATION:
+        return <ComplicationStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.CHARACTERISTICS:
+        return <CharacteristicsStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.KIT:
+        return <KitStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.SKILLS:
+        return <SkillsStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.LANGUAGES:
+        return <LanguagesStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.PERKS:
+        return <PerksStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.TITLES:
+        return <TitlesStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.ABILITIES:
+        return <AbilitiesStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.PERSONAL:
+        return <PersonalStep {...stepProps} />;
+      case WizardLogic.WIZARD_STEP_IDS.REVIEW:
+        return <ReviewStep character={character} />;
+      default:
+        return null;
     }
   };
 
   return (
-    <WizardLayout
-      currentStep={step}
-      totalSteps={TOTAL_STEPS}
-      stepLabels={STEP_LABELS}
-      onBack={handleBack}
-      onNext={handleNext}
-      canGoNext={canGoNext && !saving}
-      preview={step < TOTAL_STEPS ? <WizardPreview character={character} /> : undefined}
-    >
+    <HeroCreatorLayout onSave={handleSave} saving={saving}>
       {renderStep()}
-    </WizardLayout>
+    </HeroCreatorLayout>
   );
+}
+
+/**
+ * Convert legacy numeric step to step ID for backward compatibility.
+ */
+function convertLegacyStepToId(step: number): string {
+  const mapping: Record<number, string> = {
+    1: WizardLogic.WIZARD_STEP_IDS.ANCESTRY,
+    2: WizardLogic.WIZARD_STEP_IDS.CULTURE,
+    3: WizardLogic.WIZARD_STEP_IDS.CAREER,
+    4: WizardLogic.WIZARD_STEP_IDS.CLASS,
+    5: WizardLogic.WIZARD_STEP_IDS.SUBCLASS,
+    6: WizardLogic.WIZARD_STEP_IDS.COMPLICATION,
+    7: WizardLogic.WIZARD_STEP_IDS.CHARACTERISTICS,
+    8: WizardLogic.WIZARD_STEP_IDS.KIT,
+    9: WizardLogic.WIZARD_STEP_IDS.SKILLS,
+    10: WizardLogic.WIZARD_STEP_IDS.LANGUAGES,
+    11: WizardLogic.WIZARD_STEP_IDS.PERKS,
+    12: WizardLogic.WIZARD_STEP_IDS.TITLES,
+    13: WizardLogic.WIZARD_STEP_IDS.ABILITIES,
+    14: WizardLogic.WIZARD_STEP_IDS.PERSONAL,
+    15: WizardLogic.WIZARD_STEP_IDS.REVIEW,
+  };
+  return mapping[step] || WizardLogic.WIZARD_STEP_IDS.LEVEL;
 }

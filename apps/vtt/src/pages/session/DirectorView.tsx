@@ -55,6 +55,8 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     onHelp: () => setShowHelp((v) => !v),
   });
 
+  const sceneData = activeScene?.data ?? {};
+
   const renderStage = () => {
     if (!activeScene) {
       return (
@@ -66,40 +68,55 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
 
     switch (sceneType) {
       case 'story':
-        return <StoryStage readAloudText="" directorNotes="" isDirector />;
+        return (
+          <StoryStage
+            readAloudText={(sceneData['readAloud'] as string) ?? ''}
+            directorNotes={(sceneData['notes'] as string) ?? ''}
+            isDirector
+          />
+        );
       case 'montage':
         return (
           <MontageStage
-            goal=""
+            goal={(sceneData['goal'] as string) ?? ''}
             currentSuccesses={0}
-            successLimit={5}
+            successLimit={(sceneData['successesNeeded'] as number) ?? 5}
             currentFailures={0}
-            failureLimit={3}
+            failureLimit={(sceneData['failureLimit'] as number) ?? 3}
             outcome="pending"
-            challenges={[]}
+            challenges={(sceneData['challenges'] as { id: string; name: string; completed: boolean }[]) ?? []}
             isDirector
           />
         );
       case 'negotiation':
         return (
           <NegotiationStage
-            npcName="NPC"
-            interest={0}
-            targetInterest={5}
-            patience={3}
-            maxPatience={3}
-            phase="active"
-            motivations={[]}
-            arguments={[]}
+            npcName={(sceneData['npcName'] as string) ?? 'NPC'}
+            npcAttitude={(sceneData['npcAttitude'] as string) ?? 'neutral'}
+            interest={(sceneData['interest'] as number) ?? 0}
+            patience={(sceneData['patience'] as number) ?? 3}
+            maxPatience={(sceneData['maxPatience'] as number) ?? 5}
+            phase={(sceneData['phase'] as 'active' | 'success' | 'failure') ?? 'active'}
+            motivations={
+              (sceneData['motivations'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
+                (m) => ({ ...m, type: m.type as import('@anvil/types').MotivationType })
+              ) ?? []
+            }
+            pitfalls={
+              (sceneData['pitfalls'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
+                (p) => ({ ...p, type: p.type as import('@anvil/types').MotivationType })
+              ) ?? []
+            }
+            outcomes={(sceneData['outcomes'] as Record<number, string>) ?? {}}
             isDirector
           />
         );
       case 'respite':
         return (
           <RespiteStage
-            location=""
-            activities={[]}
-            projects={[]}
+            location={(sceneData['location'] as string) ?? ''}
+            activities={(sceneData['activities'] as { heroName: string; activityType: string; completed: boolean }[]) ?? []}
+            projects={(sceneData['projects'] as { id: string; name: string; currentPoints: number; goalPoints: number }[]) ?? []}
             completed={false}
             isDirector
           />

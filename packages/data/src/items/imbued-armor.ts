@@ -332,6 +332,86 @@ export const ARMOR_IMBUEMENTS: Imbuement[] = [
     ),
     craftingProjectId: 'project-tempest-ii',
   },
+  {
+    id: 'imbuement-absorption',
+    name: 'Absorption',
+    description: 'Your armor can absorb and reuse magical abilities.',
+    type: 'armor',
+    level: 5,
+    feature: textFeature(
+      'imbuement-absorption-feature',
+      'Absorption',
+      `When you are targeted by a magic or psionic ability that targets only one creature, you can use a free triggered action to cause this armor to absorb the ability after the ability's effects resolve. While the armor has an ability absorbed, you can't absorb another.
+
+You can use an absorbed ability as if you knew it, making power rolls for the ability using your choice of Reason, Intuition, or Presence. You don't need to spend any Heroic Resource to activate the ability. Once you use the ability, the armor loses it, and you can absorb another.`
+    ),
+    craftingProjectId: 'project-absorption',
+  },
+  {
+    id: 'imbuement-dragon-soul-i',
+    name: 'Dragon Soul I',
+    description: 'Your armor unleashes a dragon soul when you are badly hurt.',
+    type: 'armor',
+    level: 5,
+    feature: textFeature(
+      'imbuement-dragon-soul-i-feature',
+      'Dragon Soul I',
+      'When another creature causes you to be winded or dying, you can use a free triggered action to cause the soul of a dragon to emerge from the armor and hurtle toward the creature. Make a power roll using Might, Agility, Reason, Intuition, or Presence. Tier 1: 2 damage; push 3. Tier 2: 12 damage; push 4. Tier 3: 15 damage; push 5.'
+    ),
+    craftingProjectId: 'project-dragon-soul-i',
+  },
+  {
+    id: 'imbuement-levitating',
+    name: 'Levitating',
+    description: 'Your armor allows limited flight.',
+    type: 'armor',
+    level: 5,
+    feature: textFeature(
+      'imbuement-levitating-feature',
+      'Levitating',
+      'On your turn, you can treat up to 5 consecutive squares of movement as flying movement. If you are still in midair at the end of your turn, you fall prone.'
+    ),
+    craftingProjectId: 'project-levitating',
+  },
+  {
+    id: 'imbuement-reactive',
+    name: 'Reactive',
+    description: 'Your armor grants temporary damage immunity when hit.',
+    type: 'armor',
+    level: 5,
+    feature: textFeature(
+      'imbuement-reactive-feature',
+      'Reactive',
+      'Whenever you take damage, you have damage immunity 2 until the end of your next turn after the triggering damage is resolved.'
+    ),
+    craftingProjectId: 'project-reactive',
+  },
+  {
+    id: 'imbuement-second-wind',
+    name: 'Second Wind',
+    description: 'Your armor helps you recover when winded.',
+    type: 'armor',
+    level: 5,
+    feature: textFeature(
+      'imbuement-second-wind-feature',
+      'Second Wind',
+      'When you become winded, you can use a free triggered action to spend a recovery.'
+    ),
+    craftingProjectId: 'project-second-wind',
+  },
+  {
+    id: 'imbuement-shattering',
+    name: 'Shattering',
+    description: 'Your armor retaliates against critical hits.',
+    type: 'armor',
+    level: 5,
+    feature: textFeature(
+      'imbuement-shattering-feature',
+      'Shattering',
+      'Whenever an enemy scores a critical hit against you, they take 10 sonic damage.'
+    ),
+    craftingProjectId: 'project-shattering',
+  },
 
   // =============================================================================
   // LEVEL 9 ARMOR IMBUEMENTS
@@ -416,6 +496,101 @@ export const ARMOR_IMBUEMENTS: Imbuement[] = [
       'Whenever a creature makes a melee ability targeting you from an adjacent square and you are not grabbed, you can use a free triggered action to deal 9 lightning damage to that creature. This replaces the benefit of Tempest II.'
     ),
     craftingProjectId: 'project-tempest-iii',
+  },
+  {
+    id: 'imbuement-devils-bargain',
+    name: "Devil's Bargain",
+    description: 'Your armor grants flight.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-devils-bargain-feature',
+      "Devil's Bargain",
+      'You can fly. Additionally, if an effect would make you prone while flying, you can choose to not go prone by losing Stamina equal to the distance you would have fallen from becoming prone.'
+    ),
+    craftingProjectId: 'project-devils-bargain',
+  },
+  {
+    id: 'imbuement-dragon-soul-ii',
+    name: 'Dragon Soul II',
+    description: 'Your armor can unleash a devastating breath attack.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-dragon-soul-ii-feature',
+      'Dragon Soul II',
+      'When you are winded, you can use a main action to open your maw and unleash hell. Make a power roll using Might, Agility, Reason, Intuition, or Presence against each enemy in a line 5 by 1 within 1 square. Keywords: Area, Magic. Tier 1: 5 fire damage. Tier 2: 8 fire damage. Tier 3: 11 fire damage.'
+    ),
+    craftingProjectId: 'project-dragon-soul-ii',
+  },
+  {
+    id: 'imbuement-invulnerable',
+    name: 'Invulnerable',
+    description: 'Your armor protects you from weak attacks.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-invulnerable-feature',
+      'Invulnerable',
+      'When an ability roll made against you obtains a tier 1 outcome, you can ignore its damage and effects.'
+    ),
+    craftingProjectId: 'project-invulnerable',
+  },
+  {
+    id: 'imbuement-leyline-walker',
+    name: 'Leyline Walker',
+    description: 'Your armor allows you to teleport.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-leyline-walker-feature',
+      'Leyline Walker',
+      'Once per turn, as a move action, you can spend any amount of your movement to instead teleport that distance.'
+    ),
+    craftingProjectId: 'project-leyline-walker',
+  },
+  {
+    id: 'imbuement-life',
+    name: 'Life',
+    description: 'Your armor can save you from death.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-life-feature',
+      'Life',
+      'Whenever you would die, you can spend a Recovery to regain Stamina instead. If you have no Recoveries to spend, you die.'
+    ),
+    craftingProjectId: 'project-life',
+  },
+  {
+    id: 'imbuement-temporal-flux',
+    name: 'Temporal Flux',
+    description: 'Your armor creates temporal imprints you can teleport to.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-temporal-flux-feature',
+      'Temporal Flux',
+      `Whenever you move out of a square, you can choose to leave an imprint behind that lasts until the end of the encounter, until your imprint takes 20 or more damage, or until you create a new imprint. The square is occupied by your imprint, and you can share that space with it.
+
+As a free maneuver, you can teleport to the imprint's space.
+
+When you are targeted by an ability, you can use a free triggered action to teleport to your imprint, and the power roll for the ability is an automatic tier 1 result.`
+    ),
+    craftingProjectId: 'project-temporal-flux',
+  },
+  {
+    id: 'imbuement-unbending',
+    name: 'Unbending',
+    description: 'Your armor prevents forced movement.',
+    type: 'armor',
+    level: 9,
+    feature: textFeature(
+      'imbuement-unbending-feature',
+      'Unbending',
+      "You can't be subjected to forced movement unless you choose to be. Effects that ignore Stability also ignore this enhancement."
+    ),
+    craftingProjectId: 'project-unbending',
   },
 ];
 

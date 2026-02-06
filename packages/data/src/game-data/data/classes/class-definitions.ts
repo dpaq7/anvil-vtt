@@ -47,6 +47,36 @@ export interface ClassDefinition {
 }
 
 export const classDefinitions: Record<HeroClass, ClassDefinition> = {
+  beastheart: {
+    id: 'beastheart',
+    name: 'Beastheart',
+    description: 'A warrior bonded with a ferocious companion creature, fighting side by side with primal fury.',
+    role: 'Striker',
+    masterClass: false,
+    startingStamina: 21,
+    staminaPerLevel: 12,
+    startingRecoveries: 12,
+    heroicResource: {
+      name: 'Ferocity',
+      type: 'ferocity',
+      startingAmount: 'victories',
+      gainPerTurn: '1d3',
+      gainTrigger: 'Start of turn + first time you/companion deal damage per round',
+    },
+    startingCharacteristics: { might: 2, intuition: 2 },
+    potencyCharacteristic: 'might',
+    fixedSkills: ['Handle Animals'],
+    skillGroupChoices: [{ groups: ['exploration', 'intrigue'], count: 2 }],
+    subclassName: 'Wild Nature',
+    subclassNamePlural: 'Wild Natures',
+    subclassSelectCount: 1,
+    subclasses: [
+      { id: 'guardian', name: 'Guardian', description: 'You are the fearless defender of your pack: anyone who harms them must go through you.' },
+      { id: 'prowler', name: 'Prowler', description: 'You are an unseen ambusher that strikes from the shadows. Your prey is dead before they even know you\'re there.' },
+      { id: 'punisher', name: 'Punisher', description: 'Using brute force, you overwhelm anyone unwise enough to earn your wrath.' },
+      { id: 'spark', name: 'Spark', description: 'Your connection with nature has imbued you and your companion with the raging magic of the elemental storm.' },
+    ],
+  },
   censor: {
     id: 'censor',
     name: 'Censor',
@@ -96,7 +126,11 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
     startingCharacteristics: { intuition: 2 },
     potencyCharacteristic: 'intuition',
     fixedSkills: [],
-    skillGroupChoices: [],
+    skillGroupChoices: [{ groups: ['interpersonal', 'lore'], count: 2 }],
+    // NOTE: In Forgesteel, Conduit has subclassCount: 0.
+    // Domains are handled via a separate feature choice mechanism (createDomainChoice).
+    // For Anvil VTT, we model domains using the subclass UI for simplicity.
+    // This is an intentional architectural deviation - same functional result.
     subclassName: 'Domain',
     subclassNamePlural: 'Domains',
     subclassSelectCount: 2, // Conduit chooses TWO domains

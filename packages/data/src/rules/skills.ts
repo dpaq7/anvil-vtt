@@ -120,7 +120,6 @@ export const skills: Skill[] = [
   { id: 'rumors', name: 'Rumors', group: 'lore', description: 'Knowledge of gossip and news.', use: 'Knowing gossip, legends, and uncertain truths' },
   { id: 'society', name: 'Society', group: 'lore', description: 'Knowledge of noble etiquette and power.', use: 'Knowing noble etiquette and the leadership and power dynamics of noble families' },
   { id: 'strategy', name: 'Strategy', group: 'lore', description: 'Knowledge of tactics and warfare.', use: 'Knowing about battle tactics and logistics' },
-  { id: 'timescape', name: 'Timescape', group: 'lore', description: 'Knowledge of the timescape and planar travel.', use: 'Knowing about the many worlds of the timescape' },
 ];
 
 // Helper to get skills by group

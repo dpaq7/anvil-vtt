@@ -30,6 +30,7 @@ export type Characteristic = 'might' | 'agility' | 'reason' | 'intuition' | 'pre
  * @see rules-md/Classes/
  */
 export type HeroClass =
+  | 'beastheart'
   | 'censor'
   | 'conduit'
   | 'elementalist'
@@ -56,7 +57,8 @@ export type HeroicResource =
   | 'insight'    // Shadow - builds through positioning and stealth
   | 'focus'      // Tactician - builds through commands and tactics
   | 'clarity'    // Talent - builds through psychic powers
-  | 'drama';     // Troubadour - builds through performance and allies
+  | 'drama'      // Troubadour - builds through performance and allies
+  | 'rage';      // Beastheart - builds through companion and ferocity
 
 /**
  * Action types for abilities.

@@ -33,15 +33,25 @@ export type TestOutcome =
   | 'success with reward';
 
 /**
+ * Roll state after resolving edges and banes.
+ * Edges and banes cancel 1-for-1. Net result determines state:
+ * - 2+ net edges = double-edge (tier shift +1)
+ * - 1 net edge = edge (+2 bonus)
+ * - 0 = standard (no modifier)
+ * - 1 net bane = bane (-2 penalty)
+ * - 2+ net banes = double-bane (tier shift -1)
+ */
+export type RollState = 'double-edge' | 'edge' | 'standard' | 'bane' | 'double-bane';
+
+/**
  * Power roll result structure.
  */
 export interface PowerRollResult {
   dice: number[];
-  kept: number[];
   total: number;
   tier: Tier;
-  hasEdge: boolean;
-  hasBane: boolean;
+  rollState: RollState;
+  tierShifted: boolean;
   isNatural19Or20: boolean;
 }
 
@@ -94,7 +104,7 @@ export function getTierDescription(tier: Tier): string {
 }
 
 // ---------------------------------------------------------------------------
-// Edge & Bane Calculation
+// Edge & Bane Calculation (Draw Steel rules)
 // ---------------------------------------------------------------------------
 
 /**
@@ -123,61 +133,99 @@ export function getNetEdgeBane(edges: number, banes: number): number {
 }
 
 /**
- * Calculate total d10s to roll based on edges/banes.
- * Base roll is 2d10; net edges/banes add dice (keep best/worst 2).
+ * Determine roll state from edges and banes.
+ * Draw Steel rules: edges/banes cancel 1-for-1, then:
+ * - 2+ net edges = double-edge (tier shift +1)
+ * - 1 net edge = edge (+2 bonus)
+ * - 0 = standard (no modifier)
+ * - 1 net bane = bane (-2 penalty)
+ * - 2+ net banes = double-bane (tier shift -1)
  *
  * @param edges - Number of edges
  * @param banes - Number of banes
- * @returns Total dice to roll (minimum 2)
- *
- * @example
- * getDiceCount(0, 0);  // Returns 2 (base roll)
- * getDiceCount(2, 0);  // Returns 4 (roll 4d10, keep best 2)
- * getDiceCount(0, 1);  // Returns 3 (roll 3d10, keep worst 2)
+ * @returns Roll state
  */
-export function getDiceCount(edges: number, banes: number): number {
-  if (typeof edges !== 'number' || edges < 0) {
-    throw new Error(`RollLogic.getDiceCount: edges must be non-negative number, got ${edges}`);
-  }
-  if (typeof banes !== 'number' || banes < 0) {
-    throw new Error(`RollLogic.getDiceCount: banes must be non-negative number, got ${banes}`);
-  }
+export function getRollState(edges: number, banes: number): RollState {
+  const net = getNetEdgeBane(edges, banes);
 
-  return 2 + Math.abs(edges - banes);
+  if (net >= 2) return 'double-edge';
+  if (net === 1) return 'edge';
+  if (net === 0) return 'standard';
+  if (net === -1) return 'bane';
+  return 'double-bane';
 }
 
 /**
- * Determine whether to keep highest or lowest dice.
+ * Get flat bonus/penalty from roll state.
+ * Edge: +2, Bane: -2, others: 0 (double edge/bane use tier shift instead)
  *
- * @param edges - Number of edges
- * @param banes - Number of banes
- * @returns 'highest' if edges >= banes, 'lowest' otherwise
+ * @param rollState - Current roll state
+ * @returns Flat modifier to add to roll
  */
-export function getKeepMode(edges: number, banes: number): 'highest' | 'lowest' {
-  return edges >= banes ? 'highest' : 'lowest';
+export function getRollStateBonus(rollState: RollState): number {
+  switch (rollState) {
+    case 'edge':
+      return 2;
+    case 'bane':
+      return -2;
+    default:
+      return 0;
+  }
 }
 
 /**
- * Select which dice to keep from a roll.
+ * Get tier shift from roll state.
+ * Double edge: +1 tier, Double bane: -1 tier
  *
- * @param dice - Array of die results
- * @param keepCount - Number of dice to keep (usually 2)
- * @param mode - Whether to keep highest or lowest
- * @returns Array of kept dice (sorted by value)
+ * @param rollState - Current roll state
+ * @returns Tier shift amount
+ */
+export function getTierShift(rollState: RollState): number {
+  switch (rollState) {
+    case 'double-edge':
+      return 1;
+    case 'double-bane':
+      return -1;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Shift a tier by the given amount, clamping to valid range [1, 3].
+ *
+ * @param tier - Base tier
+ * @param shift - Amount to shift (-1, 0, or +1 typically)
+ * @returns Shifted tier, clamped to 1-3
+ */
+export function shiftTier(tier: Tier, shift: number): Tier {
+  const shifted = tier + shift;
+  return Math.max(1, Math.min(3, shifted)) as Tier;
+}
+
+/**
+ * @deprecated Use getRollState instead. Dice count is always 2 in Draw Steel.
+ */
+export function getDiceCount(_edges: number, _banes: number): number {
+  return 2;
+}
+
+/**
+ * @deprecated Edge/bane now uses flat +/-2, not keep-highest/lowest.
+ */
+export function getKeepMode(_edges: number, _banes: number): 'highest' | 'lowest' {
+  return 'highest';
+}
+
+/**
+ * @deprecated Edge/bane now uses flat +/-2, not keep-highest/lowest.
  */
 export function selectKeptDice(
   dice: number[],
   keepCount: number,
-  mode: 'highest' | 'lowest'
+  _mode: 'highest' | 'lowest'
 ): number[] {
-  if (dice.length < keepCount) {
-    throw new Error(
-      `RollLogic.selectKeptDice: not enough dice (${dice.length}) to keep ${keepCount}`
-    );
-  }
-
-  const sorted = [...dice].sort((a, b) => (mode === 'highest' ? b - a : a - b));
-  return sorted.slice(0, keepCount);
+  return dice.slice(0, keepCount);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,8 +364,9 @@ export function isSnakeEyes(keptDice: number[]): boolean {
 
 /**
  * Calculate power roll summary from dice and characteristic.
+ * Uses Draw Steel rules: edge/bane = +/-2 flat bonus, double edge/bane = tier shift.
  *
- * @param dice - All dice rolled
+ * @param dice - Dice rolled (should be exactly 2d10)
  * @param edges - Number of edges
  * @param banes - Number of banes
  * @param characteristicValue - The characteristic modifier
@@ -331,19 +380,31 @@ export function calculatePowerRoll(
   characteristicValue: number,
   bonuses: number = 0
 ): PowerRollResult {
-  const keepMode = getKeepMode(edges, banes);
-  const kept = selectKeptDice(dice, 2, keepMode);
-  const diceTotal = kept[0] + kept[1];
-  const total = diceTotal + characteristicValue + bonuses;
+  // Always use exactly 2 dice
+  const d1 = dice[0] ?? 0;
+  const d2 = dice[1] ?? 0;
+  const diceTotal = d1 + d2;
+
+  // Determine roll state
+  const rollState = getRollState(edges, banes);
+
+  // Apply flat bonus from edge/bane
+  const edgeBaneBonus = getRollStateBonus(rollState);
+  const total = diceTotal + characteristicValue + bonuses + edgeBaneBonus;
+
+  // Calculate base tier, then apply tier shift for double edge/bane
+  const baseTier = getTier(total);
+  const tierShift = getTierShift(rollState);
+  const finalTier = shiftTier(baseTier, tierShift);
+  const tierShifted = tierShift !== 0;
 
   return {
     dice,
-    kept,
     total,
-    tier: getTier(total),
-    hasEdge: edges > banes,
-    hasBane: banes > edges,
-    isNatural19Or20: isNatural19Or20(kept),
+    tier: finalTier,
+    rollState,
+    tierShifted,
+    isNatural19Or20: isNatural19Or20(dice.slice(0, 2)),
   };
 }
 

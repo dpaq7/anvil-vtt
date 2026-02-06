@@ -75,6 +75,9 @@ export type {
   GrantedItem,
   GrantedItems,
   StepValidationResult,
+  LevelUpChoice,
+  StepStatus,
+  WizardStepDefinition,
   // Kit Logic
   KitType,
   KitBonuses,
@@ -268,6 +271,7 @@ export type {
   AncestryDefinition,
   AncestryTrait,
   CareerDefinition,
+  CultureBenefit,
   KitDefinition,
   KitSignatureAbility,
   SubclassDefinition,

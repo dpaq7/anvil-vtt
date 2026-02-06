@@ -5,14 +5,9 @@ import type { ConditionEndType } from '../types/common.js';
 
 export type ConditionId =
   | 'bleeding'
-  | 'burning'
-  | 'charmed'
   | 'dazed'
-  | 'dying'
   | 'frightened'
   | 'grabbed'
-  | 'invisible'
-  | 'petrified'
   | 'prone'
   | 'restrained'
   | 'slowed'
@@ -48,28 +43,6 @@ export const CONDITIONS: Record<ConditionId, ConditionDefinition> = {
 
 You take damage from this condition when you use a main action off your turn. For example, a signature ability used as a free triggered action with the assistance of the tactician's Strike Now ability triggers the damage from the bleeding condition.`,
   },
-  burning: {
-    id: 'burning',
-    name: 'Burning',
-    icon: '🔥',
-    description: 'You are on fire and taking ongoing damage.',
-    primaryEffect: 'Take fire damage at the start of each of your turns. The damage amount is determined by the source.',
-    saveEnds: true,
-    saveRequired: 'd10 roll of 6+ at end of turn',
-    affectsActions: false,
-    rulesDescription: `While a creature is burning, they take fire damage at the start of each of their turns. The amount of damage is determined by the ability or effect that caused the burning condition. This damage cannot be reduced or prevented.`,
-  },
-  charmed: {
-    id: 'charmed',
-    name: 'Charmed',
-    icon: '💕',
-    description: 'You are magically influenced to view another creature favorably.',
-    primaryEffect: 'Cannot attack or target the charmer with harmful abilities. The charmer has an edge on social interactions with you.',
-    saveEnds: true,
-    saveRequired: 'd10 roll of 6+ at end of turn',
-    affectsActions: false,
-    rulesDescription: `A charmed creature cannot attack or target the creature who charmed them with harmful abilities. The charmer has an edge on all social interactions with the charmed creature. If a creature gains the charmed condition from one source while already charmed by a different source, the new condition replaces the old one.`,
-  },
   dazed: {
     id: 'dazed',
     name: 'Dazed',
@@ -81,17 +54,6 @@ You take damage from this condition when you use a main action off your turn. Fo
     affectsActions: false,
     rulesDescription: `A creature who is dazed can do only one thing on their turn: use a main action, use a maneuver, or use a move action. A dazed creature also can't use triggered actions, free triggered actions, or free maneuvers.`,
   },
-  dying: {
-    id: 'dying',
-    name: 'Dying',
-    icon: '💀',
-    description: 'You have been reduced to 0 stamina or below and are close to death.',
-    primaryEffect: 'You are unconscious and cannot take actions. Take 1d6 damage at end of each turn. Death occurs at negative half max stamina.',
-    saveEnds: false,
-    saveRequired: 'Healing to restore stamina above 0',
-    affectsActions: false,
-    rulesDescription: `When a creature's Stamina is reduced to 0 or below, they gain the dying condition. A dying creature is unconscious and cannot take any actions. At the end of each of their turns, they take 1d6 damage. If a dying creature's Stamina reaches their negative maximum Stamina divided by 2 (rounded down), they die. The dying condition ends when the creature's Stamina is restored above 0.`,
-  },
   frightened: {
     id: 'frightened',
     name: 'Frightened',
@@ -102,28 +64,6 @@ You take damage from this condition when you use a main action off your turn. Fo
     saveRequired: 'd10 roll of 6+ at end of turn',
     affectsActions: false,
     rulesDescription: `When a creature is frightened, any ability roll they make against the source of their fear takes a bane. If that source is a creature, their ability rolls made against the frightened creature gain an edge. A frightened creature can't willingly move closer to the source of their fear if they know the location of that source. If a creature gains the frightened condition from one source while already frightened by a different source, the new condition replaces the old one.`,
-  },
-  invisible: {
-    id: 'invisible',
-    name: 'Invisible',
-    icon: '👻',
-    description: 'You cannot be seen by normal means.',
-    primaryEffect: 'You have concealment against all creatures. Creatures have a bane on attacks against you. You have an edge on attacks against creatures that cannot see you.',
-    saveEnds: false,
-    saveRequired: 'Effect ends based on ability duration or when you attack',
-    affectsActions: false,
-    rulesDescription: `An invisible creature cannot be seen by normal means. They have concealment against all creatures. Attacks against an invisible creature take a bane. An invisible creature has an edge on attacks against creatures that cannot see them. The invisible condition typically ends based on the ability's duration or when the invisible creature makes an attack.`,
-  },
-  petrified: {
-    id: 'petrified',
-    name: 'Petrified',
-    icon: '🪨',
-    description: 'You have been turned to stone.',
-    primaryEffect: 'You are incapacitated and cannot move, speak, or take any actions. You have immunity to all damage. You do not age while petrified.',
-    saveEnds: true,
-    saveRequired: 'Specific magic or effect to reverse',
-    affectsActions: false,
-    rulesDescription: `A petrified creature has been turned to stone. They are incapacitated and cannot move, speak, or take any actions. They have immunity to all damage and do not age while petrified. The petrified condition can only be ended by specific magic or effects designed to reverse petrification.`,
   },
   grabbed: {
     id: 'grabbed',

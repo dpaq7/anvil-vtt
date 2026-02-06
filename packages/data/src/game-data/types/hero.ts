@@ -11,8 +11,9 @@ import { type ActiveProject, type InventoryItem } from './projects.js';
 import { type EquippedItem } from './equipment.js';
 import { type SelectedPerk } from './perk.js';
 
-// All 10 Draw Steel hero classes
+// All 11 Draw Steel hero classes
 export type HeroClass =
+  | 'beastheart'
   | 'censor'
   | 'conduit'
   | 'elementalist'
@@ -34,7 +35,8 @@ export type HeroicResourceType =
   | 'insight'    // Shadow
   | 'focus'      // Tactician
   | 'clarity'    // Talent
-  | 'drama';     // Troubadour
+  | 'drama'      // Troubadour
+  | 'rage';      // Beastheart
 
 // Shared stamina pool interface
 export interface StaminaPool {

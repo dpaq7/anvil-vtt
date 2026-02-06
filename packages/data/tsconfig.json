@@ -17,7 +17,6 @@
     "dist",
     "src/rules/classes/**/*",
     "src/rules/conditions.ts",
-    "src/rules/progression.ts",
     "scripts/**/*"
   ],
   "references": [{ "path": "../types" }]

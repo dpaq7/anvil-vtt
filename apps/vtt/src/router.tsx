@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Landing } from './pages/Landing.js';
 import { Auth } from './pages/Auth.js';
 import { ProtectedRoute } from './pages/ProtectedRoute.js';
@@ -10,9 +10,12 @@ import { HeroSheet } from './pages/HeroSheet.js';
 import { JoinCampaign } from './pages/JoinCampaign.js';
 import { JoinSession } from './pages/JoinSession.js';
 import { Lobby } from './pages/Lobby.js';
+import { Home } from './pages/Home.js';
+import { Assets } from './pages/Assets.js';
+import { Notes } from './pages/Notes.js';
 import { SessionPage } from './pages/session/SessionPage.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
-import { AppShell } from '@anvil/ui';
+import { AppLayout } from './components/layout/AppLayout.js';
 
 export const router = createBrowserRouter([
   {
@@ -36,20 +39,26 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ErrorBoundary label="app">
-          <AppShell>
-            <Outlet />
-          </AppShell>
+          <AppLayout />
         </ErrorBoundary>
       </ProtectedRoute>
     ),
     children: [
       {
         index: true,
-        element: <Navigate to="/app/campaigns" replace />,
+        element: <Home />,
       },
       {
         path: 'campaigns',
         element: <CampaignList />,
+      },
+      {
+        path: 'assets',
+        element: <Assets />,
+      },
+      {
+        path: 'notes',
+        element: <Notes />,
       },
       {
         path: 'campaigns/:id',

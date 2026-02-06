@@ -465,8 +465,8 @@ export const TITLES: Title[] = [
     ],
   },
   {
-    id: 'troupe-leading-player',
-    name: 'Troupe Leading Player',
+    id: 'troupe-tactics',
+    name: 'Troupe Tactics',
     echelon: '1st',
     flavorText: "We're actors! We're the opposite of people!",
     prerequisite:
@@ -1309,6 +1309,36 @@ export const TITLES: Title[] = [
       },
     ],
   },
+  {
+    id: 'ringleader',
+    name: 'Ringleader',
+    echelon: '3rd',
+    flavorText: "Don't worry. I've got a guy.",
+    prerequisite:
+      'You complete three downtime projects during the same respite with the help of followers or minions.',
+    effects: [
+      {
+        name: 'Minion Commands',
+        description:
+          'You no longer need line of effect to give commands to any minions you can summon.',
+      },
+    ],
+    choices: [
+      {
+        name: 'For the Boss',
+        description: 'Your followers gain a +3 bonus to project rolls that they make.',
+      },
+      {
+        name: 'Networker',
+        description: 'Your maximum follower count increases by 2.',
+      },
+      {
+        name: 'Stringpuller',
+        description:
+          'While occupying a civilized area (such as a village, town, district, or city), you always have access to a follower native to the location. If the area is otherwise hostile to you, this follower is a spy in hiding who has any project points they earn halved.',
+      },
+    ],
+  },
 
   // ============================================================================
   // 4TH ECHELON TITLES (10 titles)
@@ -1530,6 +1560,8 @@ export const TITLES: Title[] = [
     ],
   },
   {
+    // NOTE: 'reborn' is an Anvil-custom title, not present in Forgesteel reference.
+    // Kept for thematic flavor; verify against official Draw Steel rules if needed.
     id: 'reborn',
     name: 'Reborn',
     echelon: '4th',
@@ -1641,6 +1673,136 @@ export const TITLES: Title[] = [
       {
         name: 'Slippery',
         description: "You can't be grabbed against your will.",
+      },
+    ],
+  },
+  // ============================================================================
+  // FISHING & SUMMONER TITLES (Added from Forgesteel reference)
+  // ============================================================================
+  {
+    id: 'angler',
+    name: 'Angler',
+    echelon: '1st',
+    flavorText: '',
+    prerequisite: '120 project points spent on the Tackle table while Fishing.',
+    effects: [
+      {
+        name: 'Angler',
+        description: 'You gain an edge on all Fishing project rolls.',
+      },
+    ],
+  },
+  {
+    id: 'goldenrod',
+    name: 'Goldenrod',
+    echelon: '1st',
+    flavorText: '',
+    prerequisite: '300 project points spent on the Tackle table while Fishing.',
+    effects: [
+      {
+        name: 'Goldenrod',
+        description: 'Each time you undertake the Fishing project, you can reroll one project roll.',
+      },
+    ],
+  },
+  {
+    id: 'master-of-reels',
+    name: 'Master of Reels',
+    echelon: '1st',
+    flavorText: '',
+    prerequisite: 'You gain this title by undertaking the Fishing project.',
+    effects: [
+      {
+        name: 'Master of Reels',
+        description: 'Whenever you deal damage to a target who is 2 or more squares away from you and that target isn\'t also force moved, you can pull the target a number of squares equal to your Agility, Reason, or Intuition score (your choice).',
+      },
+    ],
+  },
+  {
+    id: 'safeguarded',
+    name: 'Safeguarded',
+    echelon: '1st',
+    flavorText: 'They risk their lives for me because I risk my life for theirs. This fight belongs to all of us!',
+    prerequisite: 'You earn a noble rank or earn the favor of a knight\'s guild.',
+    effects: [
+      {
+        name: 'Effect',
+        description: 'You start combat encounters with a squad of three minions from the specific monster band or people you earned this title from. The squad takes their turn as a part of your turn. On the squad\'s turn, they can take a move action and either a main action or a maneuver.\n\n**Special**: If two or more heroes in the party have this title from the same source, the party starts combat encounters with a squad of six minions instead. At the start of each round of combat, the heroes decide who controls the squad as a part of their turn.',
+      },
+    ],
+  },
+  {
+    id: 'sigilwright',
+    name: 'Sigilwright',
+    echelon: '2nd',
+    flavorText: 'Let\'s find out who\'s on the other side of the circle.',
+    prerequisite: 'You complete a ritual to summon a non-minion entity using a summoning circle you drew.',
+    effects: [],
+    choices: [
+      {
+        name: 'Quick Gate',
+        description: 'As a maneuver, you can etch an arcane circle in an adjacent square on the ground. Until the end of the encounter, you can use magic abilities and treat your Summoner\'s Range as if you were in that space. Each time you etch an arcane circle, your last circle fades and becomes inactive.',
+      },
+      {
+        name: 'Ritual Circle',
+        description: 'You can create summoning circles to summon entities as part of a respite.',
+      },
+      {
+        name: 'Sigil Eye',
+        description: 'You have an edge on tests made to identify summoning circles and who or where they\'re connected to. You also have an edge on strikes made against creatures not native to the manifold in which you\'re currently located.',
+      },
+    ],
+  },
+  {
+    id: 'summoner-successor',
+    name: 'Summoner Successor',
+    echelon: '2nd',
+    flavorText: 'When their leader fell, they started listening to me for some reason.',
+    prerequisite: 'You can\'t use the Call Forth ability, and you defeat a leader or solo creature with a Summon or Call Forth ability, such as a high elf ordinator.',
+    effects: [
+      {
+        name: 'Effect',
+        description: 'Choose a signature minion from a summoner\'s portfolio that shares a keyword with one of the creatures the summoner could summon. You can summon three of that minion into a single squad (up to a maximum of four creatures) at the start of each of your turns in combat. The distance you can command them is equal to your ranged free strike distance. You also gain the Strike for Me triggered ability, which now has the Psionic keyword and loses the Magic keyword.\n\nAdditionally, you can summon up to two of your signature minion while outside of combat to do simple tasks.',
+      },
+    ],
+  },
+  {
+    id: 'delegator',
+    name: 'Delegator',
+    echelon: '4th',
+    flavorText: 'They\'re all yours, buddy.',
+    prerequisite: 'You are a summoner, and you strike a deal with your portfolio\'s champion.',
+    effects: [
+      {
+        name: 'Effect',
+        description: 'At the start of a combat encounter, you can choose to translate yourself into your circle\'s source manifold while your champion fights and summons monsters in your place. The champion uses your Stamina, Recoveries, abilities, and features (except for your Summoner Strikes and Summoner\'s Kit). You can dismiss the champion and summon yourself back into the place you left at the end of an encounter.\n\nIf your champion would die while taking your place, you lose access to your Return to the Source feature and can only summon signature minions until you revive your champion as a respite activity.',
+      },
+    ],
+  },
+  {
+    id: 'high-summoner',
+    name: 'High Summoner of the Circle',
+    echelon: '4th',
+    flavorText: 'As I was taught, so I pass on to you.',
+    prerequisite: 'You are a summoner, and you teach someone how to call forth two or more minions from your portfolio.',
+    effects: [
+      {
+        name: 'Effect',
+        description: 'You are considered a master that can be learned from using the Learn from a Master downtime project. Anyone that makes a project roll using you as the source gains a bonus to their roll equal to your Reason.',
+      },
+    ],
+    choices: [
+      {
+        name: 'Essence Mastery',
+        description: 'Your minions cost one fewer essence to summon (minimum cost of 1 essence).',
+      },
+      {
+        name: 'Expanded Domain',
+        description: 'Your Summoner\'s Range increases by 5. You can use your minions\' senses as your own as long as they\'re on the same manifold as you.',
+      },
+      {
+        name: 'Signature Summoner',
+        description: 'Select a 3-Essence minion you can call forth. At the start of each of your turns in combat, you summon the set number of minions listed on the stat block in place of your signature minions at no cost.',
       },
     ],
   },

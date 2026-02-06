@@ -308,13 +308,9 @@ export function toConditionId(conditionName: string): ConditionId | null {
   // Direct mapping
   const directMap: Record<string, ConditionId> = {
     bleeding: 'bleeding',
-    burning: 'burning',
-    charmed: 'charmed',
     dazed: 'dazed',
     frightened: 'frightened',
     grabbed: 'grabbed',
-    invisible: 'invisible',
-    petrified: 'petrified',
     prone: 'prone',
     restrained: 'restrained',
     slowed: 'slowed',

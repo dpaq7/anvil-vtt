@@ -47,10 +47,13 @@ export interface ForcedMovement {
 
 /**
  * Initiative entry for combat order
+ * @deprecated Draw Steel uses alternating initiative, not numeric. This interface
+ * is retained for backward compatibility but should not be used for new code.
+ * Use BattleState.combatState for proper alternating turn tracking.
  */
 export interface InitiativeEntry {
   entityId: string;
-  /** 1d10 + Intuition */
+  /** @deprecated Draw Steel doesn't use numeric initiative */
   initiative: number;
   hasActed: boolean;
   isDelaying: boolean;
