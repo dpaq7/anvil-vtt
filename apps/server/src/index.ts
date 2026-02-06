@@ -13,6 +13,9 @@ import { mapRoutes } from './routes/maps.js';
 import { npcRoutes } from './routes/npcs.js';
 import { sceneMonsterRoutes } from './routes/scene-monsters.js';
 import { audioRoutes } from './routes/audio.js';
+import { customTerrainRoutes } from './routes/custom-terrain.js';
+import { activityRoutes } from './routes/activities.js';
+import { montageTestRoutes } from './routes/montage-tests.js';
 
 const app = new Hono<AppEnv>();
 
@@ -46,6 +49,9 @@ app.route('/api/campaigns', mapRoutes);
 app.route('/api/campaigns', npcRoutes);
 app.route('/api/campaigns', audioRoutes);
 app.route('/api', sceneMonsterRoutes);
+app.route('/api/campaigns', customTerrainRoutes);
+app.route('/api/campaigns', activityRoutes);
+app.route('/api', montageTestRoutes);
 
 export default app;
 
