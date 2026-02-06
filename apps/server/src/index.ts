@@ -10,6 +10,9 @@ import { sceneRoutes } from './routes/scenes.js';
 import { inviteRoutes } from './routes/invites.js';
 import { heroRoutes } from './routes/heroes.js';
 import { mapRoutes } from './routes/maps.js';
+import { npcRoutes } from './routes/npcs.js';
+import { sceneMonsterRoutes } from './routes/scene-monsters.js';
+import { audioRoutes } from './routes/audio.js';
 
 const app = new Hono<AppEnv>();
 
@@ -40,6 +43,9 @@ app.route('/api', inviteRoutes);
 app.route('/api/assets', assetRoutes);
 app.route('/api/heroes', heroRoutes);
 app.route('/api/campaigns', mapRoutes);
+app.route('/api/campaigns', npcRoutes);
+app.route('/api/campaigns', audioRoutes);
+app.route('/api', sceneMonsterRoutes);
 
 export default app;
 
