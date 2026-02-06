@@ -22,3 +22,4 @@ export * from './characteristics.js';
 export * from './presentation.js';
 export * from './terrain.js';
 export * from './hydration.js';
+export * from './assets.js';
