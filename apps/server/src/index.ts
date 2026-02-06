@@ -9,6 +9,7 @@ import { sessionRoutes } from './routes/sessions.js';
 import { sceneRoutes } from './routes/scenes.js';
 import { inviteRoutes } from './routes/invites.js';
 import { heroRoutes } from './routes/heroes.js';
+import { mapRoutes } from './routes/maps.js';
 
 const app = new Hono<AppEnv>();
 
@@ -38,6 +39,7 @@ app.route('/api', sceneRoutes);
 app.route('/api', inviteRoutes);
 app.route('/api/assets', assetRoutes);
 app.route('/api/heroes', heroRoutes);
+app.route('/api/campaigns', mapRoutes);
 
 export default app;
 
