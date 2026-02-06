@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Package } from 'lucide-react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.js';
 import { AppShell, Button } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
@@ -12,6 +13,7 @@ import { CombatTracker } from '../../components/session/CombatTracker.js';
 import { MalicePanel } from '../../components/session/MalicePanel.js';
 import { DamageDialog } from '../../components/session/DamageDialog.js';
 import { CombatLog } from '../../components/session/CombatLog.js';
+import { AssetPanel } from '../../components/session/AssetPanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
@@ -41,6 +43,12 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
   );
 
   const [showHelp, setShowHelp] = useState(false);
+  const [showAssets, setShowAssets] = useState(false);
+
+  const heroCount = useMemo(
+    () => entities.filter((e) => e.type === 'hero').length,
+    [entities],
+  );
 
   const handleEndSession = useCallback(() => {
     send({ type: 'end_session' });
@@ -148,9 +156,20 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
           <span className="text-sm font-semibold text-zinc-300">
             Session
           </span>
-          <Button variant="ghost" size="sm" onClick={handleEndSession}>
-            End Session
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showAssets ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setShowAssets((v) => !v)}
+              title="Toggle Assets Panel"
+            >
+              <Package className="mr-1 size-3.5" />
+              Assets
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleEndSession}>
+              End Session
+            </Button>
+          </div>
         </div>
       }
       leftRail={
@@ -172,30 +191,43 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
         </div>
       }
       rightRail={
-        <div className="flex flex-col gap-4 p-4">
-          {combat && (
-            <>
-              <CombatTracker
-                combat={combat}
-                entities={entities}
-                isDirector
-                onNextTurn={() => send({ type: 'combat_action', action: { type: 'NEXT_TURN' } })}
-                onEndCombat={() => send({ type: 'combat_action', action: { type: 'END_COMBAT' } })}
+        <div className="flex h-full flex-col overflow-hidden">
+          {showAssets && sceneType ? (
+            <div className="flex-1 overflow-y-auto p-2">
+              <AssetPanel
+                sceneType={sceneType}
+                sceneId={activeScene?.id ?? ''}
+                campaignId={sessionState.campaignId}
+                heroCount={heroCount}
               />
-              <MalicePanel
-                malice={combat.malice}
-                isDirector
-                onAdjust={(delta) => send({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })}
-              />
-              <DamageDialog
-                entities={entities}
-                onApplyDamage={(entityId, amount) => send({ type: 'combat_action', action: { type: 'APPLY_DAMAGE', entityId, amount } })}
-                onApplyHealing={(entityId, amount) => send({ type: 'combat_action', action: { type: 'APPLY_HEALING', entityId, amount } })}
-              />
-              <div className="h-48">
-                <CombatLog entries={combatLog} entityNames={entityNames} />
-              </div>
-            </>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 p-4">
+              {combat && (
+                <>
+                  <CombatTracker
+                    combat={combat}
+                    entities={entities}
+                    isDirector
+                    onNextTurn={() => send({ type: 'combat_action', action: { type: 'NEXT_TURN' } })}
+                    onEndCombat={() => send({ type: 'combat_action', action: { type: 'END_COMBAT' } })}
+                  />
+                  <MalicePanel
+                    malice={combat.malice}
+                    isDirector
+                    onAdjust={(delta) => send({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })}
+                  />
+                  <DamageDialog
+                    entities={entities}
+                    onApplyDamage={(entityId, amount) => send({ type: 'combat_action', action: { type: 'APPLY_DAMAGE', entityId, amount } })}
+                    onApplyHealing={(entityId, amount) => send({ type: 'combat_action', action: { type: 'APPLY_HEALING', entityId, amount } })}
+                  />
+                  <div className="h-48">
+                    <CombatLog entries={combatLog} entityNames={entityNames} />
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       }
