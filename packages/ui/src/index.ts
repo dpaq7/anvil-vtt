@@ -55,5 +55,56 @@ export type { RoleToggleProps, UserRole } from './components/RoleToggle.js';
 export { AnvilIcon } from './components/icons/AnvilIcon.js';
 export type { AnvilIconProps } from './components/icons/AnvilIcon.js';
 
+// Table
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableCaption,
+} from './components/Table.js';
+
+// Badge
+export { Badge } from './components/Badge.js';
+export type { BadgeProps } from './components/Badge.js';
+
+// Textarea
+export { Textarea } from './components/Textarea.js';
+export type { TextareaProps } from './components/Textarea.js';
+
+// Progress
+export { Progress } from './components/Progress.js';
+
+// DropdownMenu
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+} from './components/DropdownMenu.js';
+
+// Select
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+} from './components/Select.js';
+
 // Utilities
 export { cn } from './lib/utils.js';
