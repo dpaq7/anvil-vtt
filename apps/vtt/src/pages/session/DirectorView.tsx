@@ -5,6 +5,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.js';
 import { AppShell, Button } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ParticipantInfo, AbilityResult } from '../../types/protocol.js';
+import type { MotivationType } from '@anvil/types';
 import type { ClientMessage } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
 import { FilmStrip } from '../../components/session/FilmStrip.js';
@@ -107,12 +108,12 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             phase={(sceneData['phase'] as 'active' | 'success' | 'failure') ?? 'active'}
             motivations={
               (sceneData['motivations'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (m) => ({ ...m, type: m.type as import('@anvil/types').MotivationType })
+                (m) => ({ ...m, type: m.type as MotivationType })
               ) ?? []
             }
             pitfalls={
               (sceneData['pitfalls'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (p) => ({ ...p, type: p.type as import('@anvil/types').MotivationType })
+                (p) => ({ ...p, type: p.type as MotivationType })
               ) ?? []
             }
             outcomes={(sceneData['outcomes'] as Record<number, string>) ?? {}}

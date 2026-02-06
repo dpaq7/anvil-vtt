@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Upload } from 'lucide-react';
+import { Plus, Upload, AlertCircle, RefreshCw } from 'lucide-react';
 import {
   Button,
   Input,
@@ -30,6 +30,87 @@ import { AudioUploadDialog } from '../components/assets/AudioUploadDialog.js';
 import { ALL_TERRAINS } from '@anvil/data';
 import type { Hero, AssetFolder } from '@anvil/types';
 import type { CompendiumMonster } from '@anvil/data';
+
+// ── Loading skeleton ──
+
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <div className="flex items-start gap-3">
+        <div className="size-10 shrink-0 rounded-md bg-zinc-800" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 w-2/3 rounded bg-zinc-800" />
+          <div className="h-2 w-1/2 rounded bg-zinc-800" />
+          <div className="flex gap-1">
+            <div className="h-4 w-12 rounded bg-zinc-800" />
+            <div className="h-4 w-10 rounded bg-zinc-800" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonGrid({ count = 8 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
+  );
+}
+
+// ── Empty state ──
+
+function EmptyState({
+  message,
+  action,
+}: {
+  message: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-12">
+      <p className="text-sm text-zinc-500">{message}</p>
+      {action}
+    </div>
+  );
+}
+
+// ── Error banner ──
+
+function ErrorBanner({
+  message,
+  onRetry,
+  onDismiss,
+}: {
+  message: string;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="mx-4 mt-2 flex items-center gap-3 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-2">
+      <AlertCircle className="size-4 shrink-0 text-red-400" />
+      <p className="flex-1 text-xs text-red-300">{message}</p>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 text-xs text-red-400 hover:text-red-300"
+        onClick={onRetry}
+      >
+        <RefreshCw className="mr-1 size-3" />
+        Retry
+      </Button>
+      <button
+        onClick={onDismiss}
+        className="text-xs text-zinc-500 hover:text-zinc-300"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 interface Campaign {
   id: string;
@@ -67,8 +148,6 @@ export function Assets() {
     setMapFilters,
     loadMaps,
     createMap,
-    updateMap,
-    deleteMap,
     loadNpcs,
     createNpc,
     updateNpc,
@@ -78,6 +157,8 @@ export function Assets() {
     createAudio,
     addSceneMonster,
     loading,
+    error,
+    clearError,
   } = useAssetsStore();
 
   // ── Heroes (loaded separately, not stored in assets store) ──
@@ -94,6 +175,19 @@ export function Assets() {
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
     // Heroes
+    api
+      .get<{ heroes: Hero[] }>(`/api/campaigns/${campaignId}/heroes`)
+      .then((data) => setHeroes(data.heroes))
+      .catch(() => setHeroes([]));
+  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio]);
+
+  // ── Reload current data ──
+  const reloadData = useCallback(() => {
+    if (!campaignId) return;
+    loadMaps(campaignId);
+    loadNpcs(campaignId);
+    loadCustomTerrain(campaignId);
+    loadAudio(campaignId);
     api
       .get<{ heroes: Hero[] }>(`/api/campaigns/${campaignId}/heroes`)
       .then((data) => setHeroes(data.heroes))
@@ -165,8 +259,18 @@ export function Assets() {
 
   // ── Content pane ──
   const renderContent = () => {
+    // Loading state
+    if (loading) {
+      return <SkeletonGrid />;
+    }
+
     switch (selectedFolder) {
       case 'heroes':
+        if (heroes.length === 0) {
+          return (
+            <EmptyState message="No heroes in this campaign yet. Heroes are added when players join a session." />
+          );
+        }
         return (
           <HeroGrid
             heroes={heroes}
@@ -174,7 +278,24 @@ export function Assets() {
             selectedId={selectedItemId}
           />
         );
+
       case 'npcs':
+        if (npcs.length === 0) {
+          return (
+            <EmptyState
+              message="No NPCs yet. Create your first NPC."
+              action={
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setNpcDialogOpen(true)}
+                >
+                  <Plus className="mr-1 size-3.5" /> New NPC
+                </Button>
+              }
+            />
+          );
+        }
         return (
           <NpcGrid
             npcs={npcs}
@@ -182,6 +303,7 @@ export function Assets() {
             selectedId={selectedItemId}
           />
         );
+
       case 'maps':
         return (
           <>
@@ -199,13 +321,31 @@ export function Assets() {
                 })
               }
             />
-            <MapGrid
-              maps={filteredMaps}
-              onSelect={(id) => setSelectedItemId(id)}
-              selectedId={selectedItemId}
-            />
+            {filteredMaps.length === 0 && maps.length === 0 ? (
+              <EmptyState
+                message="No maps yet. Upload your first map."
+                action={
+                  <MapUploadDialog
+                    onUpload={async (input, file) => {
+                      await createMap(campaignId, input, file);
+                    }}
+                  >
+                    <Button size="sm" variant="secondary">
+                      <Upload className="mr-1 size-3.5" /> Upload Map
+                    </Button>
+                  </MapUploadDialog>
+                }
+              />
+            ) : (
+              <MapGrid
+                maps={filteredMaps}
+                onSelect={(id) => setSelectedItemId(id)}
+                selectedId={selectedItemId}
+              />
+            )}
           </>
         );
+
       case 'bestiary':
         return (
           <BestiaryTable
@@ -216,6 +356,7 @@ export function Assets() {
             availableScenes={[]}
           />
         );
+
       case 'terrain':
         return (
           <TerrainGrid
@@ -225,7 +366,26 @@ export function Assets() {
             onSelectCustom={(id) => setSelectedItemId(id)}
           />
         );
+
       case 'audio':
+        if (audioAssets.length === 0) {
+          return (
+            <EmptyState
+              message="No audio assets yet. Upload your first track."
+              action={
+                <AudioUploadDialog
+                  onUpload={async (input, file) => {
+                    await createAudio(campaignId, input, file);
+                  }}
+                >
+                  <Button size="sm" variant="secondary">
+                    <Upload className="mr-1 size-3.5" /> Upload Audio
+                  </Button>
+                </AudioUploadDialog>
+              }
+            />
+          );
+        }
         return (
           <AudioGrid
             audioAssets={audioAssets}
@@ -332,6 +492,15 @@ export function Assets() {
             {renderToolbar()}
           </div>
         </div>
+
+        {/* Error banner */}
+        {error && (
+          <ErrorBanner
+            message={error}
+            onRetry={reloadData}
+            onDismiss={clearError}
+          />
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">{renderContent()}</div>

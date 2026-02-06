@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { Card, CardHeader, CardTitle, Badge, Input, Button } from '@anvil/ui';
-import { RespiteLogic } from '@anvil/data';
 import type { CreateActivityCardInput, ActivityCardType } from '@anvil/types';
 
 // ── Activity metadata ──

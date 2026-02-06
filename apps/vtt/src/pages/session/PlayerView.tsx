@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { AppShell } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
+import type { MotivationType } from '@anvil/types';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
@@ -84,12 +85,12 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             phase={(sceneData['phase'] as 'active' | 'success' | 'failure') ?? 'active'}
             motivations={
               (sceneData['motivations'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (m) => ({ ...m, type: m.type as import('@anvil/types').MotivationType })
+                (m) => ({ ...m, type: m.type as MotivationType })
               ) ?? []
             }
             pitfalls={
               (sceneData['pitfalls'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (p) => ({ ...p, type: p.type as import('@anvil/types').MotivationType })
+                (p) => ({ ...p, type: p.type as MotivationType })
               ) ?? []
             }
             outcomes={(sceneData['outcomes'] as Record<number, string>) ?? {}}

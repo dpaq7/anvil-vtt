@@ -25,7 +25,6 @@ export function MontageTestTracker({
     test.maxFailures,
   );
 
-  const outcomeLabel = MontageLogic.getOutcomeDescription(outcome);
   const isComplete = MontageLogic.isMontageComplete(outcome);
 
   const handleAddSuccess = useCallback(() => {

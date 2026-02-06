@@ -124,7 +124,7 @@ async function uploadFile(file: File, assetType: string): Promise<string> {
 
 // ── Store ──
 
-export const useAssetsStore = create<AssetsState>((set, get) => ({
+export const useAssetsStore = create<AssetsState>((set, _get) => ({
   // Initial state
   selectedFolder: 'heroes',
   maps: [],

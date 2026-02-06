@@ -173,17 +173,17 @@ export function BestiaryTable({ monsters, compact, onAddToScene, availableScenes
             </TableHeader>
             <TableBody>
               {filtered.map((monster) => {
-                const isExpanded = expandedId === monster.id;
+                const isExpanded = expandedId === monster._id;
                 const minionFlag = checkIsMinion(monster);
                 const primaryRole = monster.roles?.[0] ?? 'Standard';
 
                 return (
-                  <Collapsible key={monster.id} open={isExpanded} asChild>
+                  <Collapsible key={monster._id} open={isExpanded} asChild>
                     <>
                       <CollapsibleTrigger asChild>
                         <TableRow
                           className="cursor-pointer hover:bg-zinc-800/50"
-                          onClick={() => setExpandedId(isExpanded ? null : monster.id)}
+                          onClick={() => setExpandedId(isExpanded ? null : monster._id)}
                         >
                           <TableCell className="px-2">
                             {isExpanded ? (
