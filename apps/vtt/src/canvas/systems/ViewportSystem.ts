@@ -18,6 +18,10 @@ export class ViewportSystem {
   private lastPointerX = 0;
   private lastPointerY = 0;
   private config: ViewportConfig;
+  private leftClickPanEnabled = false;
+
+  /** Optional callback invoked whenever zoom changes (for React state sync). */
+  onZoomChange: ((zoom: number) => void) | null = null;
 
   constructor(
     private world: Container,
@@ -61,11 +65,19 @@ export class ViewportSystem {
     this.panX = cx - worldX * this.zoom;
     this.panY = cy - worldY * this.zoom;
     this.apply();
+    this.onZoomChange?.(this.zoom);
   };
 
   private onPointerDown = (e: PointerEvent): void => {
     // Middle mouse or right mouse for panning
     if (e.button === 1 || e.button === 2) {
+      this.isPanning = true;
+      this.lastPointerX = e.clientX;
+      this.lastPointerY = e.clientY;
+      e.preventDefault();
+    }
+    // Left click pan when enabled (pan tool / Space key)
+    if (e.button === 0 && this.leftClickPanEnabled) {
       this.isPanning = true;
       this.lastPointerX = e.clientX;
       this.lastPointerY = e.clientY;
@@ -107,5 +119,71 @@ export class ViewportSystem {
 
   getZoom(): number {
     return this.zoom;
+  }
+
+  getPan(): { x: number; y: number } {
+    return { x: this.panX, y: this.panY };
+  }
+
+  /** Set zoom level programmatically, clamped to [minZoom, maxZoom]. */
+  setZoom(zoom: number): void {
+    const clamped = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, zoom));
+    // Zoom toward canvas center
+    const rect = this.canvas.getBoundingClientRect();
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const worldX = (cx - this.panX) / this.zoom;
+    const worldY = (cy - this.panY) / this.zoom;
+    this.zoom = clamped;
+    this.panX = cx - worldX * this.zoom;
+    this.panY = cy - worldY * this.zoom;
+    this.apply();
+    this.onZoomChange?.(this.zoom);
+  }
+
+  /** Zoom in by one step (0.25). */
+  zoomIn(): void {
+    this.setZoom(this.zoom + 0.25);
+  }
+
+  /** Zoom out by one step (0.25). */
+  zoomOut(): void {
+    this.setZoom(this.zoom - 0.25);
+  }
+
+  /** Fit a world-space rectangle into the viewport, centered. */
+  fitToRect(worldWidth: number, worldHeight: number): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = rect.width / worldWidth;
+    const scaleY = rect.height / worldHeight;
+    const zoom = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, Math.min(scaleX, scaleY) * 0.95));
+    this.zoom = zoom;
+    this.panX = (rect.width - worldWidth * zoom) / 2;
+    this.panY = (rect.height - worldHeight * zoom) / 2;
+    this.apply();
+    this.onZoomChange?.(this.zoom);
+  }
+
+  /** Convert grid coords to screen coords (for positioning DOM overlays). */
+  gridToScreen(gridX: number, gridY: number, cellSize: number): { screenX: number; screenY: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const worldX = gridX * cellSize;
+    const worldY = gridY * cellSize;
+    return {
+      screenX: worldX * this.zoom + this.panX + rect.left,
+      screenY: worldY * this.zoom + this.panY + rect.top,
+    };
+  }
+
+  /** Set pan position directly. */
+  setPan(x: number, y: number): void {
+    this.panX = x;
+    this.panY = y;
+    this.apply();
+  }
+
+  /** Enable or disable left-click (button 0) panning. */
+  setLeftClickPanEnabled(enabled: boolean): void {
+    this.leftClickPanEnabled = enabled;
   }
 }

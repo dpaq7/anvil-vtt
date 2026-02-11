@@ -30,7 +30,7 @@ export function MapFilterBar({ filters, onChange, onClear }: MapFilterBarProps) 
       {/* Scene Type */}
       <Select
         value={filters.sceneType ?? ''}
-        onValueChange={(v) => onChange({ sceneType: (v || undefined) as SceneType | undefined })}
+        onValueChange={(v: string) => onChange({ sceneType: (v || undefined) as SceneType | undefined })}
       >
         <SelectTrigger className="h-8 w-[130px] text-xs">
           <SelectValue placeholder="Scene type" />
@@ -47,7 +47,7 @@ export function MapFilterBar({ filters, onChange, onClear }: MapFilterBarProps) 
       {/* Grid Type */}
       <Select
         value={filters.gridType ?? ''}
-        onValueChange={(v) => onChange({ gridType: (v || undefined) as GridType | undefined })}
+        onValueChange={(v: string) => onChange({ gridType: (v || undefined) as GridType | undefined })}
       >
         <SelectTrigger className="h-8 w-[110px] text-xs">
           <SelectValue placeholder="Grid" />
@@ -64,7 +64,7 @@ export function MapFilterBar({ filters, onChange, onClear }: MapFilterBarProps) 
       {/* Size */}
       <Select
         value={filters.size ?? ''}
-        onValueChange={(v) => onChange({ size: (v || undefined) as MapSize | undefined })}
+        onValueChange={(v: string) => onChange({ size: (v || undefined) as MapSize | undefined })}
       >
         <SelectTrigger className="h-8 w-[100px] text-xs">
           <SelectValue placeholder="Size" />

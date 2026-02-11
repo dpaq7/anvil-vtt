@@ -5,6 +5,23 @@
 @source "../../../apps/vtt/src/**/*.{ts,tsx}";
 
 @theme {
+  /* ------------------------------------------------------------------ */
+  /*  Site-wide dark theme — creator color scheme applied to zinc stops  */
+  /* ------------------------------------------------------------------ */
+
+  /* Override Tailwind zinc palette with warm earthy creator tones */
+  --color-zinc-950: #242423;     /* deepest background (page bg) */
+  --color-zinc-900: #2d2d2c;     /* card / panel backgrounds */
+  --color-zinc-800: #363635;     /* elevated surfaces, hover states */
+  --color-zinc-700: #4a4a49;     /* borders */
+  --color-zinc-600: #5a5a58;     /* subtle borders, dividers */
+  --color-zinc-500: #7a9998;     /* muted text, placeholders */
+  --color-zinc-400: #8ab0af;     /* secondary text */
+  --color-zinc-300: #a0c4c3;     /* emphasized secondary text */
+  --color-zinc-200: #b7d5d4;     /* strong text */
+  --color-zinc-100: #c8e0df;     /* primary text */
+  --color-zinc-50:  #d4e8e7;     /* brightest text */
+
   /* Scene mode colors */
   --color-scene-battle: #ef4444;
   --color-scene-story: #a855f7;
@@ -12,10 +29,10 @@
   --color-scene-negotiation: #3b82f6;
   --color-scene-respite: #22c55e;
 
-  /* Accent */
-  --color-anvil-accent: #f59e0b;
+  /* Accent — warm yellow highlight from creator palette */
+  --color-anvil-accent: #efea5a;
 
-  /* Hero Creator color scheme */
+  /* Creator color scheme — semantic aliases (still available) */
   --color-creator-bg: #363635;
   --color-creator-highlight: #efea5a;
   --color-creator-text: #b7d5d4;
@@ -24,7 +41,7 @@
   --color-creator-card: #2d2d2c;
   --color-creator-card-hover: #404040;
 
-  /* Role-based sidebar colors */
+  /* Role-based sidebar colors (preserved — not affected by zinc overrides) */
   --color-sidebar-director: #E2B4BD;
   --color-sidebar-player: #9A7197;
 

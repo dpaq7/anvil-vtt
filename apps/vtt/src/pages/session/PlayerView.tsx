@@ -2,11 +2,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { AppShell } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
-import type { MotivationType } from '@anvil/types';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
+import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleData } from '../../lib/scene-data.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
-import { StatusBar } from '../../components/session/StatusBar.js';
+import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
 import { MalicePanel } from '../../components/session/MalicePanel.js';
 import { AbilityPanel } from '../../components/session/AbilityPanel.js';
@@ -61,63 +61,69 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
     switch (sceneType) {
       case 'story':
         return <StoryStage readAloudText={(sceneData['readAloud'] as string) ?? ''} isDirector={false} />;
-      case 'montage':
+      case 'montage': {
+        const montage = parseMontageData(sceneData);
         return (
           <MontageStage
-            goal={(sceneData['goal'] as string) ?? ''}
+            goal={montage.goal}
             currentSuccesses={0}
-            successLimit={(sceneData['successesNeeded'] as number) ?? 5}
+            successLimit={montage.successLimit}
             currentFailures={0}
-            failureLimit={(sceneData['failureLimit'] as number) ?? 3}
+            failureLimit={montage.failureLimit}
             outcome="pending"
-            challenges={(sceneData['challenges'] as { id: string; name: string; completed: boolean }[]) ?? []}
+            challenges={montage.challenges}
             isDirector={false}
           />
         );
-      case 'negotiation':
+      }
+      case 'negotiation': {
+        const neg = parseNegotiationData(sceneData);
         return (
           <NegotiationStage
-            npcName={(sceneData['npcName'] as string) ?? 'NPC'}
-            npcAttitude={(sceneData['npcAttitude'] as string) ?? 'neutral'}
-            interest={(sceneData['interest'] as number) ?? 0}
-            patience={(sceneData['patience'] as number) ?? 3}
-            maxPatience={(sceneData['maxPatience'] as number) ?? 5}
-            phase={(sceneData['phase'] as 'active' | 'success' | 'failure') ?? 'active'}
-            motivations={
-              (sceneData['motivations'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (m) => ({ ...m, type: m.type as MotivationType })
-              ) ?? []
-            }
-            pitfalls={
-              (sceneData['pitfalls'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (p) => ({ ...p, type: p.type as MotivationType })
-              ) ?? []
-            }
-            outcomes={(sceneData['outcomes'] as Record<number, string>) ?? {}}
+            npcName={neg.npcName}
+            npcPortrait={neg.npcPortrait}
+            npcAttitude={neg.npcAttitude}
+            interest={neg.interest}
+            patience={neg.patience}
+            maxPatience={neg.maxPatience}
+            phase={neg.phase}
+            motivations={neg.motivations}
+            pitfalls={neg.pitfalls}
+            outcomes={neg.outcomes}
             isDirector={false}
           />
         );
-      case 'respite':
+      }
+      case 'respite': {
+        const respite = parseRespiteData(sceneData);
         return (
           <RespiteStage
-            location={(sceneData['location'] as string) ?? ''}
-            activities={(sceneData['activities'] as { heroName: string; activityType: string; completed: boolean }[]) ?? []}
-            projects={(sceneData['projects'] as { id: string; name: string; currentPoints: number; goalPoints: number }[]) ?? []}
+            location={respite.location}
+            activities={respite.activities}
+            projects={respite.projects}
             completed={false}
             isDirector={false}
           />
         );
-      case 'battle':
+      }
+      case 'battle': {
+        const battle = parseBattleData(sceneData);
         return (
           <BattleStage
             entities={entities}
             combat={combat}
             selectedEntityId={selectedEntityId}
             isDirector={false}
+            cols={battle.cols}
+            rows={battle.rows}
+            backgroundUrl={battle.backgroundUrl}
+            combatLog={combatLog}
+            entityNames={entityNames}
             onSelectEntity={setSelectedEntityId}
             send={send}
           />
         );
+      }
       default:
         return (
           <div className="flex h-full items-center justify-center text-zinc-500">
@@ -167,10 +173,9 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
         ) : undefined
       }
       statusBar={
-        <StatusBar
-          sceneType={sceneType}
+        <ParticipantStatusBar
+          participants={participants}
           connectionStatus={connectionStatus}
-          participantCount={participants.length}
         />
       }
     >

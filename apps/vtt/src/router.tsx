@@ -14,6 +14,7 @@ import { Home } from './pages/Home.js';
 import { Assets } from './pages/Assets.js';
 import { Notes } from './pages/Notes.js';
 import { SessionPage } from './pages/session/SessionPage.js';
+import { LivePage } from './pages/LivePage.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { AppLayout } from './components/layout/AppLayout.js';
 
@@ -47,6 +48,10 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <Home />,
+      },
+      {
+        path: 'live',
+        element: <LivePage />,
       },
       {
         path: 'campaigns',

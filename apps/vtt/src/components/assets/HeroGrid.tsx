@@ -1,18 +1,19 @@
 import { User } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '@anvil/ui';
-import type { Hero } from '@anvil/types';
+import type { HeroSummary } from '@anvil/types';
 
 export interface HeroGridProps {
-  heroes: Hero[];
+  heroes: HeroSummary[];
   onSelect: (heroId: string) => void;
   selectedId?: string | null;
   compact?: boolean;
 }
 
-function classLabel(hero: Hero): string {
-  const base = hero.heroClass.charAt(0).toUpperCase() + hero.heroClass.slice(1);
-  // subclass label when available
-  const sub = 'subclass' in hero && hero.subclass ? ` (${String(hero.subclass)})` : '';
+function classLabel(hero: HeroSummary): string {
+  const cls = hero.heroClass ?? '';
+  if (!cls) return 'Unknown Class';
+  const base = cls.charAt(0).toUpperCase() + cls.slice(1);
+  const sub = hero.subclass ? ` (${hero.subclass})` : '';
   return `${base}${sub}`;
 }
 
@@ -52,9 +53,6 @@ export function HeroGrid({ heroes, onSelect, selectedId, compact }: HeroGridProp
             </div>
             <div className="min-w-0 flex-1">
               <CardTitle className="truncate text-sm font-bold">{hero.name}</CardTitle>
-              {hero.title && (
-                <p className="truncate text-xs text-zinc-400">{hero.title}</p>
-              )}
               <p className="mt-0.5 text-xs text-zinc-500">{classLabel(hero)}</p>
             </div>
           </CardHeader>
@@ -65,17 +63,17 @@ export function HeroGrid({ heroes, onSelect, selectedId, compact }: HeroGridProp
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                 Lv {hero.level}
               </Badge>
-              <span className="truncate text-xs text-zinc-400">{hero.ancestry.name}</span>
+              <span className="truncate text-xs text-zinc-400">{hero.ancestry?.name ?? 'Unknown'}</span>
             </div>
 
             {/* Stat chips */}
             {!compact && (
               <div className="flex flex-wrap gap-1">
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                  HP {hero.stamina.current}/{hero.stamina.max}
+                  HP {hero.staminaCurrent ?? hero.staminaMax ?? 0}/{hero.staminaMax ?? 0}
                 </Badge>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                  Rec {hero.recoveries.current}/{hero.recoveries.max}
+                  Rec {hero.recoveriesCurrent ?? hero.recoveriesMax ?? 0}/{hero.recoveriesMax ?? 0}
                 </Badge>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                   Vic {hero.victories}

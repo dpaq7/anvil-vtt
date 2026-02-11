@@ -1,4 +1,5 @@
-import { Music } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Music, Pause, Play } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '@anvil/ui';
 import type { AudioAsset } from '@anvil/types';
 
@@ -26,6 +27,50 @@ function formatDuration(seconds: number | null): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// ---------------------------------------------------------------------------
+// Playback icon — shows Music notes by default, Play/Pause on hover
+// ---------------------------------------------------------------------------
+
+interface PlaybackIconProps {
+  isPlaying: boolean;
+  onToggle: () => void;
+}
+
+function PlaybackIcon({ isPlaying, onToggle }: PlaybackIconProps) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      className={`group/play flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors ${
+        isPlaying
+          ? 'bg-purple-600/30'
+          : 'bg-zinc-800 hover:bg-zinc-700'
+      }`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={(e) => {
+        e.stopPropagation(); // don't trigger card onSelect
+        onToggle();
+      }}
+      title={isPlaying ? 'Pause' : 'Play'}
+    >
+      {hovered || isPlaying ? (
+        isPlaying ? (
+          <Pause className="size-5 text-purple-400" />
+        ) : (
+          <Play className="size-5 text-zinc-300" />
+        )
+      ) : (
+        <Music className="size-5 text-zinc-500" />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AudioGrid
+// ---------------------------------------------------------------------------
+
 export interface AudioGridProps {
   audioAssets: AudioAsset[];
   onSelect: (audioId: string) => void;
@@ -34,6 +79,65 @@ export interface AudioGridProps {
 }
 
 export function AudioGrid({ audioAssets, onSelect, selectedId, compact }: AudioGridProps) {
+  // Single shared Audio element — only one track plays at a time
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+
+  // Tear down audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const togglePlay = useCallback(
+    (asset: AudioAsset) => {
+      // If this track is already playing, pause it
+      if (playingId === asset.id) {
+        audioRef.current?.pause();
+        setPlayingId(null);
+        return;
+      }
+
+      // Stop any currently playing track
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+        audioRef.current = null;
+      }
+
+      // Derive the URL from the asset ID when audioUrl isn't populated
+      const url = asset.audioUrl ?? (asset.assetId ? `/api/assets/${asset.assetId}/data` : null);
+      if (!url) return;
+
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.crossOrigin = 'anonymous';
+      audio.volume = 0.5;
+      audioRef.current = audio;
+
+      const onEnded = () => setPlayingId(null);
+      const onError = () => setPlayingId(null);
+      audio.addEventListener('ended', onEnded);
+      audio.addEventListener('error', onError);
+
+      audio.src = url;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setPlayingId(asset.id))
+          .catch(() => setPlayingId(null));
+      }
+    },
+    [playingId],
+  );
+
   if (audioAssets.length === 0) {
     return <p className="p-8 text-center text-zinc-500">No audio assets yet.</p>;
   }
@@ -55,9 +159,10 @@ export function AudioGrid({ audioAssets, onSelect, selectedId, compact }: AudioG
           onClick={() => onSelect(audio.id)}
         >
           <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-              <Music className="size-5 text-zinc-500" />
-            </div>
+            <PlaybackIcon
+              isPlaying={playingId === audio.id}
+              onToggle={() => togglePlay(audio)}
+            />
             <div className="min-w-0 flex-1">
               <CardTitle className="truncate text-sm font-bold">{audio.name}</CardTitle>
               <div className="mt-1 flex items-center gap-2">

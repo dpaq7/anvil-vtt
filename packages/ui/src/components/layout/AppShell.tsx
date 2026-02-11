@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { cn } from '../../lib/utils.js';
 
 export interface AppShellProps {
@@ -20,6 +21,22 @@ export function AppShell({
   statusBar,
   className,
 }: AppShellProps) {
+  const hasLeft = leftRail != null;
+  const hasRight = rightRail != null;
+
+  // Build panel IDs based on which rails are present
+  const panelIds = [
+    ...(hasLeft ? ['left-rail'] : []),
+    'stage',
+    ...(hasRight ? ['right-rail'] : []),
+  ];
+
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: 'anvil-shell',
+    panelIds,
+    storage: typeof window !== 'undefined' ? localStorage : undefined,
+  });
+
   return (
     <div className={cn('flex h-screen flex-col bg-zinc-950 text-zinc-100', className)}>
       {/* Top Bar */}
@@ -27,28 +44,57 @@ export function AppShell({
         {topBar ?? <span className="text-sm font-semibold text-zinc-300">Anvil VTT</span>}
       </header>
 
-      {/* Main content area */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main content area — resizable panels */}
+      <Group
+        orientation="horizontal"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+        className="flex-1"
+      >
         {/* Left Rail */}
-        <aside className="w-60 shrink-0 overflow-y-auto border-r border-zinc-800 bg-zinc-900/50">
-          {leftRail ?? <div className="p-4 text-xs text-zinc-500">Navigation</div>}
-        </aside>
+        {hasLeft && (
+          <>
+            <Panel
+              id="left-rail"
+              defaultSize={15}
+              minSize="10%"
+              maxSize="30%"
+              className="overflow-y-auto bg-zinc-900/50"
+            >
+              {leftRail}
+            </Panel>
+            <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
+          </>
+        )}
 
         {/* Stage */}
-        <main className="flex-1 overflow-y-auto">
+        <Panel id="stage" className="overflow-y-auto">
           {children}
-        </main>
+        </Panel>
 
         {/* Right Rail */}
-        <aside className="w-72 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-900/50">
-          {rightRail ?? <div className="p-4 text-xs text-zinc-500">Details</div>}
-        </aside>
-      </div>
+        {hasRight && (
+          <>
+            <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
+            <Panel
+              id="right-rail"
+              defaultSize={20}
+              minSize="12%"
+              maxSize="40%"
+              className="overflow-y-auto bg-zinc-900/50"
+            >
+              {rightRail}
+            </Panel>
+          </>
+        )}
+      </Group>
 
-      {/* Film Strip */}
-      <div className="h-14 shrink-0 border-t border-zinc-800 bg-zinc-900/50">
-        {filmStrip ?? <div className="flex h-full items-center px-4 text-xs text-zinc-500">Film Strip</div>}
-      </div>
+      {/* Film Strip — only rendered when explicitly provided */}
+      {filmStrip && (
+        <div className="h-14 shrink-0 border-t border-zinc-800 bg-zinc-900/50">
+          {filmStrip}
+        </div>
+      )}
 
       {/* Status Bar */}
       <footer className="flex h-6 shrink-0 items-center border-t border-zinc-800 bg-zinc-900 px-4 text-xs text-zinc-500">

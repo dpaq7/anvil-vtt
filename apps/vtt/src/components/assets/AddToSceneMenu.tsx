@@ -34,7 +34,18 @@ const MINION_FORMATIONS = [
 
 export function AddToSceneMenu({ monsterName, isMinion, availableScenes, onAdd }: AddToSceneMenuProps) {
   if (availableScenes.length === 0) {
-    return null;
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 opacity-40"
+        disabled
+        title="No scenes available — create a session with scenes first"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Plus className="size-3.5" />
+      </Button>
+    );
   }
 
   return (

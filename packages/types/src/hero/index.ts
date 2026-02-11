@@ -3,6 +3,9 @@
  * Complete character type system from Mettle
  */
 
+// Summary type for list/card views
+export * from './summary.js';
+
 // Core shared types
 export * from './common.js';
 export * from './abilities.js';

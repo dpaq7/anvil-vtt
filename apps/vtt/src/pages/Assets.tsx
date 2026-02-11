@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, Upload, AlertCircle, RefreshCw } from 'lucide-react';
 import {
   Button,
@@ -23,13 +24,29 @@ import { NpcDetailPane } from '../components/assets/NpcDetailPane.js';
 import { MapGrid } from '../components/assets/MapGrid.js';
 import { MapFilterBar } from '../components/assets/MapFilterBar.js';
 import { MapUploadDialog } from '../components/assets/MapUploadDialog.js';
+import { MapDetailPane } from '../components/assets/MapDetailPane.js';
 import { BestiaryTable } from '../components/assets/BestiaryTable.js';
 import { TerrainGrid } from '../components/assets/TerrainGrid.js';
 import { AudioGrid } from '../components/assets/AudioGrid.js';
 import { AudioUploadDialog } from '../components/assets/AudioUploadDialog.js';
-import { ALL_TERRAINS } from '@anvil/data';
-import type { Hero, AssetFolder } from '@anvil/types';
+import { ALL_TERRAINS, loadMonsters, isMonsterStatblock, FORGESTEEL_MONSTERS } from '@anvil/data';
+import type { HeroSummary, AssetFolder, SceneType } from '@anvil/types';
 import type { CompendiumMonster } from '@anvil/data';
+
+interface Scene {
+  id: string;
+  title: string;
+  type: SceneType;
+  game_session_id: string;
+  order_index: number;
+}
+
+interface Session {
+  id: string;
+  name: string;
+  campaign_id: string;
+  status: string;
+}
 
 // ── Loading skeleton ──
 
@@ -148,6 +165,8 @@ export function Assets() {
     setMapFilters,
     loadMaps,
     createMap,
+    updateMap,
+    deleteMap,
     loadNpcs,
     createNpc,
     updateNpc,
@@ -162,23 +181,68 @@ export function Assets() {
   } = useAssetsStore();
 
   // ── Heroes (loaded separately, not stored in assets store) ──
-  const [heroes, setHeroes] = useState<Hero[]>([]);
+  const [heroes, setHeroes] = useState<HeroSummary[]>([]);
+
+  // ── Scenes for add-to-scene dropdown ──
+  const [scenes, setScenes] = useState<Array<{ id: string; name: string; sceneType: string }>>([]);
 
   // ── Monster data (from @anvil/data compendium — read-only) ──
-  const [monsters] = useState<CompendiumMonster[]>([]);
+  const [monsters, setMonsters] = useState<CompendiumMonster[]>([]);
 
-  // ── Load data when campaign changes ──
+  // ── Load bestiary from compendium on mount (once) ──
+  useEffect(() => {
+    loadMonsters()
+      .then((data) => {
+        const statblocks = data.items.filter(isMonsterStatblock) as CompendiumMonster[];
+        // Merge in supplementary Forgesteel monsters, dedup by _id
+        const ids = new Set(statblocks.map((m) => m._id));
+        const supplementary = FORGESTEEL_MONSTERS.filter((m) => !ids.has(m._id));
+        const all = [...statblocks, ...supplementary].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        setMonsters(all);
+      })
+      .catch(() => setMonsters([]));
+  }, []);
+
+  // ── Load campaign data when campaign changes ──
   useEffect(() => {
     if (!campaignId) return;
     loadMaps(campaignId);
     loadNpcs(campaignId);
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
-    // Heroes
+
+    // Heroes (user-scoped, not campaign-scoped)
     api
-      .get<{ heroes: Hero[] }>(`/api/campaigns/${campaignId}/heroes`)
-      .then((data) => setHeroes(data.heroes))
+      .get<HeroSummary[]>('/api/heroes')
+      .then((data) => setHeroes(data))
       .catch(() => setHeroes([]));
+
+    // Load sessions → scenes for add-to-scene dropdown
+    api
+      .get<{ sessions: Session[] }>(`/api/campaigns/${campaignId}/sessions`)
+      .then(async (sessionsData) => {
+        const allScenes: Array<{ id: string; name: string; sceneType: string }> = [];
+        for (const session of sessionsData.sessions) {
+          try {
+            const scenesData = await api.get<{ scenes: Scene[] }>(
+              `/api/sessions/${session.id}/scenes`,
+            );
+            for (const scene of scenesData.scenes) {
+              allScenes.push({
+                id: scene.id,
+                name: `${scene.title} (${session.name})`,
+                sceneType: scene.type,
+              });
+            }
+          } catch {
+            // Skip sessions we can't fetch scenes for
+          }
+        }
+        setScenes(allScenes);
+      })
+      .catch(() => setScenes([]));
   }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio]);
 
   // ── Reload current data ──
@@ -189,8 +253,8 @@ export function Assets() {
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
     api
-      .get<{ heroes: Hero[] }>(`/api/campaigns/${campaignId}/heroes`)
-      .then((data) => setHeroes(data.heroes))
+      .get<HeroSummary[]>('/api/heroes')
+      .then((data) => setHeroes(data))
       .catch(() => setHeroes([]));
   }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio]);
 
@@ -222,6 +286,12 @@ export function Assets() {
   const selectedNpc = useMemo(
     () => (selectedFolder === 'npcs' ? npcs.find((n) => n.id === selectedItemId) : undefined),
     [selectedFolder, npcs, selectedItemId],
+  );
+
+  // ── Selected Map for detail pane ──
+  const selectedMap = useMemo(
+    () => (selectedFolder === 'maps' ? maps.find((m) => m.id === selectedItemId) : undefined),
+    [selectedFolder, maps, selectedItemId],
   );
 
   // ── Filtered maps ──
@@ -268,7 +338,16 @@ export function Assets() {
       case 'heroes':
         if (heroes.length === 0) {
           return (
-            <EmptyState message="No heroes in this campaign yet. Heroes are added when players join a session." />
+            <EmptyState
+              message="No heroes yet. Create your first hero."
+              action={
+                <Link to="/app/heroes/new">
+                  <Button size="sm" variant="secondary">
+                    <Plus className="mr-1 size-3.5" /> Create Hero
+                  </Button>
+                </Link>
+              }
+            />
           );
         }
         return (
@@ -350,10 +429,10 @@ export function Assets() {
         return (
           <BestiaryTable
             monsters={monsters}
-            onAddToScene={(monsterName, quantity, sceneId) =>
-              addSceneMonster(sceneId, { monsterName, quantity })
+            onAddToScene={(monsterName, quantity, targetSceneId) =>
+              addSceneMonster(targetSceneId, { monsterName, quantity })
             }
-            availableScenes={[]}
+            availableScenes={scenes}
           />
         );
 
@@ -399,6 +478,14 @@ export function Assets() {
   // ── Toolbar per folder ──
   const renderToolbar = () => {
     switch (selectedFolder) {
+      case 'heroes':
+        return (
+          <Link to="/app/heroes/new">
+            <Button size="sm" variant="secondary">
+              <Plus className="mr-1 size-3.5" /> Create Hero
+            </Button>
+          </Link>
+        );
       case 'npcs':
         return (
           <Dialog open={npcDialogOpen} onOpenChange={setNpcDialogOpen}>
@@ -473,7 +560,7 @@ export function Assets() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-semibold capitalize text-zinc-200">{selectedFolder}</h2>
             {campaigns.length > 1 && (
-              <Select value={campaignId} onValueChange={(v) => setCampaignId(v)}>
+              <Select value={campaignId} onValueChange={(v: string) => setCampaignId(v)}>
                 <SelectTrigger className="h-7 w-[160px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -506,12 +593,21 @@ export function Assets() {
         <div className="flex-1 overflow-y-auto">{renderContent()}</div>
       </div>
 
-      {/* Detail pane (NPC only for now) */}
+      {/* Detail pane — contextual right sidebar */}
       {selectedNpc && (
         <NpcDetailPane
           npc={selectedNpc}
           onUpdate={(npcId, input) => updateNpc(campaignId, npcId, input)}
           onDelete={(npcId) => deleteNpc(campaignId, npcId)}
+          onClose={() => setSelectedItemId(null)}
+        />
+      )}
+      {selectedMap && (
+        <MapDetailPane
+          key={selectedMap.id}
+          map={selectedMap}
+          onUpdate={(mapId, input) => updateMap(campaignId, mapId, input)}
+          onDelete={(mapId) => deleteMap(campaignId, mapId)}
           onClose={() => setSelectedItemId(null)}
         />
       )}

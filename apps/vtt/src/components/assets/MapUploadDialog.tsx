@@ -162,7 +162,7 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
               <label className="mb-1 block text-xs font-medium text-zinc-400">Scene Type</label>
               <Select
                 value={sceneType}
-                onValueChange={(v) => setSceneType(v as SceneType)}
+                onValueChange={(v: string) => setSceneType(v as SceneType)}
               >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder="Any" />
@@ -179,7 +179,7 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
 
             <div>
               <label className="mb-1 block text-xs font-medium text-zinc-400">Grid</label>
-              <Select value={gridType} onValueChange={(v) => setGridType(v as GridType)}>
+              <Select value={gridType} onValueChange={(v: string) => setGridType(v as GridType)}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -195,7 +195,7 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
 
             <div>
               <label className="mb-1 block text-xs font-medium text-zinc-400">Size</label>
-              <Select value={size} onValueChange={(v) => setSize(v as MapSize)}>
+              <Select value={size} onValueChange={(v: string) => setSize(v as MapSize)}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>

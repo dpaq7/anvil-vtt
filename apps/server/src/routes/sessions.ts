@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { getSessionCookie } from '../middleware/auth.js';
 
 export const sessionRoutes = new Hono<AppEnv>();
 
@@ -21,12 +20,12 @@ sessionRoutes.get('/sessions/by-code/:code', async (c) => {
   return c.json({ session });
 });
 
-// WebSocket upgrade — forwards to SessionRoom DO
-sessionRoutes.get('/sessions/:id/ws', async (c) => {
+// Issue a short-lived WS token (valid 30s) — lets the client auth without cookies on the WS upgrade
+sessionRoutes.post('/sessions/:id/ws-token', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  // Verify session exists and user is a campaign member
+  // Verify session exists and user has access
   const session = await c.env.DB.prepare(
     `SELECT gs.id, gs.campaign_id, gs.status, c.director_id
      FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
@@ -40,35 +39,27 @@ sessionRoutes.get('/sessions/:id/ws', async (c) => {
 
   const role = session.director_id === user.id ? 'director' : 'player';
 
-  // Forward to Durable Object
-  const doId = c.env.SESSION_ROOM.idFromName(sessionId);
-  const stub = c.env.SESSION_ROOM.get(doId);
-
-  const wsUrl = new URL('/ws', 'https://do');
-  wsUrl.searchParams.set('userId', user.id);
-  wsUrl.searchParams.set('username', user.username);
-  wsUrl.searchParams.set('avatarUrl', user.avatarUrl ?? '');
-  wsUrl.searchParams.set('role', role);
-  wsUrl.searchParams.set('sessionId', sessionId);
-  wsUrl.searchParams.set('campaignId', session.campaign_id);
-
   // Get participant's hero ID if they have one
   const participant = await c.env.DB.prepare(
     'SELECT hero_id FROM session_participants WHERE game_session_id = ? AND user_id = ?',
   )
     .bind(sessionId, user.id)
     .first<{ hero_id: string | null }>();
-  if (participant?.hero_id) {
-    wsUrl.searchParams.set('heroId', participant.hero_id);
-  }
 
-  // Create a new request with the upgrade headers
-  const upgradeRequest = new Request(wsUrl.toString(), {
-    headers: c.req.raw.headers,
-  });
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 30_000).toISOString();
 
-  return stub.fetch(upgradeRequest);
+  await c.env.DB.prepare(
+    'INSERT INTO ws_tokens (id, user_id, session_id, campaign_id, role, hero_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  )
+    .bind(token, user.id, sessionId, session.campaign_id, role, participant?.hero_id ?? null, expiresAt)
+    .run();
+
+  return c.json({ token });
 });
+
+// NOTE: WebSocket upgrade route (GET /sessions/:id/ws) is registered directly on the app
+// in index.ts to avoid sub-router auth middleware conflicts. See index.ts.
 
 // List sessions for a campaign
 sessionRoutes.get('/campaigns/:campaignId/sessions', async (c) => {
@@ -110,10 +101,15 @@ sessionRoutes.post('/campaigns/:campaignId/sessions', async (c) => {
   return c.json({ id }, 201);
 });
 
-// Get session
+// Get session (includes director_id from campaigns for role detection)
 sessionRoutes.get('/sessions/:id', async (c) => {
   const sessionId = c.req.param('id');
-  const session = await c.env.DB.prepare('SELECT * FROM game_sessions WHERE id = ?')
+  const session = await c.env.DB.prepare(
+    `SELECT gs.*, c.director_id
+     FROM game_sessions gs
+     JOIN campaigns c ON gs.campaign_id = c.id
+     WHERE gs.id = ?`,
+  )
     .bind(sessionId)
     .first();
   if (!session) return c.json({ error: 'Not found' }, 404);
@@ -222,6 +218,29 @@ sessionRoutes.get('/sessions/:id/participants', async (c) => {
     .bind(sessionId)
     .all();
   return c.json({ participants: results.results });
+});
+
+// End session — forwards to DO to save snapshots, then marks completed
+sessionRoutes.post('/sessions/:id/end', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const sessionId = c.req.param('id');
+
+  const session = await c.env.DB.prepare(
+    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
+  )
+    .bind(sessionId)
+    .first<{ director_id: string; status: string }>();
+  if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+
+  // Forward to Durable Object so it can save snapshots and clean up
+  const doId = c.env.SESSION_ROOM.idFromName(sessionId);
+  const stub = c.env.SESSION_ROOM.get(doId);
+  const endUrl = new URL('/end', 'https://do');
+  endUrl.searchParams.set('sessionId', sessionId);
+
+  await stub.fetch(new Request(endUrl.toString(), { method: 'POST' }));
+
+  return c.json({ ok: true });
 });
 
 // Join session

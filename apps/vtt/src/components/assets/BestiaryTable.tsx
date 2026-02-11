@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import {
   Table,
@@ -8,9 +8,6 @@ import {
   TableHead,
   TableCell,
   Badge,
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
 } from '@anvil/ui';
 import { isMinion as checkIsMinion } from '@anvil/data';
 import type { CompendiumMonster } from '@anvil/data';
@@ -178,74 +175,70 @@ export function BestiaryTable({ monsters, compact, onAddToScene, availableScenes
                 const primaryRole = monster.roles?.[0] ?? 'Standard';
 
                 return (
-                  <Collapsible key={monster._id} open={isExpanded} asChild>
-                    <>
-                      <CollapsibleTrigger asChild>
-                        <TableRow
-                          className="cursor-pointer hover:bg-zinc-800/50"
-                          onClick={() => setExpandedId(isExpanded ? null : monster._id)}
-                        >
-                          <TableCell className="px-2">
-                            {isExpanded ? (
-                              <ChevronDown className="size-3.5 text-zinc-500" />
-                            ) : (
-                              <ChevronRight className="size-3.5 text-zinc-500" />
+                  <React.Fragment key={monster._id}>
+                    <TableRow
+                      className="cursor-pointer hover:bg-zinc-800/50"
+                      onClick={() => setExpandedId(isExpanded ? null : monster._id)}
+                    >
+                      <TableCell className="px-2">
+                        {isExpanded ? (
+                          <ChevronDown className="size-3.5 text-zinc-500" />
+                        ) : (
+                          <ChevronRight className="size-3.5 text-zinc-500" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <span className="font-medium">{monster.name}</span>
+                          {monster.ancestry && monster.ancestry.length > 0 && (
+                            <span className="ml-1.5 text-xs text-zinc-500">
+                              {monster.ancestry.join(', ')}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                          {monster.level}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-zinc-400">{primaryRole}</TableCell>
+                      {!compact && (
+                        <>
+                          <TableCell className="text-center text-xs">{monster.ev ?? '-'}</TableCell>
+                          <TableCell className="text-center text-xs">{monster.stamina ?? '-'}</TableCell>
+                          <TableCell className="text-center text-xs">
+                            {monster.speed ?? '-'}
+                            {monster.movement && (
+                              <span className="ml-0.5 text-zinc-500" title={monster.movement}>*</span>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <div>
-                              <span className="font-medium">{monster.name}</span>
-                              {monster.ancestry && monster.ancestry.length > 0 && (
-                                <span className="ml-1.5 text-xs text-zinc-500">
-                                  {monster.ancestry.join(', ')}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                              {monster.level}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-zinc-400">{primaryRole}</TableCell>
-                          {!compact && (
-                            <>
-                              <TableCell className="text-center text-xs">{monster.ev ?? '-'}</TableCell>
-                              <TableCell className="text-center text-xs">{monster.stamina ?? '-'}</TableCell>
-                              <TableCell className="text-center text-xs">
-                                {monster.speed ?? '-'}
-                                {monster.movement && (
-                                  <span className="ml-0.5 text-zinc-500" title={monster.movement}>*</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.might)}</TableCell>
-                              <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.agility)}</TableCell>
-                              <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.reason)}</TableCell>
-                              <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.intuition)}</TableCell>
-                              <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.presence)}</TableCell>
-                            </>
-                          )}
-                          {onAddToScene && (
-                            <TableCell>
-                              <AddToSceneMenu
-                                monsterName={monster.name}
-                                isMinion={minionFlag}
-                                availableScenes={availableScenes}
-                                onAdd={onAddToScene}
-                              />
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent asChild>
-                        <tr>
-                          <td colSpan={compact ? 5 : 14} className="bg-zinc-900/50">
-                            <MonsterDetailRow monster={monster} />
-                          </td>
-                        </tr>
-                      </CollapsibleContent>
-                    </>
-                  </Collapsible>
+                          <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.might)}</TableCell>
+                          <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.agility)}</TableCell>
+                          <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.reason)}</TableCell>
+                          <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.intuition)}</TableCell>
+                          <TableCell className="text-center text-xs text-zinc-400">{charMod(monster.presence)}</TableCell>
+                        </>
+                      )}
+                      {onAddToScene && (
+                        <TableCell>
+                          <AddToSceneMenu
+                            monsterName={monster.name}
+                            isMinion={minionFlag}
+                            availableScenes={availableScenes}
+                            onAdd={onAddToScene}
+                          />
+                        </TableCell>
+                      )}
+                    </TableRow>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={compact ? 5 : 14} className="bg-zinc-900/50">
+                          <MonsterDetailRow monster={monster} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </TableBody>

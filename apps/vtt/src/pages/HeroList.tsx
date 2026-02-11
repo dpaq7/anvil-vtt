@@ -1,17 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, CardHeader, CardTitle, CardContent, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose } from '@anvil/ui';
+import { Button, Card, CardHeader, CardTitle, Dialog, DialogContent, DialogTitle, DialogClose } from '@anvil/ui';
 import { api } from '../lib/api.js';
-
-interface HeroSummary {
-  id: string;
-  name: string;
-  ancestry: string | null;
-  hero_class: string | null;
-  subclass: string | null;
-  level: number;
-  portrait_url: string | null;
-}
+import type { HeroSummary } from '@anvil/types';
 
 export function HeroList() {
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
@@ -50,8 +41,8 @@ export function HeroList() {
                 <Card className="transition hover:border-zinc-600">
                   <CardHeader className="flex-row items-center gap-4 space-y-0 py-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-800 text-zinc-500">
-                      {h.portrait_url ? (
-                        <img src={h.portrait_url} alt="" className="h-full w-full object-cover" />
+                      {h.portraitUrl ? (
+                        <img src={h.portraitUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <span className="text-lg">{(h.name?.[0] ?? '?').toUpperCase()}</span>
                       )}
@@ -59,7 +50,7 @@ export function HeroList() {
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-base">{h.name}</CardTitle>
                       <p className="text-sm text-zinc-400">
-                        {[h.hero_class, h.subclass].filter(Boolean).join(' — ') || 'No class'}
+                        {[h.heroClass, h.subclass].filter(Boolean).join(' — ') || 'No class'}
                         {' · '}Level {h.level}
                       </p>
                     </div>

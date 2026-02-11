@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@anvil/ui';
 import { api } from '../lib/api.js';
 import { useAuthStore } from '../stores/authStore.js';
+import type { HeroSummary } from '@anvil/types';
 
 interface SessionLookup {
   id: string;
@@ -10,13 +11,6 @@ interface SessionLookup {
   campaign_id: string;
   campaign_name: string;
   status: string;
-}
-
-interface HeroSummary {
-  id: string;
-  name: string;
-  hero_class: string | null;
-  level: number;
 }
 
 export function JoinSession() {
@@ -119,7 +113,7 @@ export function JoinSession() {
                   <option value="">Choose a hero...</option>
                   {heroes.map((h) => (
                     <option key={h.id} value={h.id}>
-                      {h.name} ({h.hero_class ?? 'No class'} Lv{h.level})
+                      {h.name} ({h.heroClass ?? 'No class'} Lv{h.level})
                     </option>
                   ))}
                 </select>

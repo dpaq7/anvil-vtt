@@ -1,14 +1,19 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Application, Container } from 'pixi.js';
 import { BackgroundLayer } from './layers/BackgroundLayer.js';
 import { GridLayer } from './layers/GridLayer.js';
 import { TokenLayer } from './layers/TokenLayer.js';
 import { FogLayer } from './layers/FogLayer.js';
+import { DrawingLayer } from './layers/DrawingLayer.js';
+import { TerrainLayer } from './layers/TerrainLayer.js';
 import { ViewportSystem } from './systems/ViewportSystem.js';
 import { InteractionManager } from './systems/InteractionManager.js';
-import { computeVisibility } from './vision/VisibilityCalculator.js';
+import type { ActiveTool } from './systems/InteractionManager.js';
 import type { Segment } from './vision/VisibilityCalculator.js';
 import type { EntityData } from '../types/protocol.js';
+import type { DrawingData } from './layers/DrawingLayer.js';
+import type { TerrainZoneData } from './layers/TerrainLayer.js';
+import type { FogZoneData } from './layers/FogLayer.js';
 
 export interface BattleCanvasProps {
   cols: number;
@@ -22,6 +27,34 @@ export interface BattleCanvasProps {
   heroPosition?: { x: number; y: number } | null;
   onSelectEntity: (entityId: string | null) => void;
   onMoveEntity: (entityId: string, x: number, y: number) => void;
+
+  // Builder mode props (all optional — omit for live session)
+  builderMode?: boolean;
+  activeTool?: ActiveTool;
+  drawColor?: string;
+  drawWidth?: number;
+  drawings?: DrawingData[];
+  terrain?: TerrainZoneData[];
+  onDrawingAdd?: (points: number[], color: string, width: number) => void;
+  onDrawingRemove?: (drawingId: string) => void;
+  onTerrainAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
+  onTerrainRemove?: (terrainId: string) => void;
+  fogZones?: FogZoneData[];
+  onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
+  onFogRemove?: (fogId: string) => void;
+  gridVisible?: boolean;
+  gridOpacity?: number;
+  gridColor?: string;
+
+  // Token interaction callbacks
+  onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
+  onTokenRightClick?: (entityId: string, screenX: number, screenY: number) => void;
+
+  // Viewport controls
+  onZoomChange?: (zoom: number) => void;
+  /** Called when a background image loads with its native pixel dimensions. */
+  onBackgroundLoaded?: (info: { naturalWidth: number; naturalHeight: number }) => void;
+  viewportRef?: React.MutableRefObject<ViewportSystem | null>;
 }
 
 export function BattleCanvas({
@@ -36,18 +69,69 @@ export function BattleCanvas({
   heroPosition,
   onSelectEntity,
   onMoveEntity,
+  builderMode = false,
+  activeTool = 'select',
+  drawColor = '#ef4444',
+  drawWidth = 2,
+  drawings = [],
+  terrain = [],
+  onDrawingAdd,
+  onDrawingRemove,
+  onTerrainAdd,
+  onTerrainRemove,
+  fogZones = [],
+  onFogAdd,
+  onFogRemove,
+  gridVisible = true,
+  gridOpacity = 0.4,
+  gridColor = '#444444',
+  onTokenHover,
+  onTokenRightClick,
+  onZoomChange,
+  onBackgroundLoaded,
+  viewportRef,
 }: BattleCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
+  /** Flipped to true once PixiJS finishes async init so update effects re-run. */
+  const [pixiReady, setPixiReady] = useState(false);
   const layersRef = useRef<{
     background: BackgroundLayer;
     grid: GridLayer;
+    drawing: DrawingLayer;
+    terrain: TerrainLayer;
     tokens: TokenLayer;
     fog: FogLayer;
     world: Container;
     viewport: ViewportSystem;
     interaction: InteractionManager;
   } | null>(null);
+
+  // Keep callback refs fresh to avoid stale closures in the init effect
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
+  const onBackgroundLoadedRef = useRef(onBackgroundLoaded);
+  onBackgroundLoadedRef.current = onBackgroundLoaded;
+  const onSelectEntityRef = useRef(onSelectEntity);
+  onSelectEntityRef.current = onSelectEntity;
+  const onMoveEntityRef = useRef(onMoveEntity);
+  onMoveEntityRef.current = onMoveEntity;
+  const onDrawingAddRef = useRef(onDrawingAdd);
+  onDrawingAddRef.current = onDrawingAdd;
+  const onDrawingRemoveRef = useRef(onDrawingRemove);
+  onDrawingRemoveRef.current = onDrawingRemove;
+  const onTerrainAddRef = useRef(onTerrainAdd);
+  onTerrainAddRef.current = onTerrainAdd;
+  const onTerrainRemoveRef = useRef(onTerrainRemove);
+  onTerrainRemoveRef.current = onTerrainRemove;
+  const onFogAddRef = useRef(onFogAdd);
+  onFogAddRef.current = onFogAdd;
+  const onFogRemoveRef = useRef(onFogRemove);
+  onFogRemoveRef.current = onFogRemove;
+  const onTokenHoverRef = useRef(onTokenHover);
+  onTokenHoverRef.current = onTokenHover;
+  const onTokenRightClickRef = useRef(onTokenRightClick);
+  onTokenRightClickRef.current = onTokenRightClick;
 
   // Init PixiJS
   useEffect(() => {
@@ -72,33 +156,80 @@ export function BattleCanvas({
 
       const background = new BackgroundLayer();
       const grid = new GridLayer();
+      const drawingLayer = new DrawingLayer();
+      const terrainLayer = new TerrainLayer();
       const tokens = new TokenLayer();
       const fog = new FogLayer();
 
+      // Render order: bg → grid → drawings → terrain → tokens → fog
       world.addChild(background);
       world.addChild(grid);
+      world.addChild(drawingLayer);
+      world.addChild(terrainLayer);
       world.addChild(tokens);
       world.addChild(fog);
 
       const viewport = new ViewportSystem(world, app.canvas as HTMLCanvasElement);
+      viewport.onZoomChange = (zoom) => onZoomChangeRef.current?.(zoom);
+
+      // Expose viewport to parent via ref
+      if (viewportRef) {
+        viewportRef.current = viewport;
+      }
+
       const interaction = new InteractionManager(
         app.canvas as HTMLCanvasElement,
         viewport,
         tokens,
         cellSize,
-        { onTokenSelect: onSelectEntity, onTokenMove: onMoveEntity },
+        {
+          onTokenSelect: (id) => onSelectEntityRef.current(id),
+          onTokenMove: (id, x, y) => onMoveEntityRef.current(id, x, y),
+          onDrawingAdd: (...args) => onDrawingAddRef.current?.(...args),
+          onDrawingRemove: (...args) => onDrawingRemoveRef.current?.(...args),
+          onTerrainAdd: (...args) => onTerrainAddRef.current?.(...args),
+          onTerrainRemove: (...args) => onTerrainRemoveRef.current?.(...args),
+          onFogAdd: (...args) => onFogAddRef.current?.(...args),
+          onFogRemove: (...args) => onFogRemoveRef.current?.(...args),
+          onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
+          onTokenRightClick: (...args) => onTokenRightClickRef.current?.(...args),
+        },
         isDirector,
       );
 
-      tokens.setCellSize(cellSize);
-      grid.draw({ cellSize, cols, rows });
-      fog.setMapSize(cols * cellSize, rows * cellSize);
+      // Wire builder layers for hit-testing and previews
+      if (builderMode) {
+        interaction.setBuilderLayers(drawingLayer, terrainLayer, fog);
+      }
 
-      layersRef.current = { background, grid, tokens, fog, world, viewport, interaction };
+      tokens.setCellSize(cellSize);
+      terrainLayer.setCellSize(cellSize);
+      fog.setCellSize(cellSize);
+      fog.setDirectorMode(isDirector);
+      grid.draw({ cellSize, cols, rows, lineAlpha: gridOpacity, lineColor: parseInt(gridColor.replace('#', ''), 16) });
+
+      layersRef.current = {
+        background,
+        grid,
+        drawing: drawingLayer,
+        terrain: terrainLayer,
+        tokens,
+        fog,
+        world,
+        viewport,
+        interaction,
+      };
+
+      // Signal that layers are ready so update effects re-run
+      setPixiReady(true);
     });
 
     return () => {
       mounted = false;
+      setPixiReady(false);
+      if (viewportRef) {
+        viewportRef.current = null;
+      }
       layersRef.current?.viewport.destroy();
       layersRef.current?.interaction.destroy();
       layersRef.current = null;
@@ -108,60 +239,117 @@ export function BattleCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update background
+  // Callback for when background image loads at native dimensions
+  const handleImageLoaded = useCallback(
+    (info: { naturalWidth: number; naturalHeight: number }) => {
+      // Notify parent so it can use the dimensions (e.g. for fit-to-map)
+      onBackgroundLoadedRef.current?.(info);
+    },
+    [],
+  );
+
+  // Update background — renders at native image dimensions, independent of grid.
+  // Only re-runs when the URL actually changes (not on grid resize).
   useEffect(() => {
     const layers = layersRef.current;
     if (!layers) return;
     if (backgroundUrl) {
-      layers.background.setImage(backgroundUrl, cols * cellSize, rows * cellSize);
+      layers.background.setImage(backgroundUrl, handleImageLoaded);
     } else {
-      layers.background.setColor(0x1a1a2e, cols * cellSize, rows * cellSize);
+      layers.background.setImage(null);
     }
-  }, [backgroundUrl, cols, rows, cellSize]);
+  }, [backgroundUrl, handleImageLoaded, pixiReady]);
 
-  // Update tokens
+  // Fallback color background when no image — sized to the grid
+  useEffect(() => {
+    const layers = layersRef.current;
+    if (!layers || backgroundUrl) return;
+    layers.background.setColor(0x1a1a2e, cols * cellSize, rows * cellSize);
+  }, [backgroundUrl, cols, rows, cellSize, pixiReady]);
+
+  // Update tokens — diff-based to avoid destroying tokens during drag
+  const prevEntityIdsRef = useRef(new Set<string>());
   useEffect(() => {
     const layers = layersRef.current;
     if (!layers) return;
 
-    // Simple reconciliation — clear and re-add
+    const currentIds = new Set(entities.map((e) => e.id));
+    const prevIds = prevEntityIdsRef.current;
+
+    // Remove tokens that no longer exist
+    for (const id of prevIds) {
+      if (!currentIds.has(id)) {
+        layers.tokens.removeToken(id);
+      }
+    }
+
+    // Add new tokens or update changed ones
     for (const entity of entities) {
       const color = entity.type === 'hero' ? 0x3b82f6 : entity.type === 'monster' ? 0xef4444 : 0x8b5cf6;
-      layers.tokens.addToken(entity, {
-        size: 1,
-        color,
-        selected: entity.id === selectedEntityId,
-      });
+      if (!prevIds.has(entity.id)) {
+        // New entity — add token
+        layers.tokens.addToken(entity, {
+          size: 1,
+          color,
+          selected: entity.id === selectedEntityId,
+        });
+      } else {
+        // Existing entity — update in place (position, selection, stamina, conditions)
+        layers.tokens.updateToken(entity, {
+          size: 1,
+          color,
+          selected: entity.id === selectedEntityId,
+        });
+      }
     }
 
+    prevEntityIdsRef.current = currentIds;
     layers.interaction.rebuildIndex();
-  }, [entities, selectedEntityId]);
+  }, [entities, selectedEntityId, pixiReady]);
 
-  // Update fog
+  // Update fog zones
   useEffect(() => {
     const layers = layersRef.current;
     if (!layers) return;
+    layers.fog.setDirectorMode(isDirector);
+    layers.fog.sync(fogZones);
+  }, [isDirector, fogZones, pixiReady]);
 
-    if (isDirector) {
-      layers.fog.hideFog();
-      return;
-    }
+  // Sync active tool to InteractionManager
+  useEffect(() => {
+    layersRef.current?.interaction.setActiveTool(activeTool);
+  }, [activeTool, pixiReady]);
 
-    layers.fog.showFog();
-    if (heroPosition) {
-      const origin = {
-        x: heroPosition.x * cellSize + cellSize / 2,
-        y: heroPosition.y * cellSize + cellSize / 2,
-      };
-      const polygon = computeVisibility(origin, walls, {
-        width: cols * cellSize,
-        height: rows * cellSize,
-      });
-      layers.fog.drawFog(polygon);
-    } else {
-      layers.fog.drawFog(null);
+  // Sync draw config to InteractionManager
+  useEffect(() => {
+    layersRef.current?.interaction.setDrawConfig(drawColor, drawWidth);
+  }, [drawColor, drawWidth, pixiReady]);
+
+  // Sync drawings layer
+  useEffect(() => {
+    layersRef.current?.drawing.sync(drawings);
+  }, [drawings, pixiReady]);
+
+  // Sync terrain layer
+  useEffect(() => {
+    layersRef.current?.terrain.sync(terrain);
+  }, [terrain, pixiReady]);
+
+  // Toggle grid visibility
+  useEffect(() => {
+    const layers = layersRef.current;
+    if (layers) {
+      layers.grid.visible = gridVisible;
     }
-  }, [isDirector, heroPosition, walls, cols, rows, cellSize]);
+  }, [gridVisible, pixiReady]);
+
+  // Update grid appearance (opacity, color, dimensions)
+  useEffect(() => {
+    const layers = layersRef.current;
+    if (layers) {
+      layers.grid.draw({ cellSize, cols, rows, lineAlpha: gridOpacity, lineColor: parseInt(gridColor.replace('#', ''), 16) });
+    }
+  }, [gridOpacity, gridColor, cellSize, cols, rows, pixiReady]);
 
   return (
     <div ref={containerRef} className="h-full w-full" />

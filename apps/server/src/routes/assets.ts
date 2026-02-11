@@ -39,9 +39,31 @@ assetRoutes.put('/:id/data', async (c) => {
   if (!asset) return c.json({ error: 'Not found' }, 404);
 
   const data = await c.req.arrayBuffer();
-  await c.env.ASSETS.put(asset.storage_key, data);
+  const contentType = c.req.header('content-type') ?? 'application/octet-stream';
+  await c.env.ASSETS.put(asset.storage_key, data, {
+    httpMetadata: { contentType },
+  });
 
   return c.json({ ok: true });
+});
+
+// Serve asset binary from R2 (image/audio proxy)
+assetRoutes.get('/:id/data', async (c) => {
+  const assetId = c.req.param('id');
+
+  const asset = await c.env.DB.prepare('SELECT storage_key FROM assets WHERE id = ?')
+    .bind(assetId)
+    .first<{ storage_key: string }>();
+  if (!asset) return c.json({ error: 'Not found' }, 404);
+
+  const object = await c.env.ASSETS.get(asset.storage_key);
+  if (!object) return c.json({ error: 'File not found' }, 404);
+
+  const headers = new Headers();
+  headers.set('Content-Type', object.httpMetadata?.contentType ?? 'application/octet-stream');
+  headers.set('Cache-Control', 'private, max-age=3600');
+
+  return new Response(object.body, { headers });
 });
 
 // List assets

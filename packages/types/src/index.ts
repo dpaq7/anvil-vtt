@@ -23,3 +23,4 @@ export * from './presentation.js';
 export * from './terrain.js';
 export * from './hydration.js';
 export * from './assets.js';
+export * from './notes.js';

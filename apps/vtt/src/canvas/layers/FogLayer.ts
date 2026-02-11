@@ -1,10 +1,26 @@
 import { Container, Graphics } from 'pixi.js';
-import type { Point } from '../vision/VisibilityCalculator.js';
+
+/** A rectangular fog zone in grid coordinates */
+export interface FogZoneData {
+  id: string;
+  /** Grid X (top-left cell) */
+  x: number;
+  /** Grid Y (top-left cell) */
+  y: number;
+  /** Width in cells */
+  w: number;
+  /** Height in cells */
+  h: number;
+}
 
 export class FogLayer extends Container {
   private fog: Graphics;
+  private preview: Graphics | null = null;
   private mapWidth = 0;
   private mapHeight = 0;
+  private cellSize = 64;
+  private zones: FogZoneData[] = [];
+  private directorMode = false;
 
   constructor() {
     super();
@@ -17,61 +33,98 @@ export class FogLayer extends Container {
     this.mapHeight = height;
   }
 
-  /** Draw fog with visibility polygon cutout */
-  drawFog(visibilityPolygon: Point[] | null): void {
-    this.fog.clear();
-
-    if (!visibilityPolygon || visibilityPolygon.length < 3) {
-      // Full fog
-      this.fog.rect(0, 0, this.mapWidth, this.mapHeight);
-      this.fog.fill({ color: 0x000000, alpha: 0.7 });
-      return;
-    }
-
-    // Draw fog everywhere
-    this.fog.rect(0, 0, this.mapWidth, this.mapHeight);
-    this.fog.fill({ color: 0x000000, alpha: 0.7 });
-
-    // Cut out visible area using a Graphics mask
-    const mask = new Graphics();
-    const first = visibilityPolygon[0]!;
-    mask.moveTo(first.x, first.y);
-    for (let i = 1; i < visibilityPolygon.length; i++) {
-      mask.lineTo(visibilityPolygon[i]!.x, visibilityPolygon[i]!.y);
-    }
-    mask.closePath();
-    mask.fill({ color: 0xffffff });
-
-    // Use mask to create hole — in PixiJS v8 we use the mask property
-    this.mask = mask;
-    // Actually we want inverted: fog everywhere EXCEPT the polygon.
-    // A simpler approach: don't mask fog, instead draw the visible area as a bright overlay.
-    this.mask = null;
-
-    // Simpler approach: draw semi-transparent black, then draw clear polygon
-    this.fog.clear();
-
-    // Draw dark overlay
-    this.fog.rect(0, 0, this.mapWidth, this.mapHeight);
-    this.fog.fill({ color: 0x000000, alpha: 0.7 });
-
-    // Punch out visible area by drawing it as fully transparent
-    this.fog.moveTo(first.x, first.y);
-    for (let i = 1; i < visibilityPolygon.length; i++) {
-      this.fog.lineTo(visibilityPolygon[i]!.x, visibilityPolygon[i]!.y);
-    }
-    this.fog.closePath();
-    // Cut via blend mode
-    this.fog.cut();
+  setCellSize(size: number): void {
+    this.cellSize = size;
   }
 
-  /** Hide fog entirely (director mode) */
+  /** Set whether the director is viewing (50% opacity) or a player (100% opaque) */
+  setDirectorMode(isDirector: boolean): void {
+    this.directorMode = isDirector;
+    this.visible = true;
+    this.redraw();
+  }
+
+  /** Sync fog zones from React state */
+  sync(zones: FogZoneData[]): void {
+    this.zones = zones;
+    this.redraw();
+  }
+
+  /** Redraw all fog zones */
+  private redraw(): void {
+    this.fog.clear();
+    if (this.zones.length === 0) return;
+
+    const alpha = this.directorMode ? 0.5 : 1.0;
+
+    for (const zone of this.zones) {
+      const px = zone.x * this.cellSize;
+      const py = zone.y * this.cellSize;
+      const pw = zone.w * this.cellSize;
+      const ph = zone.h * this.cellSize;
+      this.fog.rect(px, py, pw, ph);
+    }
+    this.fog.fill({ color: 0x000000, alpha });
+  }
+
+  /**
+   * Live preview of a fog zone being drawn (drag in progress).
+   * Renders a dashed-outline rectangle at 30% opacity.
+   */
+  previewZone(gridX: number, gridY: number, w: number, h: number): void {
+    if (!this.preview) {
+      this.preview = new Graphics();
+      this.addChild(this.preview);
+    }
+
+    this.preview.clear();
+    const px = gridX * this.cellSize;
+    const py = gridY * this.cellSize;
+    const pw = w * this.cellSize;
+    const ph = h * this.cellSize;
+
+    // Semi-transparent fill preview
+    this.preview.rect(px, py, pw, ph);
+    this.preview.fill({ color: 0x000000, alpha: 0.3 });
+    this.preview.stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+  }
+
+  /** Remove the preview zone */
+  clearPreview(): void {
+    if (this.preview) {
+      this.removeChild(this.preview);
+      this.preview.destroy();
+      this.preview = null;
+    }
+  }
+
+  /** Hit-test: return the fog zone at the given grid coordinate, or null */
+  getZoneAt(gridX: number, gridY: number): string | null {
+    // Search in reverse so the most recently added zone is found first
+    for (let i = this.zones.length - 1; i >= 0; i--) {
+      const z = this.zones[i]!;
+      if (gridX >= z.x && gridX < z.x + z.w && gridY >= z.y && gridY < z.y + z.h) {
+        return z.id;
+      }
+    }
+    return null;
+  }
+
+  /** Hide fog entirely */
   hideFog(): void {
     this.fog.clear();
+    this.clearPreview();
     this.visible = false;
   }
 
   showFog(): void {
     this.visible = true;
+    this.redraw();
+  }
+
+  clear(): void {
+    this.zones = [];
+    this.fog.clear();
+    this.clearPreview();
   }
 }

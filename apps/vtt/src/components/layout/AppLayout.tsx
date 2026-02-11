@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Swords, Image, StickyNote, User } from 'lucide-react';
+import { Swords, Image, StickyNote, User, Clapperboard } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -13,6 +13,7 @@ import { useAuthStore } from '../../stores/authStore';
 
 const DIRECTOR_NAV = [
   { label: 'Anvil', icon: AnvilIcon, to: '/app', end: true },
+  { label: 'Live', icon: Clapperboard, to: '/app/live' },
   { label: 'Campaigns', icon: Swords, to: '/app/campaigns' },
   { label: 'Assets', icon: Image, to: '/app/assets' },
   { label: 'Notes', icon: StickyNote, to: '/app/notes' },
@@ -20,6 +21,7 @@ const DIRECTOR_NAV = [
 
 const PLAYER_NAV = [
   { label: 'Anvil', icon: AnvilIcon, to: '/app', end: true },
+  { label: 'Live', icon: Clapperboard, to: '/app/live' },
   { label: 'Heroes', icon: User, to: '/app/heroes' },
   { label: 'Notes', icon: StickyNote, to: '/app/notes' },
 ] as const;

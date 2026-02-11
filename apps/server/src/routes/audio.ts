@@ -31,6 +31,7 @@ async function hydrateAudio(db: D1Database, row: AudioRow): Promise<AudioAsset> 
     campaignId: row.campaign_id,
     name: row.name,
     assetId: row.asset_id,
+    audioUrl: `/api/assets/${row.asset_id}/data`,
     durationSeconds: row.duration_seconds,
     audioType: row.audio_type as AudioAsset['audioType'],
     mood: row.mood as AudioAsset['mood'],

@@ -2,9 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input } from '@anvil/ui';
 import { api } from '../lib/api.js';
+import { generateRoomCode } from '../lib/room-code.js';
 import { TreeSidebar } from '../components/builder/TreeSidebar.js';
 import { CardGrid } from '../components/builder/CardGrid.js';
-import { SceneEditorSheet } from '../components/builder/SceneEditorSheet.js';
+import { SceneWorkspace } from '../components/builder/SceneWorkspace.js';
 
 interface Module { id: string; name: string; description: string; order_index: number; }
 interface Session { id: string; name: string; description: string; module_id: string | null; order_index: number; status?: string; }
@@ -18,15 +19,6 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let code = '';
-  const bytes = new Uint8Array(6);
-  crypto.getRandomValues(bytes);
-  for (const b of bytes) code += chars[b % chars.length];
-  return code;
-}
-
 export function CampaignBuilder() {
   const { id: campaignId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -36,7 +28,6 @@ export function CampaignBuilder() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<TreeNode['type'] | null>(null);
-  const [editingScene, setEditingScene] = useState<Scene | null>(null);
 
   // Dialog states
   const [addModuleOpen, setAddModuleOpen] = useState(false);
@@ -145,12 +136,6 @@ export function CampaignBuilder() {
     await api.post(`/api/sessions/${selectedId}/scenes`, { title: newName, type: newSceneType });
     setNewName('');
     setAddSceneOpen(false);
-    await load();
-  };
-
-  const handleSceneSave = async (sceneId: string, data: string) => {
-    await api.put(`/api/scenes/${sceneId}`, { data });
-    setEditingScene(null);
     await load();
   };
 
@@ -269,37 +254,50 @@ export function CampaignBuilder() {
           )}
         </div>
 
-        <CardGrid
-          items={getCardItems()}
-          onSelect={(id) => {
-            // If clicking a scene, find and select it in tree
-            const scene = scenes.find((s) => s.id === id);
-            if (scene) {
-              setSelectedId(id);
-              setSelectedType('scene');
-            } else {
-              // It could be a module or session
-              const mod = modules.find((m) => m.id === id);
-              if (mod) { setSelectedId(id); setSelectedType('module'); }
-              const sess = sessions.find((s) => s.id === id);
-              if (sess) { setSelectedId(id); setSelectedType('session'); }
-            }
-          }}
-          onDoubleClick={(id) => {
-            const scene = scenes.find((s) => s.id === id);
-            if (scene) setEditingScene(scene);
-          }}
-        />
+        {/* Conditionally render SceneWorkspace or CardGrid */}
+        {selectedType === 'scene' && selectedId ? (
+          (() => {
+            const selectedScene = scenes.find((s) => s.id === selectedId);
+            if (!selectedScene) return <div className="p-8 text-zinc-500">Scene not found</div>;
+            return (
+              <SceneWorkspace
+                scene={{
+                  ...selectedScene,
+                  type: selectedScene.type as 'battle' | 'story' | 'montage' | 'negotiation' | 'respite',
+                }}
+                campaignId={campaignId!}
+                onSave={load}
+              />
+            );
+          })()
+        ) : (
+          <CardGrid
+            items={getCardItems()}
+            onSelect={(id) => {
+              // If clicking a scene, find and select it in tree
+              const scene = scenes.find((s) => s.id === id);
+              if (scene) {
+                setSelectedId(id);
+                setSelectedType('scene');
+              } else {
+                // It could be a module or session
+                const mod = modules.find((m) => m.id === id);
+                if (mod) { setSelectedId(id); setSelectedType('module'); }
+                const sess = sessions.find((s) => s.id === id);
+                if (sess) { setSelectedId(id); setSelectedType('session'); }
+              }
+            }}
+            onDoubleClick={(id) => {
+              // Double-click on scene also opens it (select it)
+              const scene = scenes.find((s) => s.id === id);
+              if (scene) {
+                setSelectedId(id);
+                setSelectedType('scene');
+              }
+            }}
+          />
+        )}
       </div>
-
-      {/* Scene Editor Sheet */}
-      {editingScene && (
-        <SceneEditorSheet
-          scene={editingScene}
-          onSave={handleSceneSave}
-          onClose={() => setEditingScene(null)}
-        />
-      )}
 
       {/* Invite Dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>

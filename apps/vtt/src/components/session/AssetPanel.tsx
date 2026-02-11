@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@anvil/ui';
 import { useAssetsStore } from '../../stores/assetsStore.js';
 import { HeroGrid } from '../assets/HeroGrid.js';
@@ -11,9 +11,9 @@ import { RespiteActivityList } from '../assets/RespiteActivityList.js';
 import { RespiteActivityCard } from '../assets/RespiteActivityCard.js';
 import { MontageTestCatalog } from '../assets/MontageTestCatalog.js';
 import { MontageTestTracker } from '../assets/MontageTestTracker.js';
-import { ALL_TERRAINS } from '@anvil/data';
+import { ALL_TERRAINS, loadMonsters, isMonsterStatblock, FORGESTEEL_MONSTERS } from '@anvil/data';
 import type { SceneType, ActivityCard as ActivityCardType, MontageTestRecord } from '@anvil/types';
-import type { Hero } from '@anvil/types';
+import type { HeroSummary } from '@anvil/types';
 import type { CompendiumMonster } from '@anvil/data';
 
 // ── Tab configuration per scene type ──
@@ -52,8 +52,10 @@ export interface AssetPanelProps {
   sceneId: string;
   campaignId: string;
   heroCount: number;
-  heroes?: Hero[];
+  heroes?: HeroSummary[];
   monsters?: CompendiumMonster[];
+  /** Live-session override: create entities via WebSocket instead of HTTP store. */
+  onAddMonsterToScene?: (monsterName: string, quantity: number) => void;
 }
 
 export function AssetPanel({
@@ -62,9 +64,27 @@ export function AssetPanel({
   campaignId,
   heroCount,
   heroes = [],
-  monsters = [],
+  monsters: monstersProp,
+  onAddMonsterToScene,
 }: AssetPanelProps) {
   const tabs = SCENE_TABS[sceneType] ?? ['heroes', 'maps'];
+
+  // Self-load monsters from compendium if not provided via props
+  const [loadedMonsters, setLoadedMonsters] = useState<CompendiumMonster[]>([]);
+  useEffect(() => {
+    if (monstersProp && monstersProp.length > 0) return;
+    loadMonsters()
+      .then((data) => {
+        const statblocks = data.items.filter(isMonsterStatblock) as CompendiumMonster[];
+        const ids = new Set(statblocks.map((m) => m._id));
+        const supplementary = FORGESTEEL_MONSTERS.filter((m) => !ids.has(m._id));
+        setLoadedMonsters(
+          [...statblocks, ...supplementary].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      })
+      .catch(() => setLoadedMonsters([]));
+  }, [monstersProp]);
+  const monsters = monstersProp && monstersProp.length > 0 ? monstersProp : loadedMonsters;
 
   const {
     npcs,
@@ -149,9 +169,13 @@ export function AssetPanel({
           <BestiaryTable
             monsters={monsters}
             compact
-            onAddToScene={(monsterName, quantity) =>
-              addSceneMonster(sceneId, { monsterName, quantity })
-            }
+            onAddToScene={(monsterName, quantity) => {
+              if (onAddMonsterToScene) {
+                onAddMonsterToScene(monsterName, quantity);
+              } else {
+                addSceneMonster(sceneId, { monsterName, quantity });
+              }
+            }}
             availableScenes={[{ id: sceneId, name: 'Current Scene', sceneType }]}
           />
         );

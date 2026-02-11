@@ -61,7 +61,7 @@ export function TerrainGrid({
       <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
         <Select
           value={categoryFilter}
-          onValueChange={(v) => setCategoryFilter(v as TerrainCategory | 'all')}
+          onValueChange={(v: string) => setCategoryFilter(v as TerrainCategory | 'all')}
         >
           <SelectTrigger className="h-8 w-[180px] text-xs">
             <SelectValue placeholder="All categories" />
@@ -95,43 +95,75 @@ export function TerrainGrid({
             className="cursor-pointer transition hover:border-zinc-600"
             onClick={() => onSelectCustom?.(terrain.id)}
           >
-            <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-                {terrain.imageUrl ? (
-                  <img
-                    src={terrain.imageUrl}
-                    alt={terrain.name}
-                    className="size-10 rounded-md object-cover"
-                  />
-                ) : (
-                  <Mountain className="size-5 text-zinc-500" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <CardTitle className="truncate text-sm font-bold">{terrain.name}</CardTitle>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0">
-                    {TERRAIN_CATEGORY_NAMES[terrain.category]}
-                  </Badge>
-                  <Badge variant="outline" className="text-[9px] px-1 py-0">
-                    {terrain.gridWidth}&times;{terrain.gridHeight}
-                  </Badge>
-                  {terrain.material && (
-                    <Badge variant="outline" className="text-[9px] px-1 py-0">
-                      {terrain.material}
-                    </Badge>
-                  )}
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-400">
-                    Custom
-                  </Badge>
+            {compact ? (
+              <div className="flex items-center gap-2 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-zinc-200">{terrain.name}</span>
+                  <span className="text-[10px] text-zinc-500">Custom</span>
                 </div>
+                <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0 text-amber-400">
+                  Custom
+                </Badge>
               </div>
-            </CardHeader>
+            ) : (
+              <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-800">
+                  {terrain.imageUrl ? (
+                    <img
+                      src={terrain.imageUrl}
+                      alt={terrain.name}
+                      className="size-10 rounded-md object-cover"
+                    />
+                  ) : (
+                    <Mountain className="size-5 text-zinc-500" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="truncate text-sm font-bold">{terrain.name}</CardTitle>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                      {TERRAIN_CATEGORY_NAMES[terrain.category]}
+                    </Badge>
+                    <Badge variant="outline" className="text-[9px] px-1 py-0">
+                      {terrain.gridWidth}&times;{terrain.gridHeight}
+                    </Badge>
+                    {terrain.material && (
+                      <Badge variant="outline" className="text-[9px] px-1 py-0">
+                        {terrain.material}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-400">
+                      Custom
+                    </Badge>
+                  </div>
+                </div>
+              </CardHeader>
+            )}
           </Card>
         ))}
 
         {/* Built-in terrain cards */}
         {filteredBuiltIn.map((terrain) => {
+          if (compact) {
+            return (
+              <Card
+                key={`builtin-${terrain.id}`}
+                className="cursor-pointer transition hover:border-zinc-600"
+                onClick={() => onSelectBuiltIn?.(terrain.id)}
+              >
+                <div className="flex items-center gap-2 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-zinc-200">{terrain.name}</span>
+                    <span className="text-[10px] text-zinc-500">{TERRAIN_CATEGORY_NAMES[terrain.category]}</span>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 text-[9px] px-1 py-0">
+                    Lv {terrain.level}
+                  </Badge>
+                </div>
+              </Card>
+            );
+          }
+
           const isExpanded = expandedId === terrain.id;
           return (
             <Collapsible key={`builtin-${terrain.id}`} open={isExpanded}>

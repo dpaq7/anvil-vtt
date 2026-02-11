@@ -1,25 +1,39 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Package } from 'lucide-react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.js';
 import { AppShell, Button } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
-import type { SessionState, ParticipantInfo, AbilityResult } from '../../types/protocol.js';
-import type { MotivationType } from '@anvil/types';
+import type { SessionState, AbilityResult } from '../../types/protocol.js';
 import type { ClientMessage } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
-import { FilmStrip } from '../../components/session/FilmStrip.js';
-import { StatusBar } from '../../components/session/StatusBar.js';
+import { loadMonsters, isMonsterStatblock, FORGESTEEL_MONSTERS, isMinion } from '@anvil/data';
+import type { CompendiumMonster } from '@anvil/data';
+import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleData } from '../../lib/scene-data.js';
+import { DirectorFilmStrip } from '../../components/session/DirectorFilmStrip.js';
+import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
+import { CreatureTracker } from '../../components/session/CreatureTracker.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
 import { MalicePanel } from '../../components/session/MalicePanel.js';
 import { DamageDialog } from '../../components/session/DamageDialog.js';
 import { CombatLog } from '../../components/session/CombatLog.js';
 import { AssetPanel } from '../../components/session/AssetPanel.js';
+import { SceneAudioPanel } from '../../components/session/SceneAudioPanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
 import { RespiteStage } from '../../components/stages/RespiteStage.js';
 import { BattleStage } from '../../components/stages/BattleStage.js';
+
+// Grid color presets (shared with BattleWorkspace)
+const GRID_COLORS = [
+  { color: '#444444', label: 'Gray' },
+  { color: '#ffffff', label: 'White' },
+  { color: '#000000', label: 'Black' },
+  { color: '#eab308', label: 'Yellow' },
+  { color: '#ef4444', label: 'Red' },
+  { color: '#3b82f6', label: 'Blue' },
+];
 
 interface DirectorViewProps {
   sessionState: SessionState;
@@ -43,17 +57,39 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     [send],
   );
 
+  const sceneData = activeScene?.data ?? {};
+
   const [showHelp, setShowHelp] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
+  const [activeAudioId, setActiveAudioId] = useState<string | null>(
+    (sceneData['audioMusic'] as string) ?? null,
+  );
+
+  // Grid controls (live override — defaults come from scene data)
+  const [gridOpacityOverride, setGridOpacityOverride] = useState<number | null>(null);
+  const [gridColorOverride, setGridColorOverride] = useState<string | null>(null);
 
   const heroCount = useMemo(
     () => entities.filter((e) => e.type === 'hero').length,
     [entities],
   );
 
+  // ── Monster compendium (for "Add to Scene" entity creation) ──
+  const monstersRef = useRef<CompendiumMonster[]>([]);
+  useEffect(() => {
+    loadMonsters()
+      .then((data) => {
+        const statblocks = data.items.filter(isMonsterStatblock) as CompendiumMonster[];
+        const ids = new Set(statblocks.map((m) => m._id));
+        const supplementary = FORGESTEEL_MONSTERS.filter((m) => !ids.has(m._id));
+        monstersRef.current = [...statblocks, ...supplementary];
+      })
+      .catch(() => {});
+  }, []);
+
   const handleEndSession = useCallback(() => {
     send({ type: 'end_session' });
-    navigate('/app/campaigns');
+    navigate('/app/live');
   }, [send, navigate]);
 
   useKeyboardShortcuts({
@@ -64,13 +100,61 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     onHelp: () => setShowHelp((v) => !v),
   });
 
-  const sceneData = activeScene?.data ?? {};
+  // Parse battle data for grid controls and stage props
+  const battleData = sceneType === 'battle' ? parseBattleData(sceneData) : null;
+  const currentGridOpacity = gridOpacityOverride ?? battleData?.gridOpacity ?? 0.4;
+  const currentGridColor = gridColorOverride ?? battleData?.gridColor ?? '#444444';
+
+  // ── Add monster to scene via WebSocket ──
+  const handleAddMonsterToScene = useCallback(
+    (monsterName: string, quantity: number) => {
+      const monster = monstersRef.current.find(
+        (m) => m.name.toLowerCase() === monsterName.toLowerCase(),
+      );
+      const maxStamina = monster?.stamina ? parseInt(String(monster.stamina), 10) || 0 : 0;
+
+      // Place at map center with stagger for multiple creatures
+      const bd = battleData ?? { cols: 30, rows: 20 };
+      const centerX = Math.floor(bd.cols / 2);
+      const centerY = Math.floor(bd.rows / 2);
+
+      const minionFlag = monster ? isMinion(monster) : false;
+      // For minion squads: shared stamina pool = quantity * per-minion stamina
+      const squadId = minionFlag && quantity > 1
+        ? `squad-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+        : undefined;
+
+      for (let i = 0; i < quantity; i++) {
+        // Stagger in a horizontal row, wrapping to next row if needed
+        const offsetX = i % 5;
+        const offsetY = Math.floor(i / 5);
+        const entity = {
+          id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
+          name: quantity > 1 ? `${monsterName} ${i + 1}` : monsterName,
+          type: 'monster' as const,
+          x: centerX + offsetX,
+          y: centerY + offsetY,
+          maxStamina,
+          currentStamina: maxStamina,
+          monsterName,
+          level: monster?.level ?? 1,
+          conditions: [] as string[],
+          roles: monster?.roles ?? [],
+          isMinion: minionFlag,
+          ...(squadId ? { squadId, squadSize: quantity } : {}),
+          ...(monster?.features ? { features: monster.features } : {}),
+        };
+        send({ type: 'create_entity', entity });
+      }
+    },
+    [send, battleData],
+  );
 
   const renderStage = () => {
     if (!activeScene) {
       return (
         <div className="flex h-full items-center justify-center text-zinc-500">
-          Select a scene from the film strip below.
+          Select a scene from the film strip above.
         </div>
       );
     }
@@ -84,63 +168,75 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             isDirector
           />
         );
-      case 'montage':
+      case 'montage': {
+        const montage = parseMontageData(sceneData);
         return (
           <MontageStage
-            goal={(sceneData['goal'] as string) ?? ''}
+            goal={montage.goal}
             currentSuccesses={0}
-            successLimit={(sceneData['successesNeeded'] as number) ?? 5}
+            successLimit={montage.successLimit}
             currentFailures={0}
-            failureLimit={(sceneData['failureLimit'] as number) ?? 3}
+            failureLimit={montage.failureLimit}
             outcome="pending"
-            challenges={(sceneData['challenges'] as { id: string; name: string; completed: boolean }[]) ?? []}
+            challenges={montage.challenges}
             isDirector
           />
         );
-      case 'negotiation':
+      }
+      case 'negotiation': {
+        const neg = parseNegotiationData(sceneData);
         return (
           <NegotiationStage
-            npcName={(sceneData['npcName'] as string) ?? 'NPC'}
-            npcAttitude={(sceneData['npcAttitude'] as string) ?? 'neutral'}
-            interest={(sceneData['interest'] as number) ?? 0}
-            patience={(sceneData['patience'] as number) ?? 3}
-            maxPatience={(sceneData['maxPatience'] as number) ?? 5}
-            phase={(sceneData['phase'] as 'active' | 'success' | 'failure') ?? 'active'}
-            motivations={
-              (sceneData['motivations'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (m) => ({ ...m, type: m.type as MotivationType })
-              ) ?? []
-            }
-            pitfalls={
-              (sceneData['pitfalls'] as { id: string; type: string; description: string; revealed: boolean }[])?.map(
-                (p) => ({ ...p, type: p.type as MotivationType })
-              ) ?? []
-            }
-            outcomes={(sceneData['outcomes'] as Record<number, string>) ?? {}}
+            npcName={neg.npcName}
+            npcPortrait={neg.npcPortrait}
+            npcAttitude={neg.npcAttitude}
+            interest={neg.interest}
+            patience={neg.patience}
+            maxPatience={neg.maxPatience}
+            phase={neg.phase}
+            motivations={neg.motivations}
+            pitfalls={neg.pitfalls}
+            outcomes={neg.outcomes}
             isDirector
           />
         );
-      case 'respite':
+      }
+      case 'respite': {
+        const respite = parseRespiteData(sceneData);
         return (
           <RespiteStage
-            location={(sceneData['location'] as string) ?? ''}
-            activities={(sceneData['activities'] as { heroName: string; activityType: string; completed: boolean }[]) ?? []}
-            projects={(sceneData['projects'] as { id: string; name: string; currentPoints: number; goalPoints: number }[]) ?? []}
+            location={respite.location}
+            activities={respite.activities}
+            projects={respite.projects}
             completed={false}
             isDirector
           />
         );
-      case 'battle':
+      }
+      case 'battle': {
+        const battle = battleData!;
         return (
           <BattleStage
             entities={entities}
             combat={combat}
             selectedEntityId={selectedEntityId}
             isDirector
+            cols={battle.cols}
+            rows={battle.rows}
+            cellSize={battle.cellSize}
+            backgroundUrl={battle.backgroundUrl}
+            drawings={battle.drawings}
+            fogZones={battle.fogZones}
+            terrain={battle.terrain}
+            gridOpacity={currentGridOpacity}
+            gridColor={currentGridColor}
+            combatLog={combatLog}
+            entityNames={entityNames}
             onSelectEntity={setSelectedEntityId}
             send={send}
           />
         );
+      }
       default:
         return (
           <div className="flex h-full items-center justify-center text-zinc-500">
@@ -153,11 +249,18 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
   return (
     <AppShell
       topBar={
-        <div className="flex w-full items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-300">
-            Session
-          </span>
-          <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-3">
+          {/* Film strip scene navigator fills most of the top bar */}
+          <div className="min-w-0 flex-1">
+            <DirectorFilmStrip
+              scenes={scenes}
+              activeSceneId={activeSceneId}
+              onSelectScene={handleSelectScene}
+            />
+          </div>
+
+          {/* Actions float right */}
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               variant={showAssets ? 'secondary' : 'ghost'}
               size="sm"
@@ -168,31 +271,30 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
               Assets
             </Button>
             <Button variant="ghost" size="sm" onClick={handleEndSession}>
-              End Session
+              End
             </Button>
           </div>
         </div>
       }
       leftRail={
-        <div className="flex flex-col gap-4 p-4">
-          <div>
-            <p className="mb-2 text-xs font-medium uppercase text-zinc-500">Participants</p>
-            <div className="flex flex-col gap-1">
-              {participants.map((p: ParticipantInfo) => (
-                <div key={p.userId} className="flex items-center gap-2 text-xs">
-                  <span
-                    className={`h-2 w-2 rounded-full ${p.connected ? 'bg-emerald-400' : 'bg-zinc-600'}`}
-                  />
-                  <span className="text-zinc-300">{p.username}</span>
-                  <span className="text-zinc-600">{p.role}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <CreatureTracker
+          entities={entities}
+          combat={combat}
+          send={send}
+        />
       }
       rightRail={
         <div className="flex h-full flex-col overflow-hidden">
+          {/* Scene audio — always visible at top of right rail */}
+          <div className="shrink-0 border-b border-zinc-800 p-3">
+            <SceneAudioPanel
+              campaignId={sessionState.campaignId}
+              audioId={activeAudioId}
+              onAudioChange={setActiveAudioId}
+              label="Now Playing"
+            />
+          </div>
+
           {showAssets && sceneType ? (
             <div className="flex-1 overflow-y-auto p-2">
               <AssetPanel
@@ -200,10 +302,11 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
                 sceneId={activeScene?.id ?? ''}
                 campaignId={sessionState.campaignId}
                 heroCount={heroCount}
+                onAddMonsterToScene={handleAddMonsterToScene}
               />
             </div>
           ) : (
-            <div className="flex flex-col gap-4 p-4">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
               {combat && (
                 <>
                   <CombatTracker
@@ -228,22 +331,54 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
                   </div>
                 </>
               )}
+
+              {/* Grid controls — shown when in battle scene and not in assets view */}
+              {sceneType === 'battle' && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium text-zinc-400">Grid Overlay</span>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-12 text-xs text-zinc-500">Opacity</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(currentGridOpacity * 100)}
+                        onChange={(e) => setGridOpacityOverride(Number(e.target.value) / 100)}
+                        className="h-1 flex-1 accent-zinc-400"
+                      />
+                      <span className="w-8 text-right text-xs text-zinc-500">
+                        {Math.round(currentGridOpacity * 100)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-12 text-xs text-zinc-500">Color</span>
+                      {GRID_COLORS.map(({ color, label }) => (
+                        <button
+                          key={color}
+                          type="button"
+                          title={label}
+                          className={`h-5 w-5 rounded-full border-2 transition-transform ${
+                            currentGridColor === color
+                              ? 'scale-125 border-white'
+                              : 'border-zinc-600 hover:border-zinc-400'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setGridColorOverride(color)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       }
-      filmStrip={
-        <FilmStrip
-          scenes={scenes}
-          activeSceneId={activeSceneId}
-          onSelectScene={handleSelectScene}
-        />
-      }
       statusBar={
-        <StatusBar
-          sceneType={sceneType}
+        <ParticipantStatusBar
+          participants={participants}
           connectionStatus={connectionStatus}
-          participantCount={participants.length}
         />
       }
     >
@@ -265,6 +400,23 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
                 <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">?</kbd>
                 <span className="text-zinc-400">Toggle Help</span>
               </div>
+              {sceneType === 'battle' && (
+                <>
+                  <div className="mt-2 border-t border-zinc-700 pt-2 text-[10px] text-zinc-500">Battle Tools</div>
+                  <div className="flex justify-between gap-8">
+                    <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">H/V/D/F/T/E</kbd>
+                    <span className="text-zinc-400">Tools</span>
+                  </div>
+                  <div className="flex justify-between gap-8">
+                    <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">G</kbd>
+                    <span className="text-zinc-400">Toggle Grid</span>
+                  </div>
+                  <div className="flex justify-between gap-8">
+                    <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">Hold Space</kbd>
+                    <span className="text-zinc-400">Temporary Pan</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

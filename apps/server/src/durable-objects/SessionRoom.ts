@@ -9,6 +9,8 @@ import type {
   CombatAction,
   CombatState,
   AbilityResult,
+  DrawingSync,
+  FogSync,
 } from '../protocol.js';
 
 interface ConnectionMeta {
@@ -31,6 +33,22 @@ export class SessionRoom extends DurableObject<Env> {
 
     if (url.pathname === '/ws') {
       return this.handleWebSocket(request, url);
+    }
+
+    // HTTP endpoint to end session from outside the WebSocket (e.g. LivePage)
+    if (url.pathname === '/end' && request.method === 'POST') {
+      const sessionId = url.searchParams.get('sessionId');
+      if (sessionId) {
+        this.sessionId = sessionId;
+        // Hydrate if not already loaded so we can save snapshots
+        if (!this.sessionState) {
+          await this.hydrate(sessionId);
+        }
+      }
+      await this.handleEndSession();
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response('Not found', { status: 404 });
@@ -125,7 +143,8 @@ export class SessionRoom extends DurableObject<Env> {
         if (this.sessionState) {
           this.sessionState.entities.push(msg.entity);
         }
-        this.broadcast({ type: 'entity_created', entity: msg.entity }, ws);
+        // Don't exclude sender — Director needs to see the entity they just created
+        this.broadcast({ type: 'entity_created', entity: msg.entity });
         break;
 
       case 'update_entity':
@@ -144,7 +163,8 @@ export class SessionRoom extends DurableObject<Env> {
         if (this.sessionState) {
           this.sessionState.entities = this.sessionState.entities.filter((e) => e.id !== msg.entityId);
         }
-        this.broadcast({ type: 'entity_deleted', entityId: msg.entityId }, ws);
+        // Don't exclude sender — Director needs to see their own deletion
+        this.broadcast({ type: 'entity_deleted', entityId: msg.entityId });
         break;
 
       case 'move_token':
@@ -173,6 +193,46 @@ export class SessionRoom extends DurableObject<Env> {
           return;
         }
         await this.handleEndSession();
+        break;
+
+      case 'scene_drawing_add':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.storeSceneDrawing(msg.drawing);
+        // Don't exclude sender — Director needs to see their own drawings
+        this.broadcast({ type: 'scene_drawing_added', drawing: msg.drawing });
+        break;
+
+      case 'scene_drawing_remove':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.removeSceneDrawing(msg.drawingId);
+        // Don't exclude sender — Director needs to see their own removal
+        this.broadcast({ type: 'scene_drawing_removed', drawingId: msg.drawingId });
+        break;
+
+      case 'scene_fog_add':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.storeSceneFog(msg.fog);
+        // Don't exclude sender — Director needs to see their own fog
+        this.broadcast({ type: 'scene_fog_added', fog: msg.fog });
+        break;
+
+      case 'scene_fog_remove':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.removeSceneFog(msg.fogId);
+        // Don't exclude sender — Director needs to see their own removal
+        this.broadcast({ type: 'scene_fog_removed', fogId: msg.fogId });
         break;
 
       default:
@@ -209,7 +269,7 @@ export class SessionRoom extends DurableObject<Env> {
     if (!session) return;
 
     const scenes = await db.prepare(
-      'SELECT id, name, scene_type, order_index, data FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
+      'SELECT id, title AS name, type, order_index, data FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
     )
       .bind(sessionId)
       .all<SceneRef & { data?: string }>();
@@ -255,10 +315,31 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private async handleEndSession(): Promise<void> {
+    const db = this.env.DB;
+
+    // Save per-scene snapshots before clearing state
+    if (this.sessionState && this.sessionId) {
+      const now = new Date().toISOString();
+
+      for (const scene of this.sessionState.scenes) {
+        const isActive = scene.id === this.sessionState.activeSceneId;
+        const snapshot = JSON.stringify({
+          data: scene.data ?? {},
+          entities: isActive ? this.sessionState.entities : [],
+          combat: isActive ? this.sessionState.combat : null,
+          savedAt: now,
+        });
+
+        await db.prepare('UPDATE scenes SET snapshot = ? WHERE id = ?')
+          .bind(snapshot, scene.id)
+          .run();
+      }
+    }
+
     // Mark session as completed in D1
     if (this.sessionId) {
-      await this.env.DB.prepare(
-        "UPDATE game_sessions SET status = 'completed', updated_at = datetime('now') WHERE id = ?",
+      await db.prepare(
+        "UPDATE game_sessions SET status = 'completed', ended_at = datetime('now') WHERE id = ?",
       ).bind(this.sessionId).run();
     }
 
@@ -327,10 +408,29 @@ export class SessionRoom extends DurableObject<Env> {
         this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { currentStamina: entity?.['currentStamina'] } });
         break;
       }
-      case 'APPLY_CONDITION':
-      case 'REMOVE_CONDITION':
-        // Condition management — pass through as entity update for now
+      case 'APPLY_CONDITION': {
+        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        if (entity) {
+          const conditions = Array.isArray(entity['conditions']) ? [...(entity['conditions'] as string[])] : [];
+          if (!conditions.includes(action.condition)) {
+            conditions.push(action.condition);
+          }
+          (entity as Record<string, unknown>)['conditions'] = conditions;
+          this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { conditions } });
+        }
         break;
+      }
+      case 'REMOVE_CONDITION': {
+        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        if (entity) {
+          const conditions = Array.isArray(entity['conditions'])
+            ? (entity['conditions'] as string[]).filter((c) => c !== action.conditionId)
+            : [];
+          (entity as Record<string, unknown>)['conditions'] = conditions;
+          this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { conditions } });
+        }
+        break;
+      }
     }
 
     this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });
@@ -395,6 +495,41 @@ export class SessionRoom extends DurableObject<Env> {
     };
 
     this.broadcast({ type: 'ability_resolved', result });
+  }
+
+  /** Get the active scene's data object (create if missing). */
+  private getActiveSceneData(): Record<string, unknown> | null {
+    if (!this.sessionState) return null;
+    const scene = this.sessionState.scenes.find((s) => s.id === this.sessionState!.activeSceneId);
+    if (!scene) return null;
+    if (!scene.data) scene.data = {};
+    return scene.data;
+  }
+
+  private storeSceneDrawing(drawing: DrawingSync): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    if (!Array.isArray(data['drawings'])) data['drawings'] = [];
+    (data['drawings'] as DrawingSync[]).push(drawing);
+  }
+
+  private removeSceneDrawing(drawingId: string): void {
+    const data = this.getActiveSceneData();
+    if (!data || !Array.isArray(data['drawings'])) return;
+    data['drawings'] = (data['drawings'] as DrawingSync[]).filter((d) => d.id !== drawingId);
+  }
+
+  private storeSceneFog(fog: FogSync): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    if (!Array.isArray(data['fog'])) data['fog'] = [];
+    (data['fog'] as FogSync[]).push(fog);
+  }
+
+  private removeSceneFog(fogId: string): void {
+    const data = this.getActiveSceneData();
+    if (!data || !Array.isArray(data['fog'])) return;
+    data['fog'] = (data['fog'] as FogSync[]).filter((f) => f.id !== fogId);
   }
 
   private sendTo(ws: WebSocket, msg: ServerMessage): void {

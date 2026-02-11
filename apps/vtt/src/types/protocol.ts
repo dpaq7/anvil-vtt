@@ -14,7 +14,11 @@ export type ClientMessage =
   | { type: 'use_ability'; sourceId: string; targetId: string; abilityId: string }
   | { type: 'ready'; ready: boolean }
   | { type: 'select_hero'; heroId: string }
-  | { type: 'end_session' };
+  | { type: 'end_session' }
+  | { type: 'scene_drawing_add'; drawing: DrawingSync }
+  | { type: 'scene_drawing_remove'; drawingId: string }
+  | { type: 'scene_fog_add'; fog: FogSync }
+  | { type: 'scene_fog_remove'; fogId: string };
 
 export type ServerMessage =
   | { type: 'state'; state: SessionState }
@@ -29,7 +33,11 @@ export type ServerMessage =
   | { type: 'session_started' }
   | { type: 'session_ended' }
   | { type: 'error'; code: string; message: string }
-  | { type: 'pong' };
+  | { type: 'pong' }
+  | { type: 'scene_drawing_added'; drawing: DrawingSync }
+  | { type: 'scene_drawing_removed'; drawingId: string }
+  | { type: 'scene_fog_added'; fog: FogSync }
+  | { type: 'scene_fog_removed'; fogId: string };
 
 export interface EntityData {
   id: string;
@@ -97,4 +105,20 @@ export interface SceneRef {
   type: string;
   order_index: number;
   data?: Record<string, unknown>;
+}
+
+export interface DrawingSync {
+  id: string;
+  type: string;
+  points: number[];
+  color: string;
+  width: number;
+}
+
+export interface FogSync {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }

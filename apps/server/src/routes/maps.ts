@@ -35,6 +35,7 @@ async function hydrateMap(db: D1Database, row: MapRow): Promise<MapAsset> {
     campaignId: row.campaign_id,
     name: row.name,
     assetId: row.asset_id,
+    imageUrl: row.asset_id ? `/api/assets/${row.asset_id}/data` : undefined,
     sceneType: row.scene_type as MapAsset['sceneType'],
     gridType: (row.grid_type ?? 'gridded') as MapAsset['gridType'],
     size: (row.size ?? 'medium') as MapAsset['size'],

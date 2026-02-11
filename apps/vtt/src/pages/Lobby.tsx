@@ -4,13 +4,7 @@ import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
 import { api } from '../lib/api.js';
 import { useAuthStore } from '../stores/authStore.js';
 import { useSessionSocket } from '../hooks/useSessionSocket.js';
-
-interface HeroSummary {
-  id: string;
-  name: string;
-  hero_class: string | null;
-  level: number;
-}
+import type { HeroSummary } from '@anvil/types';
 
 interface SessionInfo {
   id: string;
@@ -147,7 +141,7 @@ export function Lobby() {
                   <option value="">Choose a hero...</option>
                   {heroes.map((h) => (
                     <option key={h.id} value={h.id}>
-                      {h.name} ({h.hero_class ?? 'No class'} Lv{h.level})
+                      {h.name} ({h.heroClass ?? 'No class'} Lv{h.level})
                     </option>
                   ))}
                 </select>
