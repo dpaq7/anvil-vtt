@@ -215,8 +215,13 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             isDirector={false}
             cols={battle.cols}
             rows={battle.rows}
+            cellSize={battle.cellSize}
             backgroundUrl={battle.backgroundUrl}
+            drawings={battle.drawings}
             fogZones={battle.fogZones}
+            terrain={battle.terrain}
+            gridOpacity={battle.gridOpacity}
+            gridColor={battle.gridColor}
             heroPosition={heroEntity ? { x: heroEntity.x, y: heroEntity.y } : null}
             combatLog={combatLog}
             entityNames={entityNames}

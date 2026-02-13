@@ -225,7 +225,7 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             outcomes={neg.outcomes}
             isDirector
             argumentLog={liveNeg?.argumentLog}
-            onInterestChange={(delta) => send({ type: 'negotiation_adjust_patience', delta })}
+            onInterestChange={(delta) => send({ type: 'negotiation_adjust_interest', delta })}
             onPatienceChange={(delta) => send({ type: 'negotiation_adjust_patience', delta })}
           />
         );

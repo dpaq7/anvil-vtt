@@ -219,6 +219,8 @@ export class SessionRoom extends DurableObject<Env> {
         }
         if (this.sessionState) {
           this.sessionState.activeSceneId = msg.sceneId;
+          // Initialize mode-specific live state for the new scene
+          this.initializeSceneLiveState(msg.sceneId);
         }
         this.broadcast({ type: 'scene_changed', sceneId: msg.sceneId });
         break;
@@ -339,6 +341,14 @@ export class SessionRoom extends DurableObject<Env> {
           return;
         }
         this.handleNegotiationAdjustPatience(msg.delta);
+        break;
+
+      case 'negotiation_adjust_interest':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationAdjustInterest(msg.delta);
         break;
 
       // ── Montage ──
@@ -544,6 +554,43 @@ export class SessionRoom extends DurableObject<Env> {
     this.sessionState = null;
   }
 
+  /** Initialize mode-specific live state when switching to a scene. */
+  private initializeSceneLiveState(sceneId: string): void {
+    if (!this.sessionState) return;
+    const scene = this.sessionState.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+
+    // Clear previous mode state
+    this.sessionState.negotiation = null;
+    this.sessionState.montage = null;
+    this.sessionState.respite = null;
+
+    const data = scene.data ?? {};
+    const type = scene.type;
+
+    if (type === 'respite') {
+      // Initialize respite activities from scene data
+      const rawActivities = Array.isArray(data['activities']) ? (data['activities'] as Array<Record<string, unknown>>) : [];
+      this.sessionState.respite = {
+        activities: rawActivities.map((a, i) => ({
+          activityId: (a['id'] as string) ?? `activity-${i}`,
+          name: (a['name'] as string) ?? (a['activityType'] as string) ?? 'Activity',
+          description: (a['description'] as string) ?? '',
+          claimedBy: null,
+          claimedByName: null,
+          completed: false,
+        })),
+        completedBy: {},
+      };
+      this.broadcast({
+        type: 'respite_updated',
+        activities: this.sessionState.respite.activities,
+        completedBy: {},
+      });
+    }
+    // Montage and negotiation states are lazily initialized when the first action occurs
+  }
+
   private handleCombatAction(ws: WebSocket, meta: ConnectionMeta, action: CombatAction): void {
     if (!this.sessionState) return;
 
@@ -568,7 +615,7 @@ export class SessionRoom extends DurableObject<Env> {
           villainEntities: action.villainEntityIds,
           actedThisRound: [],
           activeEntityId: null,
-          malice: Math.max(0, heroCount), // Starting malice = heroCount for round 1
+          malice: Math.max(0, heroCount + 1), // Starting malice = heroCount + round(1)
           turnActions: {},
         };
         this.sessionState.combat = combat;
@@ -664,8 +711,8 @@ export class SessionRoom extends DurableObject<Env> {
           c.round++;
           c.actedThisRound = [];
           c.activeSide = c.firstSide;
-          // Malice increases each round
-          c.malice += c.heroEntities.length;
+          // Malice increases each round: heroCount + roundNumber
+          c.malice += c.heroEntities.length + c.round;
         } else if (currentSideDone) {
           // Switch to other side
           c.activeSide = c.activeSide === 'heroes' ? 'villains' : 'heroes';
@@ -893,6 +940,18 @@ export class SessionRoom extends DurableObject<Env> {
     if (!this.sessionState?.negotiation) return;
     const neg = this.sessionState.negotiation;
     neg.patience = Math.max(0, neg.patience + delta);
+    this.broadcast({
+      type: 'negotiation_updated',
+      interest: neg.interest,
+      patience: neg.patience,
+      argumentLog: neg.argumentLog,
+    });
+  }
+
+  private handleNegotiationAdjustInterest(delta: number): void {
+    if (!this.sessionState?.negotiation) return;
+    const neg = this.sessionState.negotiation;
+    neg.interest = Math.max(0, neg.interest + delta);
     this.broadcast({
       type: 'negotiation_updated',
       interest: neg.interest,

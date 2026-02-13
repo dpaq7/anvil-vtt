@@ -23,6 +23,7 @@ export type ClientMessage =
   // Negotiation
   | { type: 'negotiation_argument'; skillId: string; approachText: string }
   | { type: 'negotiation_adjust_patience'; delta: number }
+  | { type: 'negotiation_adjust_interest'; delta: number }
   // Montage
   | { type: 'montage_roll'; skillId: string; characteristicId: string }
   // Respite
