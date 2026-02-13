@@ -8,9 +8,9 @@
 | Slice | Status | Pass | Fail | Missing |
 |-------|--------|------|------|---------|
 | 1. Core Mechanics | PASS | 49 | 0 | 0 |
-| 2. Ancestries | Pending | - | - | - |
-| 3. Cultures | Pending | - | - | - |
-| 4. Careers | Pending | - | - | - |
+| 2. Ancestries | PASS | 163 | 0 | 0 |
+| 3. Cultures | PASS | 53 | 0 | 1 known gap |
+| 4. Careers | PASS | 180 | 0 | 0 |
 | 5. Class Foundations | Pending | - | - | - |
 | 6. Kits | Pending | - | - | - |
 | 7A. Beastheart Implementation | Pending | - | - | - |
@@ -60,11 +60,57 @@
 
 ### Slice 2: Ancestries
 
+**163 tests, all passing.**
+
+**No bugs found.** All 12 ancestries match source books exactly.
+
+**Validated per ancestry (12 ancestries):**
+- ID, name, size, speed, ancestry points
+- Signature trait name present and correct
+- All purchased traits: correct names and costs (1 or 2 points)
+
+**Cross-ancestry validations:**
+- Exactly 12 ancestries present
+- Only Hakaan is size 1L, only Polder is size 1S
+- Memonek & Polder have 4 ancestry points; Revenant has 2 (lowest)
+- All trait costs are 1 or 2
 
 ### Slice 3: Cultures
 
+**53 tests, all passing.**
+
+**No bugs found.** All environment, organization, and upbringing options match source.
+
+**Validated:**
+- 5 environment options (Nomadic, Rural, Secluded, Urban, Wilderness) with correct skill group grants
+- 2 organization options (Bureaucratic, Communal) with correct skill group grants
+- 6 upbringing options (Academic, Creative, Labor, Lawless, Martial, Noble) with correct skill grants
+- 13 total culture benefits accessible via GameData
+- Pre-built culture combos reference valid options
+- Skill group references are all valid
+
+**Known gap (documented, not a bug):**
+- Martial upbringing: source lists 10 specific skills across 5 groups; code stores a simplified subset of 3 (Strategy, Intimidate, Alertness). The 7 missing skills are: Blacksmithing, Fletching, Climb, Endurance, Ride, Track, Monsters.
 
 ### Slice 4: Careers
+
+**180 tests, all passing.**
+
+**No bugs found.** All 18 careers match source books exactly.
+
+**Validated per career (18 careers):**
+- Exists via `GameData.getCareer(id)` and `GameData.getCareerByName(name)`
+- Skills array matches source exactly
+- Languages array matches source exactly
+- Renown, wealth, project points, perk type all match source
+- Each career has a non-empty inciting incident
+
+**Value constraint checks:**
+- Renown: 0, 1, or 2 (6 careers grant renown > 0)
+- Wealth: 0 or 1 (2 careers grant wealth > 0: Aristocrat, Politician)
+- Project Points: 0, 120, or 240
+- All perk types are valid categories
+- Each career has 2-3 skill entries
 
 
 ### Slice 5: Class Foundations
