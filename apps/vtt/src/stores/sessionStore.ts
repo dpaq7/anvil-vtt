@@ -1,5 +1,15 @@
 import { create } from 'zustand';
-import type { SessionState, ParticipantInfo, EntityData, CombatState, SceneRef } from '../types/protocol.js';
+import type {
+  SessionState,
+  ParticipantInfo,
+  EntityData,
+  CombatState,
+  SceneRef,
+  NegotiationLiveState,
+  MontageLiveState,
+  RespiteLiveState,
+  AudioLiveState,
+} from '../types/protocol.js';
 import type { MotivationType } from '@anvil/types';
 
 // ---------------------------------------------------------------------------

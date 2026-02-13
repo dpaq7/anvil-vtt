@@ -142,6 +142,69 @@ export function useSessionSocket(sessionId: string | null) {
           };
         });
         break;
+      // ── Non-battle scene updates ──
+      case 'negotiation_updated':
+        setState((prev) => prev ? {
+          ...prev,
+          negotiation: {
+            ...(prev.negotiation ?? { maxPatience: 5, argumentLog: [] }),
+            interest: msg.interest,
+            patience: msg.patience,
+            argumentLog: msg.argumentLog,
+          },
+        } : prev);
+        break;
+      case 'montage_updated':
+        setState((prev) => prev ? {
+          ...prev,
+          montage: {
+            ...(prev.montage ?? { successLimit: 3, failureLimit: 3 }),
+            successes: msg.successes,
+            failures: msg.failures,
+            testLog: msg.testLog,
+            outcome: msg.outcome,
+          },
+        } : prev);
+        break;
+      case 'respite_updated':
+        setState((prev) => prev ? {
+          ...prev,
+          respite: {
+            activities: msg.activities,
+            completedBy: msg.completedBy,
+          },
+        } : prev);
+        break;
+      case 'audio_command':
+        setState((prev) => {
+          if (!prev) return prev;
+          if (msg.action === 'stop') {
+            return { ...prev, audio: null };
+          }
+          return {
+            ...prev,
+            audio: {
+              playing: msg.action === 'play',
+              audioUrl: msg.audioUrl ?? prev.audio?.audioUrl ?? null,
+              assetName: msg.assetName ?? prev.audio?.assetName ?? null,
+              loop: msg.loop ?? prev.audio?.loop ?? false,
+            },
+          };
+        });
+        break;
+      case 'story_updated':
+        // Story updates are pushed to the scene data
+        setState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            scenes: prev.scenes.map((s) => {
+              if (s.id !== prev.activeSceneId) return s;
+              return { ...s, data: { ...(s.data ?? {}), readAloud: msg.readAloudText } };
+            }),
+          };
+        });
+        break;
       case 'pong':
         break;
     }
