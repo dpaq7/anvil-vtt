@@ -1,7 +1,9 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { MessageSquare, Dice5 } from 'lucide-react';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
-import { NegotiationLogic } from '@anvil/data';
+import { NegotiationLogic, skills } from '@anvil/data';
 import type { MotivationType } from '@anvil/types';
+import type { ArgumentLogEntry } from '../../types/protocol.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,12 +48,18 @@ export interface NegotiationStageProps {
   // Role
   isDirector: boolean;
 
+  // Argument log from server
+  argumentLog?: ArgumentLogEntry[];
+
   // Callbacks (Director only)
   onInterestChange?: (delta: number) => void;
   onPatienceChange?: (delta: number) => void;
   onRevealMotivation?: (id: string) => void;
   onRevealPitfall?: (id: string) => void;
   onEndNegotiation?: () => void;
+
+  // Player callback
+  onMakeArgument?: (skillId: string, approachText: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +169,36 @@ function PitfallItem({ pitfall, isDirector, onReveal }: PitfallItemProps) {
   );
 }
 
+function ArgumentLogItem({ entry }: { entry: ArgumentLogEntry }) {
+  const skill = skills.find((s) => s.id === entry.skillId);
+  const deltaColor =
+    entry.interestDelta > 0
+      ? 'text-emerald-400'
+      : entry.interestDelta < 0
+        ? 'text-red-400'
+        : 'text-zinc-500';
+
+  return (
+    <div className="rounded bg-zinc-800/50 px-3 py-2">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="font-medium text-zinc-200">{entry.playerName}</span>
+        <span className="text-zinc-500">used</span>
+        <span className="text-purple-400">{skill?.name ?? entry.skillId}</span>
+        <span className="ml-auto text-xs text-zinc-500">
+          {entry.roll} &rarr; T{entry.tier}
+        </span>
+        <span className={`text-xs font-medium ${deltaColor}`}>
+          {entry.interestDelta > 0 ? '+' : ''}
+          {entry.interestDelta} Int
+        </span>
+      </div>
+      {entry.approachText && (
+        <p className="mt-1 text-xs italic text-zinc-400">&ldquo;{entry.approachText}&rdquo;</p>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -178,15 +216,27 @@ export function NegotiationStage({
   pitfalls,
   outcomes,
   isDirector,
+  argumentLog = [],
   onInterestChange,
   onPatienceChange,
   onRevealMotivation,
   onRevealPitfall,
   onEndNegotiation,
+  onMakeArgument,
 }: NegotiationStageProps) {
   // Clamp values for display
   const displayInterest = NegotiationLogic.clampInterest(interest, maxInterest);
   const displayPatience = NegotiationLogic.clampPatience(patience, maxPatience);
+  const isActive = phase === 'active';
+
+  // Player argument state
+  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+  const [approachText, setApproachText] = useState<string>('');
+
+  // Get interpersonal skills for negotiation
+  const interpersonalSkills = useMemo(() => {
+    return skills.filter((s) => s.group === 'interpersonal');
+  }, []);
 
   // Get outcome text based on current interest
   const outcomeText = useMemo(() => {
@@ -215,6 +265,12 @@ export function NegotiationStage({
   const handlePatienceDown = useCallback(() => {
     if (patience > 0) onPatienceChange?.(-1);
   }, [patience, onPatienceChange]);
+
+  const handleArgument = useCallback(() => {
+    if (!selectedSkillId || !onMakeArgument) return;
+    onMakeArgument(selectedSkillId, approachText);
+    setApproachText('');
+  }, [selectedSkillId, approachText, onMakeArgument]);
 
   // Get initials for avatar fallback
   const initials = useMemo(() => {
@@ -266,8 +322,8 @@ export function NegotiationStage({
             )}
 
             {/* Director Controls */}
-            {isDirector && phase === 'active' && (
-              <div className="mt-2 flex flex-col gap-2 pt-2 border-t border-zinc-700 w-full">
+            {isDirector && isActive && (
+              <div className="mt-2 flex w-full flex-col gap-2 border-t border-zinc-700 pt-2">
                 <div className="flex items-center justify-center gap-2">
                   <Button
                     variant="outline"
@@ -356,6 +412,62 @@ export function NegotiationStage({
         </div>
       </div>
 
+      {/* Player argument panel */}
+      {!isDirector && isActive && onMakeArgument && (
+        <Card className="mx-auto w-full max-w-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <MessageSquare className="size-4 text-purple-400" />
+              Make an Argument
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {/* Skill picker — interpersonal skills are most relevant for negotiation */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                Interpersonal Skill
+              </label>
+              <select
+                value={selectedSkillId}
+                onChange={(e) => setSelectedSkillId(e.target.value)}
+                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-purple-500"
+              >
+                <option value="">Choose a skill...</option>
+                {interpersonalSkills.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Approach text */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                Your Approach (optional)
+              </label>
+              <textarea
+                value={approachText}
+                onChange={(e) => setApproachText(e.target.value)}
+                placeholder="Describe how you're making your argument..."
+                rows={2}
+                className="w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {/* Roll button */}
+            <Button
+              onClick={handleArgument}
+              disabled={!selectedSkillId}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Dice5 className="mr-1.5 size-4" />
+              Make Argument
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Motivations & Pitfalls */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Motivations */}
@@ -401,6 +513,21 @@ export function NegotiationStage({
         </Card>
       </div>
 
+      {/* Argument log */}
+      {argumentLog.length > 0 && (
+        <div className="mx-auto w-full max-w-lg">
+          <p className="mb-2 text-sm font-medium text-zinc-300">Argument Log</p>
+          <div className="flex flex-col gap-1">
+            {argumentLog
+              .slice()
+              .reverse()
+              .map((entry) => (
+                <ArgumentLogItem key={entry.id} entry={entry} />
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Outcome Display */}
       {phase !== 'active' && outcomeText && (
         <Card>
@@ -416,7 +543,7 @@ export function NegotiationStage({
                   {interestLabel}
                 </span>
               </p>
-              <p className="text-zinc-300 italic">"{outcomeText}"</p>
+              <p className="italic text-zinc-300">&ldquo;{outcomeText}&rdquo;</p>
             </div>
           </CardContent>
         </Card>

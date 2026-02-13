@@ -175,43 +175,51 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
         );
       case 'montage': {
         const montage = parseMontageData(sceneData);
+        const liveMontage = sessionState.montage;
         return (
           <MontageStage
             goal={montage.goal}
-            currentSuccesses={0}
-            successLimit={montage.successLimit}
-            currentFailures={0}
-            failureLimit={montage.failureLimit}
-            outcome="pending"
+            currentSuccesses={liveMontage?.successes ?? 0}
+            successLimit={liveMontage?.successLimit ?? montage.successLimit}
+            currentFailures={liveMontage?.failures ?? 0}
+            failureLimit={liveMontage?.failureLimit ?? montage.failureLimit}
+            outcome={liveMontage?.outcome ?? 'pending'}
             challenges={montage.challenges}
             isDirector
+            testLog={liveMontage?.testLog}
           />
         );
       }
       case 'negotiation': {
         const neg = parseNegotiationData(sceneData);
+        const liveNeg = sessionState.negotiation;
         return (
           <NegotiationStage
             npcName={neg.npcName}
             npcPortrait={neg.npcPortrait}
             npcAttitude={neg.npcAttitude}
-            interest={neg.interest}
-            patience={neg.patience}
-            maxPatience={neg.maxPatience}
+            interest={liveNeg?.interest ?? neg.interest}
+            patience={liveNeg?.patience ?? neg.patience}
+            maxPatience={liveNeg?.maxPatience ?? neg.maxPatience}
             phase={neg.phase}
             motivations={neg.motivations}
             pitfalls={neg.pitfalls}
             outcomes={neg.outcomes}
             isDirector
+            argumentLog={liveNeg?.argumentLog}
+            onInterestChange={(delta) => send({ type: 'negotiation_adjust_patience', delta })}
+            onPatienceChange={(delta) => send({ type: 'negotiation_adjust_patience', delta })}
           />
         );
       }
       case 'respite': {
         const respite = parseRespiteData(sceneData);
+        const liveRespite = sessionState.respite;
         return (
           <RespiteStage
             location={respite.location}
             activities={respite.activities}
+            liveActivities={liveRespite?.activities}
             projects={respite.projects}
             completed={false}
             isDirector

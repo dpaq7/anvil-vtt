@@ -93,6 +93,40 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
     toast.info('Defending until your next turn.');
   }, [heroEntity, send]);
 
+  // ── Non-battle scene handlers ──
+
+  const handleMontageRoll = useCallback(
+    (skillId: string, characteristicId: string) => {
+      send({ type: 'montage_roll', skillId, characteristicId });
+      toast.info('Rolling montage test...');
+    },
+    [send],
+  );
+
+  const handleNegotiationArgument = useCallback(
+    (skillId: string, approachText: string) => {
+      send({ type: 'negotiation_argument', skillId, approachText });
+      toast.info('Making your argument...');
+    },
+    [send],
+  );
+
+  const handleRespiteClaimActivity = useCallback(
+    (activityId: string) => {
+      send({ type: 'respite_choose_activity', activityId });
+      toast.info('Claiming activity...');
+    },
+    [send],
+  );
+
+  const handleRespiteCompleteActivity = useCallback(
+    (activityId: string) => {
+      send({ type: 'respite_complete_activity', activityId });
+      toast.success('Activity completed!');
+    },
+    [send],
+  );
+
   const renderStage = () => {
     if (!activeScene) {
       return (
@@ -119,6 +153,8 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             outcome={liveMontage?.outcome ?? 'pending'}
             challenges={montage.challenges}
             isDirector={false}
+            testLog={liveMontage?.testLog}
+            onMontageRoll={handleMontageRoll}
           />
         );
       }
@@ -139,18 +175,25 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             pitfalls={neg.pitfalls}
             outcomes={neg.outcomes}
             isDirector={false}
+            argumentLog={liveNeg?.argumentLog}
+            onMakeArgument={handleNegotiationArgument}
           />
         );
       }
       case 'respite': {
         const respite = parseRespiteData(sceneData);
+        const liveRespite = sessionState.respite;
         return (
           <RespiteStage
             location={respite.location}
             activities={respite.activities}
+            liveActivities={liveRespite?.activities}
             projects={respite.projects}
             completed={false}
             isDirector={false}
+            currentUserId={user?.id}
+            onClaimActivity={handleRespiteClaimActivity}
+            onCompleteActivity={handleRespiteCompleteActivity}
           />
         );
       }
