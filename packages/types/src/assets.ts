@@ -102,6 +102,18 @@ export interface AddSceneMonstersInput {
   quantity: number;
 }
 
+// ── Monster Portraits ──
+
+export interface MonsterPortrait {
+  id: string;
+  campaignId: string;
+  monsterName: string;
+  assetId: string;
+  portraitUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Audio ──
 
 export type AudioType = 'ambient' | 'music' | 'sound_effect';

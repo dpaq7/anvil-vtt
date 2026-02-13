@@ -9,6 +9,7 @@ import type { ClientMessage } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
 import { loadMonsters, isMonsterStatblock, FORGESTEEL_MONSTERS, isMinion } from '@anvil/data';
 import type { CompendiumMonster } from '@anvil/data';
+import { useAssetsStore, getMonsterPortraitUrl } from '../../stores/assetsStore.js';
 import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleData } from '../../lib/scene-data.js';
 import { DirectorFilmStrip } from '../../components/session/DirectorFilmStrip.js';
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
@@ -45,6 +46,7 @@ interface DirectorViewProps {
 export function DirectorView({ sessionState, connectionStatus, send, combatLog }: DirectorViewProps) {
   const navigate = useNavigate();
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const monsterPortraits = useAssetsStore((s) => s.monsterPortraits);
   const { scenes, activeSceneId, participants, entities, combat } = sessionState;
   const activeScene = scenes.find((s) => s.id === activeSceneId);
   const sceneType = (activeScene?.type as SceneType) ?? null;
@@ -124,6 +126,9 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
         ? `squad-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
         : undefined;
 
+      // Look up custom portrait for this monster
+      const portraitUrl = getMonsterPortraitUrl(monsterPortraits, monsterName);
+
       for (let i = 0; i < quantity; i++) {
         // Stagger in a horizontal row, wrapping to next row if needed
         const offsetX = i % 5;
@@ -143,11 +148,12 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
           isMinion: minionFlag,
           ...(squadId ? { squadId, squadSize: quantity } : {}),
           ...(monster?.features ? { features: monster.features } : {}),
+          ...(portraitUrl ? { portraitUrl } : {}),
         };
         send({ type: 'create_entity', entity });
       }
     },
-    [send, battleData],
+    [send, battleData, monsterPortraits],
   );
 
   const renderStage = () => {

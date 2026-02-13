@@ -21,12 +21,15 @@ export interface BattleCanvasProps {
   cellSize: number;
   entities: EntityData[];
   selectedEntityId: string | null;
+  selectedEntityIds?: string[];
   backgroundUrl?: string | null;
   walls?: Segment[];
   isDirector: boolean;
   heroPosition?: { x: number; y: number } | null;
   onSelectEntity: (entityId: string | null) => void;
   onMoveEntity: (entityId: string, x: number, y: number) => void;
+  onMultiSelectEntities?: (entityIds: string[]) => void;
+  onMultiMoveEntities?: (moves: Array<{ entityId: string; gridX: number; gridY: number }>) => void;
 
   // Builder mode props (all optional — omit for live session)
   builderMode?: boolean;
@@ -48,7 +51,7 @@ export interface BattleCanvasProps {
 
   // Token interaction callbacks
   onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
-  onTokenRightClick?: (entityId: string, screenX: number, screenY: number) => void;
+  onTokenRightClick?: (entityId: string | null, screenX: number, screenY: number) => void;
 
   // Viewport controls
   onZoomChange?: (zoom: number) => void;
@@ -63,12 +66,15 @@ export function BattleCanvas({
   cellSize,
   entities,
   selectedEntityId,
+  selectedEntityIds = [],
   backgroundUrl,
   walls = [],
   isDirector,
   heroPosition,
   onSelectEntity,
   onMoveEntity,
+  onMultiSelectEntities,
+  onMultiMoveEntities,
   builderMode = false,
   activeTool = 'select',
   drawColor = '#ef4444',
@@ -128,6 +134,10 @@ export function BattleCanvas({
   onFogAddRef.current = onFogAdd;
   const onFogRemoveRef = useRef(onFogRemove);
   onFogRemoveRef.current = onFogRemove;
+  const onMultiSelectEntitiesRef = useRef(onMultiSelectEntities);
+  onMultiSelectEntitiesRef.current = onMultiSelectEntities;
+  const onMultiMoveEntitiesRef = useRef(onMultiMoveEntities);
+  onMultiMoveEntitiesRef.current = onMultiMoveEntities;
   const onTokenHoverRef = useRef(onTokenHover);
   onTokenHoverRef.current = onTokenHover;
   const onTokenRightClickRef = useRef(onTokenRightClick);
@@ -185,6 +195,8 @@ export function BattleCanvas({
         {
           onTokenSelect: (id) => onSelectEntityRef.current(id),
           onTokenMove: (id, x, y) => onMoveEntityRef.current(id, x, y),
+          onMultiTokenSelect: (ids) => onMultiSelectEntitiesRef.current?.(ids),
+          onMultiTokenMove: (moves) => onMultiMoveEntitiesRef.current?.(moves),
           onDrawingAdd: (...args) => onDrawingAddRef.current?.(...args),
           onDrawingRemove: (...args) => onDrawingRemoveRef.current?.(...args),
           onTerrainAdd: (...args) => onTerrainAddRef.current?.(...args),
@@ -275,6 +287,12 @@ export function BattleCanvas({
 
     const currentIds = new Set(entities.map((e) => e.id));
     const prevIds = prevEntityIdsRef.current;
+    const selectedSet = new Set(selectedEntityIds);
+    // Always include the single-select ID too
+    if (selectedEntityId) selectedSet.add(selectedEntityId);
+
+    // Sync multi-select state into the InteractionManager so group-drag works
+    layers.interaction.setSelectedIds(selectedSet);
 
     // Remove tokens that no longer exist
     for (const id of prevIds) {
@@ -291,21 +309,21 @@ export function BattleCanvas({
         layers.tokens.addToken(entity, {
           size: 1,
           color,
-          selected: entity.id === selectedEntityId,
+          selected: selectedSet.has(entity.id),
         });
       } else {
         // Existing entity — update in place (position, selection, stamina, conditions)
         layers.tokens.updateToken(entity, {
           size: 1,
           color,
-          selected: entity.id === selectedEntityId,
+          selected: selectedSet.has(entity.id),
         });
       }
     }
 
     prevEntityIdsRef.current = currentIds;
     layers.interaction.rebuildIndex();
-  }, [entities, selectedEntityId, pixiReady]);
+  }, [entities, selectedEntityId, selectedEntityIds, pixiReady]);
 
   // Update fog zones
   useEffect(() => {

@@ -21,6 +21,7 @@ import type {
   MontageTestRecord,
   CreateMontageTestInput,
   UpdateMontageTestInput,
+  MonsterPortrait,
   GridType,
   MapSize,
   MapTerrainTag,
@@ -53,6 +54,7 @@ interface AssetsState {
   audioAssets: AudioAsset[];
   activityCards: ActivityCard[];
   montageTests: MontageTestRecord[];
+  monsterPortraits: MonsterPortrait[];
 
   // UI state
   loading: boolean;
@@ -107,11 +109,16 @@ interface AssetsState {
   createMontageTest: (sceneId: string, input: CreateMontageTestInput) => Promise<MontageTestRecord>;
   updateMontageTest: (sceneId: string, testId: string, input: UpdateMontageTestInput) => Promise<void>;
   deleteMontageTest: (sceneId: string, testId: string) => Promise<void>;
+
+  // Actions — Monster portraits
+  loadMonsterPortraits: (campaignId: string) => Promise<void>;
+  setMonsterPortrait: (campaignId: string, monsterName: string, assetId: string) => Promise<void>;
+  deleteMonsterPortrait: (campaignId: string, monsterName: string) => Promise<void>;
 }
 
 // ── File Upload Helper ──
 
-async function uploadFile(file: File, assetType: string): Promise<string> {
+export async function uploadFile(file: File, assetType: string): Promise<string> {
   const { id } = await api.post<{ id: string; storageKey: string }>('/api/assets/upload', {
     name: file.name,
     type: assetType,
@@ -134,6 +141,7 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
   audioAssets: [],
   activityCards: [],
   montageTests: [],
+  monsterPortraits: [],
   loading: false,
   error: null,
   selectedItemId: null,
@@ -454,4 +462,64 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
       set({ error: (e as Error).message });
     }
   },
+
+  // ── Monster Portraits ──
+
+  loadMonsterPortraits: async (campaignId) => {
+    try {
+      const { portraits } = await api.get<{ portraits: MonsterPortrait[] }>(
+        `/api/campaigns/${campaignId}/monster-portraits`,
+      );
+      set({ monsterPortraits: portraits });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  setMonsterPortrait: async (campaignId, monsterName, assetId) => {
+    try {
+      const { portrait } = await api.post<{ portrait: MonsterPortrait }>(
+        `/api/campaigns/${campaignId}/monster-portraits`,
+        { monsterName, assetId },
+      );
+      set((s) => ({
+        monsterPortraits: [
+          ...s.monsterPortraits.filter(
+            (p) => p.monsterName.toLowerCase() !== monsterName.toLowerCase(),
+          ),
+          portrait,
+        ],
+      }));
+    } catch (e) {
+      set({ error: (e as Error).message });
+      throw e;
+    }
+  },
+
+  deleteMonsterPortrait: async (campaignId, monsterName) => {
+    try {
+      await api.delete(
+        `/api/campaigns/${campaignId}/monster-portraits/${encodeURIComponent(monsterName)}`,
+      );
+      set((s) => ({
+        monsterPortraits: s.monsterPortraits.filter(
+          (p) => p.monsterName.toLowerCase() !== monsterName.toLowerCase(),
+        ),
+      }));
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
 }));
+
+// ── Portrait Helpers ──
+
+/** Look up a portrait URL for a monster by name (case-insensitive). */
+export function getMonsterPortraitUrl(
+  portraits: MonsterPortrait[],
+  name: string,
+): string | undefined {
+  return portraits.find(
+    (p) => p.monsterName.toLowerCase() === name.toLowerCase(),
+  )?.portraitUrl;
+}

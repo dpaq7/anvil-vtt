@@ -175,6 +175,10 @@ export function Assets() {
     loadAudio,
     createAudio,
     addSceneMonster,
+    monsterPortraits,
+    loadMonsterPortraits,
+    setMonsterPortrait,
+    deleteMonsterPortrait,
     loading,
     error,
     clearError,
@@ -212,6 +216,7 @@ export function Assets() {
     loadNpcs(campaignId);
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
+    loadMonsterPortraits(campaignId);
 
     // Heroes (user-scoped, not campaign-scoped)
     api
@@ -243,7 +248,7 @@ export function Assets() {
         setScenes(allScenes);
       })
       .catch(() => setScenes([]));
-  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio]);
+  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio, loadMonsterPortraits]);
 
   // ── Reload current data ──
   const reloadData = useCallback(() => {
@@ -252,11 +257,12 @@ export function Assets() {
     loadNpcs(campaignId);
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
+    loadMonsterPortraits(campaignId);
     api
       .get<HeroSummary[]>('/api/heroes')
       .then((data) => setHeroes(data))
       .catch(() => setHeroes([]));
-  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio]);
+  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio, loadMonsterPortraits]);
 
   // ── NPC create dialog ──
   const [npcDialogOpen, setNpcDialogOpen] = useState(false);
@@ -433,6 +439,9 @@ export function Assets() {
               addSceneMonster(targetSceneId, { monsterName, quantity })
             }
             availableScenes={scenes}
+            monsterPortraits={monsterPortraits}
+            onPortraitSave={campaignId ? (name, assetId) => setMonsterPortrait(campaignId, name, assetId) : undefined}
+            onPortraitRemove={campaignId ? (name) => deleteMonsterPortrait(campaignId, name) : undefined}
           />
         );
 

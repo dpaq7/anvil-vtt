@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Quadtree } from '../systems/Quadtree.js';
 import type { EntityData } from '../../types/protocol.js';
 
@@ -48,6 +48,8 @@ interface TokenSprite {
 export class TokenLayer extends Container {
   private tokens = new Map<string, TokenSprite>();
   private cellSize = 64;
+  private selectionRect: Graphics | null = null;
+  private distanceLabel: Container | null = null;
 
   setCellSize(size: number): void {
     this.cellSize = size;
@@ -78,20 +80,25 @@ export class TokenLayer extends Container {
     innerRing.stroke({ width: 2, color: typeColor, alpha: 0.8 });
     container.addChild(innerRing);
 
-    // Center glyph
-    const glyph = TYPE_GLYPHS[entity.type] ?? entity.name.slice(0, 2).toUpperCase();
-    const label = new Text({
-      text: glyph,
-      style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: Math.max(10, size * 0.28),
-        fill: 0xffffff,
-      },
-    });
-    label.anchor.set(0.5);
-    label.x = cx;
-    label.y = cy;
-    container.addChild(label);
+    // Portrait image or center glyph fallback
+    const portraitUrl = entity['portraitUrl'] as string | undefined;
+    if (portraitUrl) {
+      this.loadPortraitSprite(container, portraitUrl, cx, cy, radius - 3);
+    } else {
+      const glyph = TYPE_GLYPHS[entity.type] ?? entity.name.slice(0, 2).toUpperCase();
+      const label = new Text({
+        text: glyph,
+        style: {
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: Math.max(10, size * 0.28),
+          fill: 0xffffff,
+        },
+      });
+      label.anchor.set(0.5);
+      label.x = cx;
+      label.y = cy;
+      container.addChild(label);
+    }
 
     // Name label below token
     const nameLabel = new Text({
@@ -132,31 +139,48 @@ export class TokenLayer extends Container {
       container.addChild(arc);
     }
 
-    // Condition emoji badge — top-right of token
+    // Condition emoji tags — positioned around the token ring starting at ~2 o'clock
     const conditions = Array.isArray(entity['conditions'])
       ? (entity['conditions'] as string[])
       : [];
-    let conditionBadge: Text | null = null;
+    const conditionBadge: Text | null = null;
     if (conditions.length > 0) {
-      const emojis = conditions
-        .slice(0, 3)
-        .map((c) => CONDITION_EMOJI[c] ?? '')
-        .filter(Boolean)
-        .join('');
-      if (emojis) {
-        conditionBadge = new Text({
-          text: emojis,
+      // Start at ~1:30 (about -60°) and space each tag 30° clockwise
+      const startAngle = -Math.PI / 3; // -60° ≈ 2 o'clock
+      const angleStep = Math.PI / 6;   // 30° between tags
+      const tagRadius = radius + 8;    // Just outside the ring
+      const tagFontSize = Math.max(10, size * 0.24);
+
+      conditions.forEach((conditionId, i) => {
+        const emoji = CONDITION_EMOJI[conditionId];
+        if (!emoji) return;
+
+        const angle = startAngle + i * angleStep;
+        const tx = cx + Math.cos(angle) * tagRadius;
+        const ty = cy + Math.sin(angle) * tagRadius;
+
+        // Dark circle background
+        const bg = new Graphics();
+        const bgRadius = tagFontSize * 0.65;
+        bg.circle(tx, ty, bgRadius);
+        bg.fill({ color: 0x18181b, alpha: 0.9 });
+        bg.circle(tx, ty, bgRadius);
+        bg.stroke({ width: 1, color: 0x3f3f46, alpha: 0.7 });
+        container.addChild(bg);
+
+        const tag = new Text({
+          text: emoji,
           style: {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: Math.max(8, size * 0.2),
+            fontSize: tagFontSize,
             fill: 0xffffff,
           },
         });
-        conditionBadge.anchor.set(0, 0);
-        conditionBadge.x = cx + radius * 0.4;
-        conditionBadge.y = cy - radius - 2;
-        container.addChild(conditionBadge);
-      }
+        tag.anchor.set(0.5);
+        tag.x = tx;
+        tag.y = ty;
+        container.addChild(tag);
+      });
     }
 
     container.x = entity.x * this.cellSize;
@@ -174,6 +198,45 @@ export class TokenLayer extends Container {
       conditionBadge,
       selected: style.selected,
     });
+  }
+
+  /** Load a portrait image and add it as a circular-masked Sprite inside the token container. */
+  private loadPortraitSprite(
+    container: Container,
+    url: string,
+    cx: number,
+    cy: number,
+    radius: number,
+  ): void {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Guard: container may have been destroyed while loading
+      if (container.destroyed) return;
+
+      const texture = Texture.from(img);
+      const sprite = new Sprite(texture);
+
+      // Scale to cover the circle (like CSS object-fit: cover)
+      const diameter = radius * 2;
+      const scale = Math.max(diameter / texture.width, diameter / texture.height);
+      sprite.width = texture.width * scale;
+      sprite.height = texture.height * scale;
+      sprite.anchor.set(0.5);
+      sprite.x = cx;
+      sprite.y = cy;
+
+      // Circular mask
+      const mask = new Graphics();
+      mask.circle(cx, cy, radius);
+      mask.fill({ color: 0xffffff });
+      container.addChild(mask);
+      sprite.mask = mask;
+
+      // Insert after rings (index 2) so it's below name/conditions but above rings
+      container.addChildAt(sprite, 2);
+    };
+    img.src = url;
   }
 
   /**
@@ -198,8 +261,9 @@ export class TokenLayer extends Container {
       JSON.stringify(oldEntity['conditions']) !== JSON.stringify(entity['conditions']);
     const selectionChanged = style.selected !== existing.selected;
     const nameChanged = oldEntity.name !== entity.name;
+    const portraitChanged = oldEntity['portraitUrl'] !== entity['portraitUrl'];
 
-    if (!staminaChanged && !conditionsChanged && !selectionChanged && !nameChanged) {
+    if (!staminaChanged && !conditionsChanged && !selectionChanged && !nameChanged && !portraitChanged) {
       // Only position may have changed — sync from entity if not being dragged
       // (dragged tokens have their position updated by InteractionManager)
       if (existing.gridX !== entity.x || existing.gridY !== entity.y) {
@@ -275,6 +339,185 @@ export class TokenLayer extends Container {
         data: id,
       });
     }
+  }
+
+  /** Show distance label near a token during drag. Chebyshev distance (diag = ortho in Draw Steel). */
+  showDistanceLabel(entityId: string, originGridX: number, originGridY: number): void {
+    const token = this.tokens.get(entityId);
+    if (!token) return;
+
+    const dx = Math.abs(token.gridX - originGridX);
+    const dy = Math.abs(token.gridY - originGridY);
+    const squares = Math.max(dx, dy); // Chebyshev distance
+    if (squares === 0) {
+      this.clearDistanceLabel();
+      return;
+    }
+
+    const feet = squares * 5;
+    const labelText = `${squares} sq / ${feet} ft`;
+
+    if (!this.distanceLabel) {
+      this.distanceLabel = new Container();
+      this.addChild(this.distanceLabel);
+    }
+
+    // Clear previous children
+    this.distanceLabel.removeChildren();
+
+    const text = new Text({
+      text: labelText,
+      style: {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: 12,
+        fill: 0xffffff,
+        fontWeight: 'bold',
+      },
+    });
+    text.anchor.set(0.5);
+
+    // Background pill
+    const pad = 6;
+    const bg = new Graphics();
+    bg.roundRect(
+      -text.width / 2 - pad,
+      -text.height / 2 - pad / 2,
+      text.width + pad * 2,
+      text.height + pad,
+      4,
+    );
+    bg.fill({ color: 0x000000, alpha: 0.75 });
+
+    this.distanceLabel.addChild(bg);
+    this.distanceLabel.addChild(text);
+
+    // Position below the token
+    const size = this.cellSize;
+    this.distanceLabel.x = token.container.x + size / 2;
+    this.distanceLabel.y = token.container.y + size + 18;
+  }
+
+  /** Show distance label for group drag (uses the anchor token). */
+  showGroupDistanceLabel(anchorGridX: number, anchorGridY: number, currentGridX: number, currentGridY: number): void {
+    const dx = Math.abs(currentGridX - anchorGridX);
+    const dy = Math.abs(currentGridY - anchorGridY);
+    const squares = Math.max(dx, dy);
+    if (squares === 0) {
+      this.clearDistanceLabel();
+      return;
+    }
+
+    const feet = squares * 5;
+    const labelText = `${squares} sq / ${feet} ft`;
+
+    if (!this.distanceLabel) {
+      this.distanceLabel = new Container();
+      this.addChild(this.distanceLabel);
+    }
+
+    this.distanceLabel.removeChildren();
+
+    const text = new Text({
+      text: labelText,
+      style: {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: 12,
+        fill: 0xffffff,
+        fontWeight: 'bold',
+      },
+    });
+    text.anchor.set(0.5);
+
+    const pad = 6;
+    const bg = new Graphics();
+    bg.roundRect(
+      -text.width / 2 - pad,
+      -text.height / 2 - pad / 2,
+      text.width + pad * 2,
+      text.height + pad,
+      4,
+    );
+    bg.fill({ color: 0x000000, alpha: 0.75 });
+
+    this.distanceLabel.addChild(bg);
+    this.distanceLabel.addChild(text);
+
+    // Position at the current cursor grid cell
+    this.distanceLabel.x = currentGridX * this.cellSize + this.cellSize / 2;
+    this.distanceLabel.y = currentGridY * this.cellSize + this.cellSize + 18;
+  }
+
+  /** Remove the distance label. */
+  clearDistanceLabel(): void {
+    if (this.distanceLabel) {
+      this.removeChild(this.distanceLabel);
+      this.distanceLabel.destroy({ children: true });
+      this.distanceLabel = null;
+    }
+  }
+
+  /** Draw a selection marquee rectangle (world coordinates). */
+  showSelectionRect(x: number, y: number, w: number, h: number): void {
+    if (!this.selectionRect) {
+      this.selectionRect = new Graphics();
+      this.addChild(this.selectionRect);
+    }
+    this.selectionRect.clear();
+    this.selectionRect.rect(x, y, w, h);
+    this.selectionRect.fill({ color: 0x3b82f6, alpha: 0.12 });
+    this.selectionRect.rect(x, y, w, h);
+    this.selectionRect.stroke({ width: 1, color: 0x3b82f6, alpha: 0.6 });
+  }
+
+  /** Remove the selection marquee rectangle. */
+  clearSelectionRect(): void {
+    if (this.selectionRect) {
+      this.removeChild(this.selectionRect);
+      this.selectionRect.destroy();
+      this.selectionRect = null;
+    }
+  }
+
+  /** Return IDs of all tokens whose grid position falls within the given world-space rect. */
+  getTokensInRect(worldX: number, worldY: number, worldW: number, worldH: number): string[] {
+    const ids: string[] = [];
+    // Normalize rect (handle negative width/height from any drag direction)
+    const left = Math.min(worldX, worldX + worldW);
+    const right = Math.max(worldX, worldX + worldW);
+    const top = Math.min(worldY, worldY + worldH);
+    const bottom = Math.max(worldY, worldY + worldH);
+
+    for (const [id, token] of this.tokens) {
+      // Token center in world coords
+      const cx = token.gridX * this.cellSize + this.cellSize / 2;
+      const cy = token.gridY * this.cellSize + this.cellSize / 2;
+      if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
+        ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  /** Move multiple tokens by a grid-space delta. Returns array of {id, gridX, gridY}. */
+  moveTokensByDelta(entityIds: string[], deltaX: number, deltaY: number): Array<{ id: string; gridX: number; gridY: number }> {
+    const results: Array<{ id: string; gridX: number; gridY: number }> = [];
+    for (const id of entityIds) {
+      const token = this.tokens.get(id);
+      if (token) {
+        token.gridX += deltaX;
+        token.gridY += deltaY;
+        token.container.x = token.gridX * this.cellSize;
+        token.container.y = token.gridY * this.cellSize;
+        results.push({ id, gridX: token.gridX, gridY: token.gridY });
+      }
+    }
+    return results;
+  }
+
+  /** Get the current grid position of a token. */
+  getTokenPosition(entityId: string): { gridX: number; gridY: number } | null {
+    const token = this.tokens.get(entityId);
+    return token ? { gridX: token.gridX, gridY: token.gridY } : null;
   }
 
   /** Off-screen culling: hide tokens outside viewport for performance */

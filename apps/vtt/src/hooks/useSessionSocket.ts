@@ -63,7 +63,13 @@ export function useSessionSocket(sessionId: string | null) {
         setState((prev) => prev ? { ...prev, combat: msg.combat } : prev);
         break;
       case 'ability_resolved':
-        setCombatLog((prev) => [...prev, msg.result]);
+        setCombatLog((prev) => {
+          // Deduplicate — same timestamp + sourceId + abilityId means duplicate delivery
+          const isDupe = prev.some(
+            (e) => e.timestamp === msg.result.timestamp && e.sourceId === msg.result.sourceId && e.abilityId === msg.result.abilityId,
+          );
+          return isDupe ? prev : [...prev, msg.result];
+        });
         break;
       case 'participant_update':
         setState((prev) => prev ? { ...prev, participants: msg.participants } : prev);
@@ -144,6 +150,13 @@ export function useSessionSocket(sessionId: string | null) {
   const connect = useCallback(async () => {
     if (!sessionId || !mountedRef.current) return;
 
+    // Close any previous connection to prevent duplicates (e.g. React strict mode double-mount)
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // prevent reconnect loop
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
     setStatus((prev) => (prev === 'disconnected' ? 'connecting' : 'reconnecting'));
     setError(null);
 
@@ -200,7 +213,7 @@ export function useSessionSocket(sessionId: string | null) {
       }
     };
 
-    ws.onclose = (event) => {
+    ws.onclose = (_event) => {
       wsRef.current = null;
       if (!mountedRef.current) return;
       if (retriesRef.current < MAX_RETRIES) {

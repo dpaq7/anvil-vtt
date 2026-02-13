@@ -75,19 +75,21 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
     [features],
   );
 
-  // Click-outside to close
+  // Click-outside to close (left-click only — right-click is handled by canvas contextmenu)
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
+    const handlePointerDown = (e: PointerEvent) => {
+      // Only close on primary (left) button; right-click reopens via canvas contextmenu handler
+      if (e.button !== 0) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
     const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClick);
+      document.addEventListener('pointerdown', handlePointerDown);
     }, 50);
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [onClose]);
 
@@ -176,6 +178,7 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
       ref={menuRef}
       className="absolute z-40 w-[260px] overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/95 shadow-2xl backdrop-blur-sm"
       style={{ left: clampedX, top: clampedY }}
+      onContextMenu={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">

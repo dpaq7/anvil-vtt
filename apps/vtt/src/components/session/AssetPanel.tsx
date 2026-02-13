@@ -93,12 +93,16 @@ export function AssetPanel({
     audioAssets,
     activityCards,
     montageTests,
+    monsterPortraits,
     loadNpcs,
     loadMaps,
     loadCustomTerrain,
     loadAudio,
     loadActivityCards,
     loadMontageTests,
+    loadMonsterPortraits,
+    setMonsterPortrait,
+    deleteMonsterPortrait,
     createActivityCard,
     updateActivityCard,
     deleteActivityCard,
@@ -116,7 +120,8 @@ export function AssetPanel({
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
     loadActivityCards(campaignId);
-  }, [campaignId, loadNpcs, loadMaps, loadCustomTerrain, loadAudio, loadActivityCards]);
+    loadMonsterPortraits(campaignId);
+  }, [campaignId, loadNpcs, loadMaps, loadCustomTerrain, loadAudio, loadActivityCards, loadMonsterPortraits]);
 
   useEffect(() => {
     if (!sceneId) return;
@@ -177,6 +182,9 @@ export function AssetPanel({
               }
             }}
             availableScenes={[{ id: sceneId, name: 'Current Scene', sceneType }]}
+            monsterPortraits={monsterPortraits}
+            onPortraitSave={(name, assetId) => setMonsterPortrait(campaignId, name, assetId)}
+            onPortraitRemove={(name) => deleteMonsterPortrait(campaignId, name)}
           />
         );
 

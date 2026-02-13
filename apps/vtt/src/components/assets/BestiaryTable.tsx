@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Camera, ChevronDown, ChevronRight, Swords } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -11,7 +11,10 @@ import {
 } from '@anvil/ui';
 import { isMinion as checkIsMinion } from '@anvil/data';
 import type { CompendiumMonster } from '@anvil/data';
+import type { MonsterPortrait } from '@anvil/types';
+import { getMonsterPortraitUrl } from '../../stores/assetsStore.js';
 import { AddToSceneMenu } from './AddToSceneMenu.js';
+import { MonsterPortraitDialog } from './MonsterPortraitDialog.js';
 import { BestiaryFilterBar } from './BestiaryFilterBar.js';
 import type { BestiaryFilters } from './BestiaryFilterBar.js';
 
@@ -20,11 +23,42 @@ export interface BestiaryTableProps {
   compact?: boolean;
   onAddToScene?: (monsterName: string, quantity: number, sceneId: string) => void;
   availableScenes?: Array<{ id: string; name: string; sceneType: string }>;
+  monsterPortraits?: MonsterPortrait[];
+  onPortraitSave?: (monsterName: string, assetId: string) => Promise<void>;
+  onPortraitRemove?: (monsterName: string) => Promise<void>;
 }
 
 function charMod(value: number | undefined): string {
   if (value === undefined) return '-';
   return value >= 0 ? `+${value}` : String(value);
+}
+
+/** Token-style circle matching the canvas token aesthetic. Shows portrait if available, otherwise a placeholder glyph. */
+function MonsterToken({ portraitUrl, editable }: { portraitUrl?: string | null; editable?: boolean }) {
+  return (
+    <div className="group/token relative flex size-7 shrink-0 items-center justify-center">
+      {/* Outer black ring */}
+      <div className="absolute inset-0 rounded-full bg-zinc-950 ring-2 ring-zinc-950" />
+      {/* Inner colored ring */}
+      <div className="absolute inset-[2px] rounded-full ring-[1.5px] ring-red-500" />
+      {/* Content: portrait or placeholder */}
+      {portraitUrl ? (
+        <img
+          src={portraitUrl}
+          alt=""
+          className="relative size-[22px] rounded-full object-cover"
+        />
+      ) : (
+        <Swords className="relative size-3 text-red-400" />
+      )}
+      {/* Hover overlay for editable tokens */}
+      {editable && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/token:opacity-100">
+          <Camera className="size-3 text-zinc-300" />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function MonsterDetailRow({ monster }: { monster: CompendiumMonster }) {
@@ -87,7 +121,15 @@ function MonsterDetailRow({ monster }: { monster: CompendiumMonster }) {
   );
 }
 
-export function BestiaryTable({ monsters, compact, onAddToScene, availableScenes = [] }: BestiaryTableProps) {
+export function BestiaryTable({
+  monsters,
+  compact,
+  onAddToScene,
+  availableScenes = [],
+  monsterPortraits = [],
+  onPortraitSave,
+  onPortraitRemove,
+}: BestiaryTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filters, setFilters] = useState<BestiaryFilters>({
     search: '',
@@ -188,13 +230,35 @@ export function BestiaryTable({ monsters, compact, onAddToScene, availableScenes
                         )}
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <span className="font-medium">{monster.name}</span>
-                          {monster.ancestry && monster.ancestry.length > 0 && (
-                            <span className="ml-1.5 text-xs text-zinc-500">
-                              {monster.ancestry.join(', ')}
-                            </span>
+                        <div className="flex items-center gap-2">
+                          {onPortraitSave ? (
+                            <MonsterPortraitDialog
+                              monsterName={monster.name}
+                              currentPortraitUrl={getMonsterPortraitUrl(monsterPortraits, monster.name)}
+                              onSave={(assetId) => onPortraitSave(monster.name, assetId)}
+                              onRemove={onPortraitRemove ? () => onPortraitRemove(monster.name) : undefined}
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MonsterToken
+                                  portraitUrl={getMonsterPortraitUrl(monsterPortraits, monster.name)}
+                                  editable
+                                />
+                              </button>
+                            </MonsterPortraitDialog>
+                          ) : (
+                            <MonsterToken portraitUrl={getMonsterPortraitUrl(monsterPortraits, monster.name)} />
                           )}
+                          <div>
+                            <span className="font-medium">{monster.name}</span>
+                            {monster.ancestry && monster.ancestry.length > 0 && (
+                              <span className="ml-1.5 text-xs text-zinc-500">
+                                {monster.ancestry.join(', ')}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-center">

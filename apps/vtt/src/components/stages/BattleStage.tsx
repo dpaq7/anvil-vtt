@@ -68,29 +68,53 @@ export function BattleStage({
   const viewportRef = useRef<ViewportSystem | null>(null);
   const prevToolRef = useRef<BattleTool>('select');
 
+  // Container ref for converting viewport coords → container-relative coords.
+  // Overlays are `position: absolute` inside this `relative` container, so their
+  // left/top must be relative to the container, not the viewport.
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  // Multi-select state
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+
   // Token hover / context menu overlays
   const [hoverInfo, setHoverInfo] = useState<{ entityId: string; x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ entityId: string; x: number; y: number } | null>(null);
 
   const entityMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
 
+  /** Convert viewport-relative coords to container-relative coords for overlays. */
+  const toLocal = useCallback((viewportX: number, viewportY: number) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    return {
+      x: viewportX - (rect?.left ?? 0),
+      y: viewportY - (rect?.top ?? 0),
+    };
+  }, []);
+
   const handleTokenHover = useCallback(
     (entityId: string | null, screenX: number, screenY: number) => {
       if (entityId) {
-        setHoverInfo({ entityId, x: screenX, y: screenY });
+        const { x, y } = toLocal(screenX, screenY);
+        setHoverInfo({ entityId, x, y });
       } else {
         setHoverInfo(null);
       }
     },
-    [],
+    [toLocal],
   );
 
   const handleTokenRightClick = useCallback(
-    (entityId: string, screenX: number, screenY: number) => {
-      setContextMenu({ entityId, x: screenX, y: screenY });
-      setHoverInfo(null); // hide tooltip when context menu opens
+    (entityId: string | null, screenX: number, screenY: number) => {
+      if (entityId) {
+        const { x, y } = toLocal(screenX, screenY);
+        setContextMenu({ entityId, x, y });
+        setHoverInfo(null); // hide tooltip when context menu opens
+      } else {
+        // Right-clicked on empty space — close any open context menu
+        setContextMenu(null);
+      }
     },
-    [],
+    [toLocal],
   );
 
   const handleCloseContextMenu = useCallback(() => {
@@ -100,6 +124,22 @@ export function BattleStage({
   const handleMoveEntity = useCallback(
     (entityId: string, x: number, y: number) => {
       send({ type: 'move_token', entityId, x, y });
+    },
+    [send],
+  );
+
+  const handleMultiSelectEntities = useCallback(
+    (entityIds: string[]) => {
+      setSelectedEntityIds(entityIds);
+    },
+    [],
+  );
+
+  const handleMultiMoveEntities = useCallback(
+    (moves: Array<{ entityId: string; gridX: number; gridY: number }>) => {
+      for (const { entityId, gridX, gridY } of moves) {
+        send({ type: 'move_token', entityId, x: gridX, y: gridY });
+      }
     },
     [send],
   );
@@ -213,19 +253,22 @@ export function BattleStage({
   }, [isDirector, activeTool, cols, rows, cellSize, bgNaturalSize]);
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={stageRef} className="relative h-full w-full">
       <BattleCanvas
         cols={cols}
         rows={rows}
         cellSize={cellSize}
         entities={entities}
         selectedEntityId={selectedEntityId}
+        selectedEntityIds={selectedEntityIds}
         backgroundUrl={backgroundUrl}
         isDirector={isDirector}
         heroPosition={heroPosition}
         fogZones={fogZones}
         onSelectEntity={onSelectEntity}
         onMoveEntity={handleMoveEntity}
+        onMultiSelectEntities={handleMultiSelectEntities}
+        onMultiMoveEntities={handleMultiMoveEntities}
         builderMode={isDirector}
         activeTool={isDirector ? activeTool : 'select'}
         drawColor={drawColor}

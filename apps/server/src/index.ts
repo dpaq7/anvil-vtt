@@ -18,6 +18,7 @@ import { activityRoutes } from './routes/activities.js';
 import { montageTestRoutes } from './routes/montage-tests.js';
 import { noteRoutes } from './routes/notes.js';
 import { gameSessionRoutes } from './routes/game-sessions.js';
+import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 
 const app = new Hono<AppEnv>();
 
@@ -104,6 +105,7 @@ app.route('/api/campaigns', customTerrainRoutes);
 app.route('/api/campaigns', activityRoutes);
 app.route('/api', montageTestRoutes);
 app.route('/api/campaigns', noteRoutes);
+app.route('/api/campaigns', monsterPortraitRoutes);
 app.route('/api', gameSessionRoutes);
 
 export default app;

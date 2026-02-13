@@ -10,6 +10,8 @@ export type ActiveTool = 'select' | 'draw' | 'fog' | 'terrain' | 'eraser' | 'pan
 export interface InteractionCallbacks {
   onTokenSelect: (entityId: string | null) => void;
   onTokenMove: (entityId: string, gridX: number, gridY: number) => void;
+  onMultiTokenSelect?: (entityIds: string[]) => void;
+  onMultiTokenMove?: (moves: Array<{ entityId: string; gridX: number; gridY: number }>) => void;
   onDrawingAdd?: (points: number[], color: string, width: number) => void;
   onDrawingRemove?: (drawingId: string) => void;
   onTerrainAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
@@ -17,16 +19,29 @@ export interface InteractionCallbacks {
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
   onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
-  onTokenRightClick?: (entityId: string, screenX: number, screenY: number) => void;
+  onTokenRightClick?: (entityId: string | null, screenX: number, screenY: number) => void;
 }
 
 export class InteractionManager {
   private quadtree: Quadtree<string>;
   private selectedId: string | null = null;
+  private selectedIds = new Set<string>();
   private dragging = false;
   private dragEntityId: string | null = null;
   private isDirector: boolean;
   private _activeTool: ActiveTool = 'select';
+
+  // Drag origin (for distance calculation)
+  private dragOriginGrid: { gridX: number; gridY: number } | null = null;
+
+  // Group drag state
+  private groupDragging = false;
+  private groupDragAnchorGrid: { gridX: number; gridY: number } | null = null;
+  private groupDragLastGrid: { gridX: number; gridY: number } | null = null;
+
+  // Marquee (box selection) state
+  private marqueeActive = false;
+  private marqueeStartWorld: { x: number; y: number } | null = null;
 
   // Drawing state
   private isDrawing = false;
@@ -95,9 +110,27 @@ export class InteractionManager {
     this.drawWidth = width;
   }
 
+  /** Get the current set of selected entity IDs (for external state sync). */
+  getSelectedIds(): Set<string> {
+    return this.selectedIds;
+  }
+
+  /** Set selection from external state (e.g. React). */
+  setSelectedIds(ids: Set<string>): void {
+    this.selectedIds = ids;
+  }
+
   private cancelCurrentInteraction(): void {
     this.dragging = false;
     this.dragEntityId = null;
+    this.dragOriginGrid = null;
+    this.groupDragging = false;
+    this.groupDragAnchorGrid = null;
+    this.groupDragLastGrid = null;
+    this.marqueeActive = false;
+    this.marqueeStartWorld = null;
+    this.tokenLayer.clearSelectionRect();
+    this.tokenLayer.clearDistanceLabel();
     this.isDrawing = false;
     this.drawPoints = [];
     this.terrainStart = null;
@@ -141,7 +174,7 @@ export class InteractionManager {
 
     switch (this._activeTool) {
       case 'select':
-        this.handleSelectDown(gridX, gridY);
+        this.handleSelectDown(e, gridX, gridY);
         break;
       case 'draw':
         this.handleDrawDown(e);
@@ -193,25 +226,92 @@ export class InteractionManager {
 
   // --- Select tool ---
 
-  private handleSelectDown(gridX: number, gridY: number): void {
+  private handleSelectDown(e: PointerEvent, gridX: number, gridY: number): void {
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
+
     if (entityId) {
-      this.selectedId = entityId;
-      this.callbacks.onTokenSelect(entityId);
-      if (this.isDirector) {
-        this.dragging = true;
-        this.dragEntityId = entityId;
+      // Clicked on a token
+      if (this.selectedIds.has(entityId) && this.selectedIds.size > 1) {
+        // Clicked on an already-selected token in a multi-selection → start group drag
+        if (this.isDirector) {
+          this.groupDragging = true;
+          this.groupDragAnchorGrid = { gridX, gridY };
+          this.groupDragLastGrid = { gridX, gridY };
+          this.dragOriginGrid = { gridX, gridY };
+        }
+        // Keep current multi-selection as is
+      } else {
+        // Single-select this token (clear previous multi-selection)
+        this.selectedId = entityId;
+        this.selectedIds.clear();
+        this.selectedIds.add(entityId);
+        this.callbacks.onTokenSelect(entityId);
+
+        if (this.isDirector) {
+          this.dragging = true;
+          this.dragEntityId = entityId;
+          this.dragOriginGrid = { gridX, gridY };
+        }
       }
     } else {
+      // Clicked on empty space
+      if (this.isDirector) {
+        // Start marquee selection
+        const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+        this.marqueeActive = true;
+        this.marqueeStartWorld = { x: worldX, y: worldY };
+      }
+
+      // Clear selection
       this.selectedId = null;
+      this.selectedIds.clear();
       this.callbacks.onTokenSelect(null);
+      this.callbacks.onMultiTokenSelect?.([]);
     }
   }
 
   private handleSelectMove(e: PointerEvent): void {
+    // Group drag — move all selected tokens by grid delta
+    if (this.groupDragging && this.groupDragLastGrid) {
+      const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+      const dx = gridX - this.groupDragLastGrid.gridX;
+      const dy = gridY - this.groupDragLastGrid.gridY;
+      if (dx !== 0 || dy !== 0) {
+        this.tokenLayer.moveTokensByDelta([...this.selectedIds], dx, dy);
+        this.groupDragLastGrid = { gridX, gridY };
+      }
+      if (this.dragOriginGrid) {
+        this.tokenLayer.showGroupDistanceLabel(
+          this.dragOriginGrid.gridX, this.dragOriginGrid.gridY,
+          gridX, gridY,
+        );
+      }
+      return;
+    }
+
+    // Single drag
     if (this.dragging && this.dragEntityId) {
       const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
       this.tokenLayer.moveToken(this.dragEntityId, gridX, gridY);
+      if (this.dragOriginGrid) {
+        this.tokenLayer.showDistanceLabel(this.dragEntityId, this.dragOriginGrid.gridX, this.dragOriginGrid.gridY);
+      }
+      return;
+    }
+
+    // Marquee draw
+    if (this.marqueeActive && this.marqueeStartWorld) {
+      const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+      const sx = this.marqueeStartWorld.x;
+      const sy = this.marqueeStartWorld.y;
+      const w = worldX - sx;
+      const h = worldY - sy;
+      this.tokenLayer.showSelectionRect(
+        Math.min(sx, worldX),
+        Math.min(sy, worldY),
+        Math.abs(w),
+        Math.abs(h),
+      );
       return;
     }
 
@@ -228,12 +328,66 @@ export class InteractionManager {
   }
 
   private handleSelectUp(e: PointerEvent): void {
-    if (!this.dragging || !this.dragEntityId) return;
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
-    this.callbacks.onTokenMove(this.dragEntityId, gridX, gridY);
-    this.dragging = false;
-    this.dragEntityId = null;
-    this.rebuildIndex();
+    // Group drag finished
+    if (this.groupDragging && this.groupDragAnchorGrid && this.groupDragLastGrid) {
+      // Emit final positions for all selected tokens
+      const moves: Array<{ entityId: string; gridX: number; gridY: number }> = [];
+      for (const id of this.selectedIds) {
+        const pos = this.tokenLayer.getTokenPosition(id);
+        if (pos) {
+          moves.push({ entityId: id, gridX: pos.gridX, gridY: pos.gridY });
+        }
+      }
+      if (moves.length > 0) {
+        this.callbacks.onMultiTokenMove?.(moves);
+      }
+      this.groupDragging = false;
+      this.groupDragAnchorGrid = null;
+      this.groupDragLastGrid = null;
+      this.dragOriginGrid = null;
+      this.tokenLayer.clearDistanceLabel();
+      this.rebuildIndex();
+      return;
+    }
+
+    // Single drag finished
+    if (this.dragging && this.dragEntityId) {
+      const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+      this.callbacks.onTokenMove(this.dragEntityId, gridX, gridY);
+      this.dragging = false;
+      this.dragEntityId = null;
+      this.dragOriginGrid = null;
+      this.tokenLayer.clearDistanceLabel();
+      this.rebuildIndex();
+      return;
+    }
+
+    // Marquee selection finished
+    if (this.marqueeActive && this.marqueeStartWorld) {
+      const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+      const sx = this.marqueeStartWorld.x;
+      const sy = this.marqueeStartWorld.y;
+      const w = worldX - sx;
+      const h = worldY - sy;
+
+      this.tokenLayer.clearSelectionRect();
+      this.marqueeActive = false;
+      this.marqueeStartWorld = null;
+
+      // Only count as a marquee if the drag was substantial (> 5 world pixels)
+      if (Math.abs(w) > 5 || Math.abs(h) > 5) {
+        const ids = this.tokenLayer.getTokensInRect(sx, sy, w, h);
+        const firstId = ids[0] ?? null;
+        if (firstId !== null) {
+          this.selectedIds = new Set(ids);
+          this.selectedId = firstId;
+          this.callbacks.onMultiTokenSelect?.(ids);
+          // Also fire single-select for the first token (for context menu, etc.)
+          this.callbacks.onTokenSelect(firstId);
+        }
+      }
+      return;
+    }
   }
 
   // --- Draw tool ---
@@ -345,6 +499,9 @@ export class InteractionManager {
       // Position the context menu at the token's right edge (gridX + 1) for consistent placement
       const { screenX, screenY } = this.viewport.gridToScreen(gridX + 1, gridY, this.cellSize);
       this.callbacks.onTokenRightClick?.(entityId, screenX, screenY);
+    } else {
+      // Right-clicked on empty space — signal close (null entityId = dismiss)
+      this.callbacks.onTokenRightClick?.(null, 0, 0);
     }
   };
 }
