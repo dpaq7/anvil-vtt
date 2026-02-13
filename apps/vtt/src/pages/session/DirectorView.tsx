@@ -93,6 +93,24 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     navigate('/app/live');
   }, [send, navigate]);
 
+  // ── Audio sync: update local state AND broadcast to players ──
+  const audioAssets = useAssetsStore((s) => s.audioAssets);
+  const handleAudioChange = useCallback(
+    (newAudioId: string | null) => {
+      setActiveAudioId(newAudioId);
+      if (newAudioId) {
+        const asset = audioAssets.find((a) => a.id === newAudioId);
+        const url = asset?.audioUrl ?? (asset?.assetId ? `/api/assets/${asset.assetId}/data` : undefined);
+        if (url) {
+          send({ type: 'audio_play', audioAssetId: newAudioId, loop: true });
+        }
+      } else {
+        send({ type: 'audio_stop' });
+      }
+    },
+    [audioAssets, send],
+  );
+
   useKeyboardShortcuts({
     onEscape: () => setSelectedEntityId(null),
     onSpace: () => {
@@ -303,7 +321,7 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             <SceneAudioPanel
               campaignId={sessionState.campaignId}
               audioId={activeAudioId}
-              onAudioChange={setActiveAudioId}
+              onAudioChange={handleAudioChange}
               label="Now Playing"
             />
           </div>

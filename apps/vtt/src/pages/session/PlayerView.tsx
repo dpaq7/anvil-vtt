@@ -6,6 +6,7 @@ import type { SessionState, ClientMessage, AbilityResult } from '../../types/pro
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
 import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleData } from '../../lib/scene-data.js';
 import { useAuthStore } from '../../stores/authStore.js';
+import { useAudioSync } from '../../hooks/useAudioSync.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
@@ -27,6 +28,10 @@ interface PlayerViewProps {
 
 export function PlayerView({ sessionState, connectionStatus, send, combatLog }: PlayerViewProps) {
   const user = useAuthStore((s) => s.user);
+
+  // Sync server audio commands to local HTML5 Audio playback
+  useAudioSync(sessionState.audio);
+
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const { scenes, activeSceneId, participants, entities, combat } = sessionState;
   const activeScene = scenes.find((s) => s.id === activeSceneId);
@@ -238,6 +243,13 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               heroicResource={heroicResource}
             />
           </div>
+          {/* Audio now-playing indicator */}
+          {sessionState.audio?.playing && sessionState.audio.assetName && (
+            <span className="mr-1 flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
+              <span className="inline-block size-1.5 animate-pulse rounded-full bg-purple-400" />
+              {sessionState.audio.assetName}
+            </span>
+          )}
           {/* Scene type indicator */}
           {sceneType && (
             <span className="mr-2 rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
