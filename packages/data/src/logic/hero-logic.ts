@@ -82,7 +82,7 @@ const CLASS_STAMINA_CONFIG: Record<HeroClass, { level1: number; perLevel: number
   conduit: { level1: 18, perLevel: 6, recoveries: 8 },
   elementalist: { level1: 18, perLevel: 6, recoveries: 8 },
   fury: { level1: 21, perLevel: 9, recoveries: 10 },
-  null: { level1: 18, perLevel: 9, recoveries: 8 },
+  null: { level1: 21, perLevel: 9, recoveries: 8 },
   shadow: { level1: 18, perLevel: 6, recoveries: 8 },
   summoner: { level1: 15, perLevel: 6, recoveries: 8 },
   tactician: { level1: 21, perLevel: 9, recoveries: 10 },
