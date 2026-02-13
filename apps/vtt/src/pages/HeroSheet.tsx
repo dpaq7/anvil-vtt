@@ -68,7 +68,7 @@ export function HeroSheet() {
         <div>
           <h1 className="text-2xl font-bold">{hero.name}</h1>
           <p className="text-sm text-zinc-400">
-            {[hero.hero_class, hero.subclass].filter(Boolean).join(' — ')} · Level {hero.level}
+            {[heroClass ? GameData.getClass(heroClass)?.name ?? hero.hero_class : null, hero.subclass].filter(Boolean).join(' — ')} · Level {hero.level}
           </p>
           {hero.ancestry && <p className="text-xs text-zinc-500">{hero.ancestry}</p>}
         </div>
@@ -134,7 +134,7 @@ export function HeroSheet() {
             <CardContent>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {abilities.map((abilityId) => {
-                  const ability = GameData.getAbility(abilityId);
+                  const ability = GameData.getByScc(abilityId) ?? GameData.getAbility(abilityId);
                   return (
                     <div key={abilityId} className="rounded bg-zinc-800 p-3">
                       <p className="text-sm font-medium text-zinc-200">{ability?.name ?? abilityId}</p>
