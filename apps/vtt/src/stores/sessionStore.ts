@@ -4,11 +4,6 @@ import type {
   ParticipantInfo,
   EntityData,
   CombatState,
-  SceneRef,
-  NegotiationLiveState,
-  MontageLiveState,
-  RespiteLiveState,
-  AudioLiveState,
 } from '../types/protocol.js';
 import type { MotivationType } from '@anvil/types';
 

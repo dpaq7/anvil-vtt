@@ -45,7 +45,7 @@ export function TurnActionBar({
   const mainAvailable = !turnActions.mainActionUsed && turnActions.mainConvertedTo === null;
   const maneuverAvailable = !turnActions.maneuverUsed ||
     (turnActions.mainConvertedTo === 'maneuver' && !turnActions.mainActionUsed);
-  const moveUsed = (turnActions.mainConvertedTo === 'move' ? baseSpeed * 2 : baseSpeed) - turnActions.moveRemaining;
+  const _moveUsed = (turnActions.mainConvertedTo === 'move' ? baseSpeed * 2 : baseSpeed) - turnActions.moveRemaining;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">

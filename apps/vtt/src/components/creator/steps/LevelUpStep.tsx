@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { LevelUpChoice, LevelProgression, LevelFeature, FeatureChoice } from '@anvil/data';
+import type { LevelUpChoice } from '@anvil/data';
 import { getProgressionForLevel } from '@anvil/data';
 import { Card, CardContent, cn } from '@anvil/ui';
 import { useWizardStore } from '../../../stores/wizardStore.js';

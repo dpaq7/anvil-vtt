@@ -15,7 +15,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
   const getStepStatus = useWizardStore((state) => state.getStepStatus);
   const sidebarVisible = useWizardStore((state) => state.sidebarVisible);
 
-  const { steps, currentStepId, currentIndex, canGoBack, canGoNext, goBack, goNext, goToStep } =
+  const { steps, currentStepId, currentIndex, canGoBack, canGoNext: _canGoNext, goBack, goNext, goToStep } =
     useWizardNavigation();
 
   const isLastStep = currentIndex === steps.length - 1;

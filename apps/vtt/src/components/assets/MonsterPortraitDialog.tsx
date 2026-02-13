@@ -29,7 +29,7 @@ export function MonsterPortraitDialog({
   children,
 }: MonsterPortraitDialogProps) {
   const [open, setOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [_file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [scale, setScale] = useState(1.2);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
