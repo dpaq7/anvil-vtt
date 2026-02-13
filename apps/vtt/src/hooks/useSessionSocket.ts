@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import type { ClientMessage, ServerMessage, SessionState, AbilityResult } from '../types/protocol.js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
@@ -80,9 +81,11 @@ export function useSessionSocket(sessionId: string | null) {
       case 'session_ended':
         setState(null);
         setError('Session has ended.');
+        toast.info('The session has ended.');
         break;
       case 'error':
         setError(msg.message);
+        toast.error(msg.message ?? 'Server error');
         break;
       case 'scene_drawing_added':
         setState((prev) => {
@@ -283,10 +286,12 @@ export function useSessionSocket(sessionId: string | null) {
         const delay = BASE_DELAY * Math.pow(2, retriesRef.current);
         retriesRef.current++;
         setStatus('reconnecting');
+        toast.warning('Connection lost. Reconnecting...');
         timerRef.current = setTimeout(() => { void connect(); }, delay);
       } else {
         setStatus('disconnected');
         setError('Connection lost. Please refresh.');
+        toast.error('Connection lost. Please refresh the page.');
       }
     };
 
@@ -300,6 +305,7 @@ export function useSessionSocket(sessionId: string | null) {
       wsRef.current.send(JSON.stringify(msg));
     } else {
       console.warn('[WS] message dropped (socket not open):', msg.type);
+      toast.warning('Not connected. Action could not be sent.');
     }
   }, []);
 
