@@ -5,6 +5,7 @@ import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
 import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleData } from '../../lib/scene-data.js';
+import { filterVisibleEntities } from '../../lib/fog-visibility.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useAudioSync } from '../../hooks/useAudioSync.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
@@ -204,15 +205,19 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
       }
       case 'battle': {
         const battle = parseBattleData(sceneData);
+        // Client-side fog of war: hide monsters inside fog zones
+        const visibleEntities = filterVisibleEntities(entities, battle.fogZones);
         return (
           <BattleStage
-            entities={entities}
+            entities={visibleEntities}
             combat={combat}
             selectedEntityId={selectedEntityId}
             isDirector={false}
             cols={battle.cols}
             rows={battle.rows}
             backgroundUrl={battle.backgroundUrl}
+            fogZones={battle.fogZones}
+            heroPosition={heroEntity ? { x: heroEntity.x, y: heroEntity.y } : null}
             combatLog={combatLog}
             entityNames={entityNames}
             onSelectEntity={setSelectedEntityId}
