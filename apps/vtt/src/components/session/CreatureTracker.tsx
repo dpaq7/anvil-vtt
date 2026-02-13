@@ -61,10 +61,7 @@ export function CreatureTracker({ entities, combat, send }: CreatureTrackerProps
 
   const totalCount = soloCreatures.length + squads.reduce((n, s) => n + s.members.length, 0);
 
-  const currentTurnEntityId =
-    combat && combat.turnOrder.length > 0
-      ? combat.turnOrder[combat.currentTurnIndex] ?? null
-      : null;
+  const currentTurnEntityId = combat?.activeEntityId ?? null;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

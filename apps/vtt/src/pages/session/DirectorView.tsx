@@ -15,7 +15,6 @@ import { DirectorFilmStrip } from '../../components/session/DirectorFilmStrip.js
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CreatureTracker } from '../../components/session/CreatureTracker.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
-import { MalicePanel } from '../../components/session/MalicePanel.js';
 import { DamageDialog } from '../../components/session/DamageDialog.js';
 import { CombatLog } from '../../components/session/CombatLog.js';
 import { AssetPanel } from '../../components/session/AssetPanel.js';
@@ -97,7 +96,7 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
   useKeyboardShortcuts({
     onEscape: () => setSelectedEntityId(null),
     onSpace: () => {
-      if (combat) send({ type: 'combat_action', action: { type: 'NEXT_TURN' } });
+      if (combat && combat.activeEntityId) send({ type: 'combat_action', action: { type: 'END_TURN' } });
     },
     onHelp: () => setShowHelp((v) => !v),
   });
@@ -319,13 +318,12 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
                     combat={combat}
                     entities={entities}
                     isDirector
-                    onNextTurn={() => send({ type: 'combat_action', action: { type: 'NEXT_TURN' } })}
+                    currentHeroEntityId={null}
+                    onClaimTurn={() => {}}
+                    onSelectTurn={(entityId) => send({ type: 'combat_action', action: { type: 'SELECT_TURN', entityId } })}
+                    onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
                     onEndCombat={() => send({ type: 'combat_action', action: { type: 'END_COMBAT' } })}
-                  />
-                  <MalicePanel
-                    malice={combat.malice}
-                    isDirector
-                    onAdjust={(delta) => send({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })}
+                    onAdjustMalice={(delta) => send({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })}
                   />
                   <DamageDialog
                     entities={entities}

@@ -19,7 +19,21 @@ export type ClientMessage =
   | { type: 'scene_drawing_add'; drawing: DrawingSync }
   | { type: 'scene_drawing_remove'; drawingId: string }
   | { type: 'scene_fog_add'; fog: FogSync }
-  | { type: 'scene_fog_remove'; fogId: string };
+  | { type: 'scene_fog_remove'; fogId: string }
+  // Negotiation
+  | { type: 'negotiation_argument'; skillId: string; approachText: string }
+  | { type: 'negotiation_adjust_patience'; delta: number }
+  // Montage
+  | { type: 'montage_roll'; skillId: string; characteristicId: string }
+  // Respite
+  | { type: 'respite_choose_activity'; activityId: string }
+  | { type: 'respite_complete_activity'; activityId: string }
+  // Audio
+  | { type: 'audio_play'; audioAssetId: string; loop: boolean }
+  | { type: 'audio_pause' }
+  | { type: 'audio_stop' }
+  // Story
+  | { type: 'story_update'; readAloudText: string };
 
 // Server → Client
 export type ServerMessage =
@@ -39,9 +53,19 @@ export type ServerMessage =
   | { type: 'scene_drawing_added'; drawing: DrawingSync }
   | { type: 'scene_drawing_removed'; drawingId: string }
   | { type: 'scene_fog_added'; fog: FogSync }
-  | { type: 'scene_fog_removed'; fogId: string };
+  | { type: 'scene_fog_removed'; fogId: string }
+  // Negotiation
+  | { type: 'negotiation_updated'; interest: number; patience: number; argumentLog: ArgumentLogEntry[] }
+  // Montage
+  | { type: 'montage_updated'; successes: number; failures: number; testLog: TestLogEntry[]; outcome: string | null }
+  // Respite
+  | { type: 'respite_updated'; activities: RespiteActivityState[]; completedBy: Record<string, string[]> }
+  // Audio
+  | { type: 'audio_command'; action: 'play' | 'pause' | 'stop'; audioUrl?: string; assetName?: string; loop?: boolean }
+  // Story
+  | { type: 'story_updated'; readAloudText: string };
 
-// Lightweight types for the protocol (full types come from @anvil/types at integration time)
+// ── Entity ──
 
 export interface EntityData {
   id: string;
@@ -52,22 +76,42 @@ export interface EntityData {
   [key: string]: unknown;
 }
 
+// ── Draw Steel Side-Based Combat ──
+
+export interface TurnActionState {
+  mainActionUsed: boolean;
+  maneuverUsed: boolean;
+  moveRemaining: number;
+  triggeredUsedThisRound: boolean;
+  mainConvertedTo: 'move' | 'maneuver' | null;
+}
+
 export interface CombatState {
   round: number;
-  turnOrder: string[];
-  currentTurnIndex: number;
+  activeSide: 'heroes' | 'villains';
+  firstSide: 'heroes' | 'villains';
+  initiativeRoll: number;
+  heroEntities: string[];
+  villainEntities: string[];
+  actedThisRound: string[];
+  activeEntityId: string | null;
   malice: number;
+  turnActions: Record<string, TurnActionState>;
 }
 
 export type CombatAction =
-  | { type: 'START_COMBAT'; initiativeOrder: { entityId: string; initiative: number }[] }
+  | { type: 'START_COMBAT'; heroEntityIds: string[]; villainEntityIds: string[] }
   | { type: 'END_COMBAT' }
-  | { type: 'NEXT_TURN' }
+  | { type: 'CLAIM_TURN'; entityId: string }
+  | { type: 'SELECT_TURN'; entityId: string }
+  | { type: 'END_TURN' }
   | { type: 'ADJUST_MALICE'; delta: number }
   | { type: 'APPLY_DAMAGE'; entityId: string; amount: number }
   | { type: 'APPLY_HEALING'; entityId: string; amount: number }
   | { type: 'APPLY_CONDITION'; entityId: string; condition: string }
   | { type: 'REMOVE_CONDITION'; entityId: string; conditionId: string };
+
+// ── Ability Resolution ──
 
 export interface AbilityResult {
   sourceId: string;
@@ -83,6 +127,8 @@ export interface AbilityResult {
   timestamp: number;
 }
 
+// ── Participants ──
+
 export interface ParticipantInfo {
   userId: string;
   username: string;
@@ -93,6 +139,8 @@ export interface ParticipantInfo {
   connected: boolean;
 }
 
+// ── Session State ──
+
 export interface SessionState {
   sessionId: string;
   campaignId: string;
@@ -101,6 +149,11 @@ export interface SessionState {
   entities: EntityData[];
   combat: CombatState | null;
   participants: ParticipantInfo[];
+  // Scene-specific live state
+  negotiation: NegotiationLiveState | null;
+  montage: MontageLiveState | null;
+  respite: RespiteLiveState | null;
+  audio: AudioLiveState | null;
 }
 
 export interface SceneRef {
@@ -110,6 +163,8 @@ export interface SceneRef {
   order_index: number;
   data?: Record<string, unknown>;
 }
+
+// ── Drawing & Fog Sync ──
 
 export interface DrawingSync {
   id: string;
@@ -125,4 +180,73 @@ export interface FogSync {
   y: number;
   w: number;
   h: number;
+}
+
+// ── Negotiation ──
+
+export interface ArgumentLogEntry {
+  id: string;
+  playerId: string;
+  playerName: string;
+  skillId: string;
+  approachText: string;
+  roll: number;
+  tier: 1 | 2 | 3;
+  interestDelta: number;
+  timestamp: number;
+}
+
+export interface NegotiationLiveState {
+  interest: number;
+  patience: number;
+  maxPatience: number;
+  argumentLog: ArgumentLogEntry[];
+}
+
+// ── Montage ──
+
+export interface TestLogEntry {
+  id: string;
+  playerId: string;
+  playerName: string;
+  skillId: string;
+  characteristicId: string;
+  roll: number;
+  tier: 1 | 2 | 3;
+  outcome: 'success' | 'failure';
+  timestamp: number;
+}
+
+export interface MontageLiveState {
+  successes: number;
+  failures: number;
+  successLimit: number;
+  failureLimit: number;
+  testLog: TestLogEntry[];
+  outcome: string | null;
+}
+
+// ── Respite ──
+
+export interface RespiteActivityState {
+  activityId: string;
+  name: string;
+  description: string;
+  claimedBy: string | null;
+  claimedByName: string | null;
+  completed: boolean;
+}
+
+export interface RespiteLiveState {
+  activities: RespiteActivityState[];
+  completedBy: Record<string, string[]>;
+}
+
+// ── Audio ──
+
+export interface AudioLiveState {
+  playing: boolean;
+  audioUrl: string | null;
+  assetName: string | null;
+  loop: boolean;
 }

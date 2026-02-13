@@ -8,7 +8,6 @@ import { useAuthStore } from '../../stores/authStore.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
-import { MalicePanel } from '../../components/session/MalicePanel.js';
 import { AbilityPanel } from '../../components/session/AbilityPanel.js';
 import { CombatLog } from '../../components/session/CombatLog.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
@@ -158,13 +157,12 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               combat={combat}
               entities={entities}
               isDirector={false}
-              onNextTurn={() => {}}
+              currentHeroEntityId={heroEntity?.id ?? null}
+              onClaimTurn={(entityId) => send({ type: 'combat_action', action: { type: 'CLAIM_TURN', entityId } })}
+              onSelectTurn={() => {}}
+              onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
               onEndCombat={() => {}}
-            />
-            <MalicePanel
-              malice={combat.malice}
-              isDirector={false}
-              onAdjust={() => {}}
+              onAdjustMalice={() => {}}
             />
             <div className="h-48">
               <CombatLog entries={combatLog} entityNames={entityNames} />
