@@ -8,9 +8,17 @@ import type {
   SceneRef,
   CombatAction,
   CombatState,
+  TurnActionState,
   AbilityResult,
   DrawingSync,
   FogSync,
+  NegotiationLiveState,
+  MontageLiveState,
+  RespiteLiveState,
+  AudioLiveState,
+  ArgumentLogEntry,
+  TestLogEntry,
+  RespiteActivityState,
 } from '../protocol.js';
 
 interface ConnectionMeta {
@@ -247,20 +255,25 @@ export class SessionRoom extends DurableObject<Env> {
         this.broadcast({ type: 'entity_deleted', entityId: msg.entityId });
         break;
 
-      case 'move_token':
+      case 'move_token': {
+        // Players can only move their own hero token; Director can move anything
+        if (meta.role === 'player') {
+          const entity = this.sessionState?.entities.find((e) => e.id === msg.entityId);
+          if (!entity || entity.type !== 'hero' || entity.id !== meta.heroId) {
+            this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only move your own hero' });
+            return;
+          }
+        }
         if (this.sessionState) {
           const entity = this.sessionState.entities.find((e) => e.id === msg.entityId);
           if (entity) { entity.x = msg.x; entity.y = msg.y; }
         }
         this.broadcast({ type: 'entity_moved', entityId: msg.entityId, x: msg.x, y: msg.y }, ws);
         break;
+      }
 
       case 'combat_action':
-        if (meta.role !== 'director') {
-          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
-          return;
-        }
-        this.handleCombatAction(msg.action);
+        this.handleCombatAction(ws, meta, msg.action);
         break;
 
       case 'use_ability':
@@ -313,6 +326,71 @@ export class SessionRoom extends DurableObject<Env> {
         this.removeSceneFog(msg.fogId);
         // Don't exclude sender — Director needs to see their own removal
         this.broadcast({ type: 'scene_fog_removed', fogId: msg.fogId });
+        break;
+
+      // ── Negotiation ──
+      case 'negotiation_argument':
+        this.handleNegotiationArgument(ws, meta, msg.skillId, msg.approachText);
+        break;
+
+      case 'negotiation_adjust_patience':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationAdjustPatience(msg.delta);
+        break;
+
+      // ── Montage ──
+      case 'montage_roll':
+        this.handleMontageRoll(ws, meta, msg.skillId, msg.characteristicId);
+        break;
+
+      // ── Respite ──
+      case 'respite_choose_activity':
+        this.handleRespiteChooseActivity(ws, meta, msg.activityId);
+        break;
+
+      case 'respite_complete_activity':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleRespiteCompleteActivity(msg.activityId);
+        break;
+
+      // ── Audio ──
+      case 'audio_play':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleAudioPlay(msg.audioAssetId, msg.loop);
+        break;
+
+      case 'audio_pause':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleAudioPause();
+        break;
+
+      case 'audio_stop':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleAudioStop();
+        break;
+
+      // ── Story ──
+      case 'story_update':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.broadcast({ type: 'story_updated', readAloudText: msg.readAloudText });
         break;
 
       default:
@@ -397,6 +475,10 @@ export class SessionRoom extends DurableObject<Env> {
       entities: [],
       combat: null,
       participants: this.getParticipantList(),
+      negotiation: null,
+      montage: null,
+      respite: null,
+      audio: null,
     };
   }
 
@@ -462,42 +544,147 @@ export class SessionRoom extends DurableObject<Env> {
     this.sessionState = null;
   }
 
-  private handleCombatAction(action: CombatAction): void {
+  private handleCombatAction(ws: WebSocket, meta: ConnectionMeta, action: CombatAction): void {
     if (!this.sessionState) return;
 
     switch (action.type) {
       case 'START_COMBAT': {
+        // Director only
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        // Roll initiative: 1d10, 6+ heroes go first
+        const initRoll = this.rollD10(1)[0] ?? 5;
+        const firstSide: 'heroes' | 'villains' = initRoll >= 6 ? 'heroes' : 'villains';
+        const heroCount = action.heroEntityIds.length;
+
         const combat: CombatState = {
           round: 1,
-          turnOrder: action.initiativeOrder
-            .sort((a, b) => b.initiative - a.initiative)
-            .map((e) => e.entityId),
-          currentTurnIndex: 0,
-          malice: 0,
+          activeSide: firstSide,
+          firstSide,
+          initiativeRoll: initRoll,
+          heroEntities: action.heroEntityIds,
+          villainEntities: action.villainEntityIds,
+          actedThisRound: [],
+          activeEntityId: null,
+          malice: Math.max(0, heroCount), // Starting malice = heroCount for round 1
+          turnActions: {},
         };
         this.sessionState.combat = combat;
         break;
       }
-      case 'END_COMBAT':
+
+      case 'END_COMBAT': {
+        // Director only
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
         this.sessionState.combat = null;
         break;
-      case 'NEXT_TURN': {
+      }
+
+      case 'CLAIM_TURN': {
+        // Players claim their hero's turn during heroes' side
         const c = this.sessionState.combat;
         if (!c) return;
-        c.currentTurnIndex++;
-        if (c.currentTurnIndex >= c.turnOrder.length) {
-          c.currentTurnIndex = 0;
-          c.round++;
-          c.malice += 2; // +2 malice per round
+        if (c.activeSide !== 'heroes' || c.activeEntityId) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Cannot claim turn now' });
+          return;
         }
+        if (!c.heroEntities.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Not a hero entity' });
+          return;
+        }
+        if (c.actedThisRound.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Already acted this round' });
+          return;
+        }
+        c.activeEntityId = action.entityId;
+        // Initialize turn action state for this entity
+        const heroEntity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        const speed = typeof heroEntity?.['speed'] === 'number' ? (heroEntity['speed'] as number) : 5;
+        c.turnActions[action.entityId] = this.createTurnActions(speed);
         break;
       }
+
+      case 'SELECT_TURN': {
+        // Director selects which villain takes a turn
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        const c = this.sessionState.combat;
+        if (!c) return;
+        if (c.activeSide !== 'villains' || c.activeEntityId) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Cannot select turn now' });
+          return;
+        }
+        if (!c.villainEntities.includes(action.entityId) && !c.heroEntities.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Entity not in combat' });
+          return;
+        }
+        if (c.actedThisRound.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Already acted this round' });
+          return;
+        }
+        c.activeEntityId = action.entityId;
+        // Initialize turn action state
+        const villainEntity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        const vSpeed = typeof villainEntity?.['speed'] === 'number' ? (villainEntity['speed'] as number) : 5;
+        c.turnActions[action.entityId] = this.createTurnActions(vSpeed);
+        break;
+      }
+
+      case 'END_TURN': {
+        // Either director or the player whose turn it is
+        const c = this.sessionState.combat;
+        if (!c || !c.activeEntityId) return;
+
+        // Players can only end their own turn
+        if (meta.role === 'player' && meta.heroId !== c.activeEntityId) {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Not your turn' });
+          return;
+        }
+
+        const entityId = c.activeEntityId;
+        c.actedThisRound.push(entityId);
+        c.activeEntityId = null;
+        delete c.turnActions[entityId];
+
+        // Check if the current side is done
+        const currentSideIds = c.activeSide === 'heroes' ? c.heroEntities : c.villainEntities;
+        const otherSideIds = c.activeSide === 'heroes' ? c.villainEntities : c.heroEntities;
+        const currentSideDone = currentSideIds.every((id) => c.actedThisRound.includes(id));
+        const otherSideDone = otherSideIds.every((id) => c.actedThisRound.includes(id));
+
+        if (currentSideDone && otherSideDone) {
+          // Both sides done → new round
+          c.round++;
+          c.actedThisRound = [];
+          c.activeSide = c.firstSide;
+          // Malice increases each round
+          c.malice += c.heroEntities.length;
+        } else if (currentSideDone) {
+          // Switch to other side
+          c.activeSide = c.activeSide === 'heroes' ? 'villains' : 'heroes';
+        }
+        // If current side is NOT done, stay on the same side (next entity can claim/select)
+        break;
+      }
+
       case 'ADJUST_MALICE': {
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
         const c = this.sessionState.combat;
         if (!c) return;
         c.malice = Math.max(0, c.malice + action.delta);
         break;
       }
+
       case 'APPLY_DAMAGE': {
         const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
         if (entity && typeof entity['currentStamina'] === 'number') {
@@ -507,6 +694,7 @@ export class SessionRoom extends DurableObject<Env> {
         this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { currentStamina: entity?.['currentStamina'] } });
         break;
       }
+
       case 'APPLY_HEALING': {
         const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
         if (entity && typeof entity['currentStamina'] === 'number' && typeof entity['maxStamina'] === 'number') {
@@ -516,6 +704,7 @@ export class SessionRoom extends DurableObject<Env> {
         this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { currentStamina: entity?.['currentStamina'] } });
         break;
       }
+
       case 'APPLY_CONDITION': {
         const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
         if (entity) {
@@ -528,6 +717,7 @@ export class SessionRoom extends DurableObject<Env> {
         }
         break;
       }
+
       case 'REMOVE_CONDITION': {
         const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
         if (entity) {
@@ -542,6 +732,17 @@ export class SessionRoom extends DurableObject<Env> {
     }
 
     this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });
+  }
+
+  /** Create initial turn action state for an entity. */
+  private createTurnActions(baseSpeed: number): TurnActionState {
+    return {
+      mainActionUsed: false,
+      maneuverUsed: false,
+      moveRemaining: baseSpeed,
+      triggeredUsedThisRound: false,
+      mainConvertedTo: null,
+    };
   }
 
   /** Roll n d10 using crypto-secure randomness. */
@@ -629,6 +830,230 @@ export class SessionRoom extends DurableObject<Env> {
     const data = this.getActiveSceneData();
     if (!data || !Array.isArray(data['fog'])) return;
     data['fog'] = (data['fog'] as FogSync[]).filter((f) => f.id !== fogId);
+  }
+
+  // ── Negotiation Handlers ──
+
+  private handleNegotiationArgument(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    skillId: string,
+    approachText: string
+  ): void {
+    if (!this.sessionState) return;
+
+    // Initialize negotiation state if needed
+    if (!this.sessionState.negotiation) {
+      this.sessionState.negotiation = {
+        interest: 0,
+        patience: 5,
+        maxPatience: 5,
+        argumentLog: [],
+      };
+    }
+
+    const neg = this.sessionState.negotiation;
+
+    // Server-side power roll for the argument
+    const dice = this.rollD10(2);
+    // Use a basic modifier (could be enhanced with entity data)
+    const modifier = 0;
+    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
+    const tier = this.getTier(total);
+
+    // Determine interest change based on tier
+    const interestDelta = tier === 3 ? 2 : tier === 2 ? 1 : -1;
+
+    // Apply changes
+    neg.interest += interestDelta;
+    neg.patience = Math.max(0, neg.patience - 1);
+
+    const entry: ArgumentLogEntry = {
+      id: `arg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      playerId: meta.userId,
+      playerName: meta.username,
+      skillId,
+      approachText,
+      roll: total,
+      tier,
+      interestDelta,
+      timestamp: Date.now(),
+    };
+    neg.argumentLog.push(entry);
+
+    this.broadcast({
+      type: 'negotiation_updated',
+      interest: neg.interest,
+      patience: neg.patience,
+      argumentLog: neg.argumentLog,
+    });
+  }
+
+  private handleNegotiationAdjustPatience(delta: number): void {
+    if (!this.sessionState?.negotiation) return;
+    const neg = this.sessionState.negotiation;
+    neg.patience = Math.max(0, neg.patience + delta);
+    this.broadcast({
+      type: 'negotiation_updated',
+      interest: neg.interest,
+      patience: neg.patience,
+      argumentLog: neg.argumentLog,
+    });
+  }
+
+  // ── Montage Handlers ──
+
+  private handleMontageRoll(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    skillId: string,
+    characteristicId: string
+  ): void {
+    if (!this.sessionState) return;
+
+    // Initialize montage state if needed
+    if (!this.sessionState.montage) {
+      this.sessionState.montage = {
+        successes: 0,
+        failures: 0,
+        successLimit: 3,
+        failureLimit: 3,
+        testLog: [],
+        outcome: null,
+      };
+    }
+
+    const mont = this.sessionState.montage;
+    if (mont.outcome) return; // Already resolved
+
+    // Server-side power roll
+    const dice = this.rollD10(2);
+    const modifier = 0;
+    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
+    const tier = this.getTier(total);
+    const outcome: 'success' | 'failure' = tier >= 2 ? 'success' : 'failure';
+
+    if (outcome === 'success') mont.successes++;
+    else mont.failures++;
+
+    const entry: TestLogEntry = {
+      id: `test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      playerId: meta.userId,
+      playerName: meta.username,
+      skillId,
+      characteristicId,
+      roll: total,
+      tier,
+      outcome,
+      timestamp: Date.now(),
+    };
+    mont.testLog.push(entry);
+
+    // Check for montage completion
+    if (mont.successes >= mont.successLimit) mont.outcome = 'total-success';
+    else if (mont.failures >= mont.failureLimit) mont.outcome = 'total-failure';
+    else if (mont.successes >= mont.successLimit - 1 && mont.failures >= mont.failureLimit - 1) {
+      // Mixed result
+      mont.outcome = 'mixed';
+    }
+
+    this.broadcast({
+      type: 'montage_updated',
+      successes: mont.successes,
+      failures: mont.failures,
+      testLog: mont.testLog,
+      outcome: mont.outcome,
+    });
+  }
+
+  // ── Respite Handlers ──
+
+  private handleRespiteChooseActivity(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    activityId: string
+  ): void {
+    if (!this.sessionState) return;
+
+    // Initialize respite state if needed
+    if (!this.sessionState.respite) {
+      this.sessionState.respite = {
+        activities: [],
+        completedBy: {},
+      };
+    }
+
+    const respite = this.sessionState.respite;
+    const activity = respite.activities.find((a) => a.activityId === activityId);
+    if (!activity) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Activity not found' });
+      return;
+    }
+
+    // Allow claiming
+    activity.claimedBy = meta.userId;
+    activity.claimedByName = meta.username;
+
+    this.broadcast({
+      type: 'respite_updated',
+      activities: respite.activities,
+      completedBy: respite.completedBy,
+    });
+  }
+
+  private handleRespiteCompleteActivity(activityId: string): void {
+    if (!this.sessionState?.respite) return;
+
+    const respite = this.sessionState.respite;
+    const activity = respite.activities.find((a) => a.activityId === activityId);
+    if (!activity) return;
+
+    activity.completed = true;
+    if (activity.claimedBy) {
+      if (!respite.completedBy[activity.claimedBy]) {
+        respite.completedBy[activity.claimedBy] = [];
+      }
+      respite.completedBy[activity.claimedBy].push(activityId);
+    }
+
+    this.broadcast({
+      type: 'respite_updated',
+      activities: respite.activities,
+      completedBy: respite.completedBy,
+    });
+  }
+
+  // ── Audio Handlers ──
+
+  private handleAudioPlay(audioAssetId: string, loop: boolean): void {
+    if (!this.sessionState) return;
+    this.sessionState.audio = {
+      playing: true,
+      audioUrl: audioAssetId, // Client resolves to actual URL
+      assetName: audioAssetId,
+      loop,
+    };
+    this.broadcast({
+      type: 'audio_command',
+      action: 'play',
+      audioUrl: audioAssetId,
+      assetName: audioAssetId,
+      loop,
+    });
+  }
+
+  private handleAudioPause(): void {
+    if (!this.sessionState) return;
+    if (this.sessionState.audio) {
+      this.sessionState.audio.playing = false;
+    }
+    this.broadcast({ type: 'audio_command', action: 'pause' });
+  }
+
+  private handleAudioStop(): void {
+    if (!this.sessionState) return;
+    this.sessionState.audio = null;
+    this.broadcast({ type: 'audio_command', action: 'stop' });
   }
 
   private sendTo(ws: WebSocket, msg: ServerMessage): void {
