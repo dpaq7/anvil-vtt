@@ -111,17 +111,17 @@ const CLASS_HEROIC_RESOURCE: Record<HeroClass, HeroicResourceType> = {
  * Potency characteristic by class.
  */
 const CLASS_POTENCY_CHARACTERISTICS: Record<HeroClass, CharacteristicName[]> = {
-  beastheart: ['might', 'agility'],
-  censor: ['intuition', 'presence'],
+  beastheart: ['might', 'intuition'],
+  censor: ['presence', 'might'],
   conduit: ['intuition'],
   elementalist: ['reason'],
   fury: ['might', 'agility'],
-  null: ['reason', 'intuition', 'presence'],
+  null: ['intuition', 'agility'],
   shadow: ['agility'],
-  summoner: ['presence'],
-  tactician: ['reason', 'presence'],
-  talent: ['presence'],
-  troubadour: ['presence'],
+  summoner: ['reason'],
+  tactician: ['reason', 'might'],
+  talent: ['reason', 'presence'],
+  troubadour: ['presence', 'agility'],
 };
 
 // ---------------------------------------------------------------------------

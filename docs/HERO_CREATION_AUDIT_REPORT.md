@@ -11,8 +11,8 @@
 | 2. Ancestries | PASS | 163 | 0 | 0 |
 | 3. Cultures | PASS | 53 | 0 | 1 known gap |
 | 4. Careers | PASS | 180 | 0 | 0 |
-| 5. Class Foundations | Pending | - | - | - |
-| 6. Kits | Pending | - | - | - |
+| 5. Class Foundations | PASS | 277 | 0 | 0 |
+| 6. Kits | PASS | 268 | 0 | 0 |
 | 7A. Beastheart Implementation | Pending | - | - | - |
 | 7B. Summoner Implementation | Pending | - | - | - |
 | 7C. Class Abilities | Pending | - | - | - |
@@ -115,8 +115,59 @@
 
 ### Slice 5: Class Foundations
 
+**277 tests, all passing.**
+
+**Bugs found and fixed:**
+- `hero-logic.ts` CLASS_POTENCY_CHARACTERISTICS had wrong potency characteristic for 7 of 11 classes:
+  - Beastheart: was `['might', 'agility']`, fixed to `['might', 'intuition']` (agility→intuition)
+  - Censor: was `['intuition', 'presence']`, fixed to `['presence', 'might']` (wrong chars + order)
+  - Null: was `['reason', 'intuition', 'presence']`, fixed to `['intuition', 'agility']` (wrong primary)
+  - Summoner: was `['presence']`, fixed to `['reason']` (completely wrong)
+  - Tactician: was `['reason', 'presence']`, fixed to `['reason', 'might']` (presence→might)
+  - Talent: was `['presence']`, fixed to `['reason', 'presence']` (wrong primary, missing reason)
+  - Troubadour: was `['presence']`, fixed to `['presence', 'agility']` (was correct but incomplete)
+
+**Validated per class (11 classes):**
+- Name, role (Defender/Controller/Striker/Support), masterClass flag
+- Starting stamina, stamina per level, starting recoveries
+- Starting characteristics (values and count)
+- Potency characteristic
+- Heroic resource name and type
+- Subclass name, select count, all subclass IDs and names
+- Cross-validation: class-definitions.ts ↔ GameData consistency
+- Cross-validation: hero-logic.ts stamina/recoveries/potency vs source
+
+**Cross-class validations:**
+- Exactly 11 classes present
+- Only Summoner is a master class
+- Only Conduit has subclassSelectCount > 1 (it selects 2 domains)
+- Stamina level1 values are 15, 18, or 21
+- Stamina perLevel values are 6, 9, or 12
+- Recoveries are 8, 10, or 12
+- Elementalist and Summoner share essence resource type
 
 ### Slice 6: Kits
+
+**268 tests, all passing.**
+
+**No bugs found.** All 21 standard kits match source books exactly.
+
+**Validated per kit (21 kits):**
+- ID, name, type (martial/caster/hybrid)
+- Weapons array
+- Stamina per echelon bonus
+- Speed bonus, stability bonus, disengage bonus
+- Melee/ranged damage bonuses per tier (T1/T2/T3)
+- Melee/ranged distance bonuses
+- Signature ability name presence
+
+**Cross-kit validations:**
+- Exactly 21 standard kits in GameData
+- All kit types are valid (martial, caster, or hybrid)
+- Stormwight (4) and beastheart (4) kits exist separately in reference-data
+- Cloak and Dagger weapons: `['Light', 'Light']` (source: "one or two light weapons")
+
+**Note:** GameData exposes 21 standard kits. Stormwight-specific kits (4) and beastheart companion kits (4) are stored separately in `rules/reference-data.ts`.
 
 
 ### Slice 7A: Beastheart Implementation
