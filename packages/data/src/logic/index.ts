@@ -34,6 +34,9 @@ export * as EncounterLogic from './encounter-logic.js';
 // Factory Logic - object creation
 export * as FactoryLogic from './factory-logic.js';
 
+// Universal Combat Actions
+export * as UniversalActions from './universal-actions.js';
+
 // Phase 6: Core Gaps
 export * as AbilityLogic from './ability-logic.js';
 export * as EntityStatusLogic from './entity-status-logic.js';
@@ -146,6 +149,15 @@ export type {
   MaliceLevel,
   MaliceColor,
 } from './battle-logic.js';
+
+// Universal Actions types
+export type {
+  UniversalAction,
+  CatchBreathResult,
+  GrabResult,
+  KnockbackResult,
+  HideResult,
+} from './universal-actions.js';
 
 // Encounter Logic types
 export type {

@@ -348,6 +348,120 @@ export function getSurpriseFirstSide(
   return null;
 }
 
+/**
+ * Determine which side goes first based on initiative roll.
+ * Draw Steel: Roll 1d10 — 6+ heroes go first, 5 or less villains go first.
+ *
+ * @param initiativeRoll - Result of 1d10
+ * @returns The first side
+ */
+export function getFirstSide(initiativeRoll: number): 'heroes' | 'villains' {
+  return initiativeRoll >= 6 ? 'heroes' : 'villains';
+}
+
+/**
+ * Get the opposing side.
+ *
+ * @param side - Current side
+ * @returns The other side
+ */
+export function getOppositeSide(side: 'heroes' | 'villains'): 'heroes' | 'villains' {
+  return side === 'heroes' ? 'villains' : 'heroes';
+}
+
+/**
+ * Determine if a side has finished acting this round.
+ * A side is done when all its entities are in the actedThisRound set.
+ *
+ * @param sideEntityIds - Entity IDs on this side
+ * @param actedThisRound - Entity IDs that have acted this round
+ * @returns True if all entities on this side have acted
+ */
+export function isSideDone(
+  sideEntityIds: string[],
+  actedThisRound: string[]
+): boolean {
+  return sideEntityIds.every((id) => actedThisRound.includes(id));
+}
+
+/**
+ * Get the entities on a side that haven't acted yet this round.
+ *
+ * @param sideEntityIds - Entity IDs on this side
+ * @param actedThisRound - Entity IDs that have acted this round
+ * @returns Entity IDs that can still act
+ */
+export function getUnactedEntities(
+  sideEntityIds: string[],
+  actedThisRound: string[]
+): string[] {
+  return sideEntityIds.filter((id) => !actedThisRound.includes(id));
+}
+
+/**
+ * Determine what happens when a turn ends.
+ * Returns the next active side and whether a new round starts.
+ *
+ * Logic:
+ * 1. The current entity is marked as having acted.
+ * 2. If the current side has more entities that haven't acted, stay on this side.
+ * 3. Otherwise, switch to the other side.
+ * 4. If both sides have all acted, start a new round.
+ *
+ * @param activeSide - Currently active side
+ * @param heroEntityIds - All hero entity IDs
+ * @param villainEntityIds - All villain entity IDs
+ * @param actedThisRound - Entities that have acted (AFTER adding the current entity)
+ * @param firstSide - Which side went first this round (for next round's first side)
+ * @returns Next state info
+ */
+export function resolveEndTurn(
+  activeSide: 'heroes' | 'villains',
+  heroEntityIds: string[],
+  villainEntityIds: string[],
+  actedThisRound: string[],
+  firstSide: 'heroes' | 'villains'
+): {
+  nextSide: 'heroes' | 'villains';
+  newRound: boolean;
+} {
+  const currentSideIds = activeSide === 'heroes' ? heroEntityIds : villainEntityIds;
+  const otherSideIds = activeSide === 'heroes' ? villainEntityIds : heroEntityIds;
+  const otherSide = getOppositeSide(activeSide);
+
+  const currentSideDone = isSideDone(currentSideIds, actedThisRound);
+  const otherSideDone = isSideDone(otherSideIds, actedThisRound);
+
+  // Both sides done → new round
+  if (currentSideDone && otherSideDone) {
+    return { nextSide: firstSide, newRound: true };
+  }
+
+  // Current side still has entities → stay (side-based: turns alternate between sides)
+  // But in Draw Steel, each side takes ALL their turns before switching.
+  // So we stay on the same side until everyone has acted.
+  if (!currentSideDone) {
+    return { nextSide: activeSide, newRound: false };
+  }
+
+  // Current side done, other side not → switch
+  return { nextSide: otherSide, newRound: false };
+}
+
+/**
+ * Calculate malice gained at the start of a new round.
+ * Draw Steel rule: malice += heroCount at start of each round (after round 1).
+ *
+ * @param heroCount - Number of heroes
+ * @param roundNumber - The round that is starting
+ * @returns Malice to add
+ */
+export function getMaliceGainForRound(heroCount: number, roundNumber: number): number {
+  // Round 1 already has starting malice, subsequent rounds gain heroCount
+  if (roundNumber <= 1) return 0;
+  return getMalicePerRound(heroCount);
+}
+
 // ---------------------------------------------------------------------------
 // Round Progress
 // ---------------------------------------------------------------------------
