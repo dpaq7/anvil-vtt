@@ -85,17 +85,13 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
 
   const handleCatchBreath = useCallback(() => {
     if (!heroEntity) return;
-    const maxStamina = typeof heroEntity['maxStamina'] === 'number' ? (heroEntity['maxStamina'] as number) : 20;
-    const recovery = Math.floor(maxStamina / 3);
-    // Apply healing via combat action
-    send({ type: 'combat_action', action: { type: 'APPLY_HEALING', entityId: heroEntity.id, amount: recovery } });
-    toast.success(`Caught breath! Recovered ${recovery} stamina.`);
+    send({ type: 'combat_action', action: { type: 'CATCH_BREATH', entityId: heroEntity.id } });
+    toast.success('Caught breath! Recovering stamina...');
   }, [heroEntity, send]);
 
   const handleDefend = useCallback(() => {
     if (!heroEntity) return;
-    // Apply defending condition
-    send({ type: 'combat_action', action: { type: 'APPLY_CONDITION', entityId: heroEntity.id, condition: 'Defending' } });
+    send({ type: 'combat_action', action: { type: 'DEFEND', entityId: heroEntity.id } });
     toast.info('Defending until your next turn.');
   }, [heroEntity, send]);
 

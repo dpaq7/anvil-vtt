@@ -784,6 +784,45 @@ export class SessionRoom extends DurableObject<Env> {
         }
         break;
       }
+
+      case 'CATCH_BREATH': {
+        // Catch Breath: spend main action, recover floor(maxStamina / 3) stamina
+        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        if (entity && typeof entity['currentStamina'] === 'number' && typeof entity['maxStamina'] === 'number') {
+          const maxStamina = entity['maxStamina'] as number;
+          const recovery = Math.floor(maxStamina / 3);
+          const newStamina = Math.min(maxStamina, (entity['currentStamina'] as number) + recovery);
+          (entity as Record<string, unknown>)['currentStamina'] = newStamina;
+          this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { currentStamina: newStamina } });
+
+          // Mark main action as used
+          if (combat?.turnActions?.[action.entityId]) {
+            combat.turnActions[action.entityId].mainActionUsed = true;
+          }
+        }
+        break;
+      }
+
+      case 'DEFEND': {
+        // Defend: apply Defending condition (grants +2 to defense rolls until next turn)
+        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        if (entity) {
+          const conditions = Array.isArray(entity['conditions'])
+            ? [...(entity['conditions'] as string[])]
+            : [];
+          if (!conditions.includes('Defending')) {
+            conditions.push('Defending');
+          }
+          (entity as Record<string, unknown>)['conditions'] = conditions;
+          this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { conditions } });
+
+          // Mark maneuver as used (Defend is a maneuver in Draw Steel)
+          if (combat?.turnActions?.[action.entityId]) {
+            combat.turnActions[action.entityId].maneuverUsed = true;
+          }
+        }
+        break;
+      }
     }
 
     this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });

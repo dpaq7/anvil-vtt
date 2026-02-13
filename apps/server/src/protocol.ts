@@ -110,7 +110,9 @@ export type CombatAction =
   | { type: 'APPLY_DAMAGE'; entityId: string; amount: number }
   | { type: 'APPLY_HEALING'; entityId: string; amount: number }
   | { type: 'APPLY_CONDITION'; entityId: string; condition: string }
-  | { type: 'REMOVE_CONDITION'; entityId: string; conditionId: string };
+  | { type: 'REMOVE_CONDITION'; entityId: string; conditionId: string }
+  | { type: 'CATCH_BREATH'; entityId: string }
+  | { type: 'DEFEND'; entityId: string };
 
 // ── Ability Resolution ──
 
