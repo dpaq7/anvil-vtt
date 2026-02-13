@@ -115,6 +115,14 @@ export class SessionRoom extends DurableObject<Env> {
       return this.handleWebSocket(request, url);
     }
 
+    // HTTP endpoint to start session from REST route — broadcasts session_started to lobby clients
+    if (url.pathname === '/start' && request.method === 'POST') {
+      this.broadcast({ type: 'session_started' });
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // HTTP endpoint to end session from outside the WebSocket (e.g. LivePage)
     if (url.pathname === '/end' && request.method === 'POST') {
       const sessionId = url.searchParams.get('sessionId');

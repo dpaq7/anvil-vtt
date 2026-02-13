@@ -204,6 +204,11 @@ sessionRoutes.post('/sessions/:id/start', async (c) => {
     .bind(sessionId)
     .run();
 
+  // Forward to Durable Object so it can broadcast session_started to lobby clients
+  const doId = c.env.SESSION_ROOM.idFromName(sessionId);
+  const stub = c.env.SESSION_ROOM.get(doId);
+  await stub.fetch(new Request('https://do/start', { method: 'POST' }));
+
   return c.json({ ok: true });
 });
 
