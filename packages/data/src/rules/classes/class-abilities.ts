@@ -90,7 +90,26 @@ import {
   troubadourTriggeredActions,
   getClassActTriggeredAction,
 } from './troubadour/abilities';
-import type { summonerAbilitiesByLevel } from './abilities/summoner-abilities';
+import {
+  beastheartSignatureAbilities,
+  beastheartThreeFerocityAbilities,
+  beastheartFiveFerocityAbilities,
+  beastheartSevenFerocityAbilities,
+  beastheartNineFerocityAbilities,
+  beastheartElevenFerocityAbilities,
+  beastheartTriggeredActions,
+  getWildNatureAbilitiesByCost,
+  getWildNatureTriggeredAction,
+} from './beastheart/abilities';
+import {
+  summonerSignatureAbilities,
+  summonerThreeEssenceAbilities,
+  summonerFiveEssenceAbilities,
+  summonerSevenEssenceAbilities,
+  summonerNineEssenceAbilities,
+  summonerElevenEssenceAbilities,
+  summonerTriggeredActions,
+} from './summoner/abilities';
 
 // Types for ability categories
 export interface AbilitiesByTier {
@@ -172,24 +191,56 @@ export function getConduitAbilities(): AbilitiesByTier {
 }
 
 /**
+ * Get all Beastheart abilities organized by cost tier
+ */
+export function getBeastheartAbilities(wildNature?: string): AbilitiesByTier {
+  const signature = [...beastheartSignatureAbilities];
+  const threeCost = [...beastheartThreeFerocityAbilities];
+  let fiveCost = [...beastheartFiveFerocityAbilities];
+  const sevenCost = [...beastheartSevenFerocityAbilities];
+  let nineCost = [...beastheartNineFerocityAbilities];
+  let elevenCost = [...beastheartElevenFerocityAbilities];
+
+  // Add wild nature-specific abilities
+  if (wildNature) {
+    fiveCost = [...fiveCost, ...getWildNatureAbilitiesByCost(wildNature, 5)];
+    nineCost = [...nineCost, ...getWildNatureAbilitiesByCost(wildNature, 9)];
+    elevenCost = [...elevenCost, ...getWildNatureAbilitiesByCost(wildNature, 11)];
+  }
+
+  const triggeredActions = [...beastheartTriggeredActions];
+  if (wildNature) {
+    const wildNatureTriggered = getWildNatureTriggeredAction(wildNature);
+    if (wildNatureTriggered) {
+      triggeredActions.push(wildNatureTriggered);
+    }
+  }
+
+  return {
+    signature,
+    threeCost,
+    fiveCost,
+    sevenCost,
+    nineCost,
+    elevenCost,
+    triggeredActions,
+    other: [],
+  };
+}
+
+/**
  * Get all Summoner abilities organized by cost tier
  */
 export function getSummonerAbilities(): AbilitiesByTier {
-  // Flatten all level-based abilities
-  const allAbilities = Object.values(summonerAbilitiesByLevel).flat();
-
   return {
-    signature: allAbilities.filter(a => !a.essenceCost || a.essenceCost === 0),
-    threeCost: allAbilities.filter(a => a.essenceCost === 3),
-    fiveCost: allAbilities.filter(a => a.essenceCost === 5),
-    sevenCost: allAbilities.filter(a => a.essenceCost === 7),
-    nineCost: allAbilities.filter(a => a.essenceCost === 9),
-    elevenCost: allAbilities.filter(a => a.essenceCost === 11),
-    triggeredActions: [],
-    other: allAbilities.filter(a =>
-      a.essenceCost &&
-      ![0, 3, 5, 7, 9, 11].includes(a.essenceCost)
-    ),
+    signature: [...summonerSignatureAbilities],
+    threeCost: [...summonerThreeEssenceAbilities],
+    fiveCost: [...summonerFiveEssenceAbilities],
+    sevenCost: [...summonerSevenEssenceAbilities],
+    nineCost: [...summonerNineEssenceAbilities],
+    elevenCost: [...summonerElevenEssenceAbilities],
+    triggeredActions: [...summonerTriggeredActions],
+    other: [],
   };
 }
 
@@ -337,6 +388,8 @@ export function getClassAbilities(
   subclass?: string
 ): AbilitiesByTier {
   switch (heroClass) {
+    case 'beastheart':
+      return getBeastheartAbilities(subclass);
     case 'fury':
       return getFuryAbilities(subclass);
     case 'conduit':

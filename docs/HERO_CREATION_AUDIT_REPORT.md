@@ -13,14 +13,14 @@
 | 4. Careers | PASS | 180 | 0 | 0 |
 | 5. Class Foundations | PASS | 277 | 0 | 0 |
 | 6. Kits | PASS | 268 | 0 | 0 |
-| 7A. Beastheart Implementation | Pending | - | - | - |
-| 7B. Summoner Implementation | Pending | - | - | - |
+| 7A. Beastheart Implementation | DONE | - | - | - |
+| 7B. Summoner Implementation | DONE | - | - | - |
 | 7C. Class Abilities | Pending | - | - | - |
-| 8. Class Features & Subclasses | Pending | - | - | - |
-| 9. Complications | Pending | - | - | - |
-| 10. Perks | Pending | - | - | - |
-| 11. Skills | Pending | - | - | - |
-| 12. Titles & Progression | Pending | - | - | - |
+| 8. Class Features & Subclasses | PASS | 277 | 0 | 0 |
+| 9. Complications | PASS | 370 | 0 | 0 |
+| 10. Perks | PASS | 266 | 0 | 0 |
+| 11. Skills | PASS | 151 | 0 | 0 |
+| 12. Titles & Progression | PASS | 353 | 0 | 0 |
 | 13. Derived Calculations | Pending | - | - | - |
 
 ---
