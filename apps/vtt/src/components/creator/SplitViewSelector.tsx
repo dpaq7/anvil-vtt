@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ScrollArea } from '@anvil/ui';
+import { ScrollArea, cn } from '@anvil/ui';
 
 interface Props<T> {
   items: T[];
@@ -11,6 +11,8 @@ interface Props<T> {
   previewedItem: T | null;
   emptyMessage?: string;
   gridCols?: 1 | 2 | 3;
+  listClassName?: string;
+  detailClassName?: string;
 }
 
 const GRID_COLS_CLASS = {
@@ -29,6 +31,8 @@ export function SplitViewSelector<T>({
   previewedItem,
   emptyMessage = 'No items available',
   gridCols = 2,
+  listClassName,
+  detailClassName,
 }: Props<T>) {
   if (items.length === 0) {
     return (
@@ -41,7 +45,7 @@ export function SplitViewSelector<T>({
   return (
     <div className="flex h-full gap-4">
       {/* Card Grid - Left Side */}
-      <div className="w-1/2 min-w-0">
+      <div className={cn("w-1/2 min-w-0", listClassName)}>
         <ScrollArea className="h-full">
           <div className={`grid ${GRID_COLS_CLASS[gridCols]} gap-3 p-1`}>
             {items.map((item, index) => {
@@ -63,7 +67,7 @@ export function SplitViewSelector<T>({
       </div>
 
       {/* Detail Panel - Right Side */}
-      <div className="w-1/2 min-w-0">
+      <div className={cn("w-1/2 min-w-0", detailClassName)}>
         {previewedItem ? (
           renderDetail(previewedItem)
         ) : (

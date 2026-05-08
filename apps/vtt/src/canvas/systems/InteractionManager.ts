@@ -52,8 +52,11 @@ export class InteractionManager {
   // Terrain placement state
   private terrainStart: { gridX: number; gridY: number } | null = null;
 
-  // Fog placement state
+  // Fog brush state
   private fogStart: { gridX: number; gridY: number } | null = null;
+  private fogMode: 'draw' | 'reveal' = 'draw';
+  private fogBrushSize = 1;
+  private fogBrushLastKey: string | null = null;
 
   // Hover state
   private hoveredId: string | null = null;
@@ -69,6 +72,7 @@ export class InteractionManager {
     private tokenLayer: TokenLayer,
     private cellSize: number,
     private callbacks: InteractionCallbacks,
+    private gridBounds: { cols: number; rows: number },
     isDirector: boolean,
   ) {
     this.isDirector = isDirector;
@@ -100,6 +104,10 @@ export class InteractionManager {
     this.cellSize = size;
   }
 
+  setGridBounds(bounds: { cols: number; rows: number }): void {
+    this.gridBounds = bounds;
+  }
+
   /** Update callbacks to avoid stale closures (called on every render). */
   setCallbacks(callbacks: InteractionCallbacks): void {
     this.callbacks = callbacks;
@@ -108,6 +116,12 @@ export class InteractionManager {
   setDrawConfig(color: string, width: number): void {
     this.drawColor = color;
     this.drawWidth = width;
+  }
+
+  setFogConfig(mode: 'draw' | 'reveal', brushSize: number): void {
+    this.fogMode = mode;
+    this.fogBrushSize = Math.max(1, Math.min(10, Math.round(brushSize)));
+    this.fogBrushLastKey = null;
   }
 
   /** Get the current set of selected entity IDs (for external state sync). */
@@ -135,8 +149,10 @@ export class InteractionManager {
     this.drawPoints = [];
     this.terrainStart = null;
     this.fogStart = null;
+    this.fogBrushLastKey = null;
     // Clean up any in-progress previews
     this.drawingLayer?.clearPreview();
+    this.terrainLayer?.clearPreview();
     this.fogLayer?.clearPreview();
   }
 
@@ -158,6 +174,18 @@ export class InteractionManager {
     this.tokenLayer.buildIndex(this.quadtree);
   }
 
+  private clampGrid(gridX: number, gridY: number): { gridX: number; gridY: number } {
+    return {
+      gridX: Math.max(0, Math.min(this.gridBounds.cols - 1, gridX)),
+      gridY: Math.max(0, Math.min(this.gridBounds.rows - 1, gridY)),
+    };
+  }
+
+  private screenToGrid(clientX: number, clientY: number): { gridX: number; gridY: number } {
+    const { gridX, gridY } = this.viewport.screenToGrid(clientX, clientY, this.cellSize);
+    return this.clampGrid(gridX, gridY);
+  }
+
   private screenToWorld(clientX: number, clientY: number): { worldX: number; worldY: number } {
     const rect = this.canvas.getBoundingClientRect();
     const pan = this.viewport.getPan();
@@ -170,7 +198,7 @@ export class InteractionManager {
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return; // Left click only
     if (this._activeTool === 'pan') return; // Let ViewportSystem handle
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
 
     switch (this._activeTool) {
       case 'select':
@@ -200,9 +228,17 @@ export class InteractionManager {
       case 'draw':
         this.handleDrawMove(e);
         break;
+      case 'terrain':
+        this.handleTerrainMove(e);
+        break;
       case 'fog':
         this.handleFogMove(e);
         break;
+      case 'eraser': {
+        const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+        this.handleEraserDown(e, gridX, gridY);
+        break;
+      }
     }
   };
 
@@ -273,7 +309,7 @@ export class InteractionManager {
   private handleSelectMove(e: PointerEvent): void {
     // Group drag — move all selected tokens by grid delta
     if (this.groupDragging && this.groupDragLastGrid) {
-      const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       const dx = gridX - this.groupDragLastGrid.gridX;
       const dy = gridY - this.groupDragLastGrid.gridY;
       if (dx !== 0 || dy !== 0) {
@@ -291,7 +327,7 @@ export class InteractionManager {
 
     // Single drag
     if (this.dragging && this.dragEntityId) {
-      const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       this.tokenLayer.moveToken(this.dragEntityId, gridX, gridY);
       if (this.dragOriginGrid) {
         this.tokenLayer.showDistanceLabel(this.dragEntityId, this.dragOriginGrid.gridX, this.dragOriginGrid.gridY);
@@ -316,7 +352,7 @@ export class InteractionManager {
     }
 
     // Hover detection — check for token under cursor
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
     if (entityId !== this.hoveredId) {
       this.hoveredId = entityId;
@@ -352,7 +388,7 @@ export class InteractionManager {
 
     // Single drag finished
     if (this.dragging && this.dragEntityId) {
-      const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       this.callbacks.onTokenMove(this.dragEntityId, gridX, gridY);
       this.dragging = false;
       this.dragEntityId = null;
@@ -436,64 +472,88 @@ export class InteractionManager {
         return;
       }
     }
-    if (this.fogLayer) {
-      const fogId = this.fogLayer.getZoneAt(gridX, gridY);
-      if (fogId) {
-        this.callbacks.onFogRemove?.(fogId);
-      }
-    }
+    // Fog reveal is handled by the Fog tool's Reveal brush so this eraser
+    // remains available for drawings and terrain annotations.
   }
 
   // --- Terrain tool ---
 
   private handleTerrainDown(gridX: number, gridY: number): void {
-    this.terrainStart = { gridX, gridY };
+    this.terrainStart = this.clampGrid(gridX, gridY);
   }
 
-  private handleTerrainUp(e: PointerEvent): void {
+  private handleTerrainMove(e: PointerEvent): void {
     if (!this.terrainStart) return;
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
     const x = Math.min(this.terrainStart.gridX, gridX);
     const y = Math.min(this.terrainStart.gridY, gridY);
     const w = Math.abs(gridX - this.terrainStart.gridX) + 1;
     const h = Math.abs(gridY - this.terrainStart.gridY) + 1;
+    this.terrainLayer?.previewZone(x, y, w, h);
+  }
+
+  private handleTerrainUp(e: PointerEvent): void {
+    if (!this.terrainStart) return;
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+    const x = Math.min(this.terrainStart.gridX, gridX);
+    const y = Math.min(this.terrainStart.gridY, gridY);
+    const w = Math.abs(gridX - this.terrainStart.gridX) + 1;
+    const h = Math.abs(gridY - this.terrainStart.gridY) + 1;
+    this.terrainLayer?.clearPreview();
     this.callbacks.onTerrainAdd?.(x, y, w, h);
     this.terrainStart = null;
   }
 
   // --- Fog tool ---
 
+  private getFogBrushRect(gridX: number, gridY: number): { x: number; y: number; w: number; h: number } {
+    const size = Math.max(1, Math.min(this.fogBrushSize, this.gridBounds.cols, this.gridBounds.rows));
+    const half = Math.floor(size / 2);
+    const x = Math.max(0, Math.min(this.gridBounds.cols - size, gridX - half));
+    const y = Math.max(0, Math.min(this.gridBounds.rows - size, gridY - half));
+    return { x, y, w: size, h: size };
+  }
+
+  private applyFogBrush(gridX: number, gridY: number): void {
+    const rect = this.getFogBrushRect(gridX, gridY);
+    const key = `${this.fogMode}:${rect.x}:${rect.y}:${rect.w}:${rect.h}`;
+    if (key === this.fogBrushLastKey) return;
+    this.fogBrushLastKey = key;
+
+    if (this.fogMode === 'reveal') {
+      const ids = this.fogLayer?.getZonesInRect(rect.x, rect.y, rect.w, rect.h) ?? [];
+      for (const id of ids) this.callbacks.onFogRemove?.(id);
+      this.fogLayer?.previewZone(rect.x, rect.y, rect.w, rect.h);
+      return;
+    }
+
+    this.callbacks.onFogAdd?.(rect.x, rect.y, rect.w, rect.h);
+    this.fogLayer?.previewZone(rect.x, rect.y, rect.w, rect.h);
+  }
+
   private handleFogDown(gridX: number, gridY: number): void {
     this.fogStart = { gridX, gridY };
+    this.applyFogBrush(gridX, gridY);
   }
 
   private handleFogMove(e: PointerEvent): void {
     if (!this.fogStart) return;
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
-    const x = Math.min(this.fogStart.gridX, gridX);
-    const y = Math.min(this.fogStart.gridY, gridY);
-    const w = Math.abs(gridX - this.fogStart.gridX) + 1;
-    const h = Math.abs(gridY - this.fogStart.gridY) + 1;
-    this.fogLayer?.previewZone(x, y, w, h);
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+    this.applyFogBrush(gridX, gridY);
   }
 
-  private handleFogUp(e: PointerEvent): void {
+  private handleFogUp(_e: PointerEvent): void {
     if (!this.fogStart) return;
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
-    const x = Math.min(this.fogStart.gridX, gridX);
-    const y = Math.min(this.fogStart.gridY, gridY);
-    const w = Math.abs(gridX - this.fogStart.gridX) + 1;
-    const h = Math.abs(gridY - this.fogStart.gridY) + 1;
     this.fogLayer?.clearPreview();
-    this.callbacks.onFogAdd?.(x, y, w, h);
     this.fogStart = null;
+    this.fogBrushLastKey = null;
   }
 
   // --- Context menu (right-click) ---
 
   private onContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
-    const { gridX, gridY } = this.viewport.screenToGrid(e.clientX, e.clientY, this.cellSize);
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
     if (entityId) {
       // Position the context menu at the token's right edge (gridX + 1) for consistent placement

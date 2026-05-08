@@ -84,6 +84,11 @@ export function useSessionSocket(sessionId: string | null) {
         toast.info('The session has ended.');
         break;
       case 'error':
+        if (msg.code === 'INVALID_TARGET' && msg.message === 'Token not found') {
+          // Token moves can race against scene/entity reconciliation after map edits.
+          // The next state update corrects the canvas, so avoid a noisy transient toast.
+          break;
+        }
         setError(msg.message);
         toast.error(msg.message ?? 'Server error');
         break;
@@ -93,10 +98,11 @@ export function useSessionSocket(sessionId: string | null) {
           return {
             ...prev,
             scenes: prev.scenes.map((s) => {
-              if (s.id !== prev.activeSceneId || !s.data) return s;
-              const drawings = Array.isArray(s.data['drawings']) ? [...(s.data['drawings'] as unknown[])] : [];
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const drawings = Array.isArray(data['drawings']) ? [...(data['drawings'] as unknown[])] : [];
               drawings.push(msg.drawing);
-              return { ...s, data: { ...s.data, drawings } };
+              return { ...s, data: { ...data, drawings } };
             }),
           };
         });
@@ -107,11 +113,12 @@ export function useSessionSocket(sessionId: string | null) {
           return {
             ...prev,
             scenes: prev.scenes.map((s) => {
-              if (s.id !== prev.activeSceneId || !s.data) return s;
-              const drawings = Array.isArray(s.data['drawings'])
-                ? (s.data['drawings'] as { id: string }[]).filter((d) => d.id !== msg.drawingId)
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const drawings = Array.isArray(data['drawings'])
+                ? (data['drawings'] as { id: string }[]).filter((d) => d.id !== msg.drawingId)
                 : [];
-              return { ...s, data: { ...s.data, drawings } };
+              return { ...s, data: { ...data, drawings } };
             }),
           };
         });
@@ -122,10 +129,11 @@ export function useSessionSocket(sessionId: string | null) {
           return {
             ...prev,
             scenes: prev.scenes.map((s) => {
-              if (s.id !== prev.activeSceneId || !s.data) return s;
-              const fog = Array.isArray(s.data['fog']) ? [...(s.data['fog'] as unknown[])] : [];
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const fog = Array.isArray(data['fog']) ? [...(data['fog'] as unknown[])] : [];
               fog.push(msg.fog);
-              return { ...s, data: { ...s.data, fog } };
+              return { ...s, data: { ...data, fog } };
             }),
           };
         });
@@ -136,11 +144,45 @@ export function useSessionSocket(sessionId: string | null) {
           return {
             ...prev,
             scenes: prev.scenes.map((s) => {
-              if (s.id !== prev.activeSceneId || !s.data) return s;
-              const fog = Array.isArray(s.data['fog'])
-                ? (s.data['fog'] as { id: string }[]).filter((f) => f.id !== msg.fogId)
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const fog = Array.isArray(data['fog'])
+                ? (data['fog'] as { id: string }[]).filter((f) => f.id !== msg.fogId)
                 : [];
-              return { ...s, data: { ...s.data, fog } };
+              return { ...s, data: { ...data, fog } };
+            }),
+          };
+        });
+        break;
+      case 'scene_terrain_added':
+        setState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            scenes: prev.scenes.map((s) => {
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const terrain = Array.isArray(data['terrain']) ? [...(data['terrain'] as unknown[])] : [];
+              if (!terrain.some((zone) => typeof zone === 'object' && zone !== null && 'id' in zone && zone.id === msg.terrain.id)) {
+                terrain.push(msg.terrain);
+              }
+              return { ...s, data: { ...data, terrain } };
+            }),
+          };
+        });
+        break;
+      case 'scene_terrain_removed':
+        setState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            scenes: prev.scenes.map((s) => {
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const terrain = Array.isArray(data['terrain'])
+                ? (data['terrain'] as { id: string }[]).filter((zone) => zone.id !== msg.terrainId)
+                : [];
+              return { ...s, data: { ...data, terrain } };
             }),
           };
         });
@@ -150,9 +192,12 @@ export function useSessionSocket(sessionId: string | null) {
         setState((prev) => prev ? {
           ...prev,
           negotiation: {
-            ...(prev.negotiation ?? { maxPatience: 5, argumentLog: [] }),
             interest: msg.interest,
             patience: msg.patience,
+            maxPatience: msg.maxPatience,
+            phase: msg.phase,
+            motivations: msg.motivations,
+            pitfalls: msg.pitfalls,
             argumentLog: msg.argumentLog,
           },
         } : prev);
@@ -161,9 +206,10 @@ export function useSessionSocket(sessionId: string | null) {
         setState((prev) => prev ? {
           ...prev,
           montage: {
-            ...(prev.montage ?? { successLimit: 3, failureLimit: 3 }),
             successes: msg.successes,
             failures: msg.failures,
+            successLimit: msg.successLimit,
+            failureLimit: msg.failureLimit,
             testLog: msg.testLog,
             outcome: msg.outcome,
           },
@@ -226,10 +272,12 @@ export function useSessionSocket(sessionId: string | null) {
     setStatus((prev) => (prev === 'disconnected' ? 'connecting' : 'reconnecting'));
     setError(null);
 
+    const apiBase = import.meta.env['VITE_API_BASE'] ?? '';
+
     // First, fetch a short-lived WS auth token via HTTP (cookies work here)
     let token: string;
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/ws-token`, {
+      const res = await fetch(`${apiBase}/api/sessions/${sessionId}/ws-token`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -250,11 +298,11 @@ export function useSessionSocket(sessionId: string | null) {
 
     if (!mountedRef.current) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const apiBase = import.meta.env['VITE_API_BASE'] ?? '';
-    const host = apiBase
-      ? new URL(apiBase).host
-      : window.location.host;
+    const apiUrl = apiBase ? new URL(apiBase) : null;
+    const protocol = apiUrl
+      ? (apiUrl.protocol === 'https:' ? 'wss:' : 'ws:')
+      : (window.location.protocol === 'https:' ? 'wss:' : 'ws:');
+    const host = apiUrl?.host ?? window.location.host;
     const wsUrl = `${protocol}//${host}/api/sessions/${sessionId}/ws?token=${token}`;
 
     const ws = new WebSocket(wsUrl);

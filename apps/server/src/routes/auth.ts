@@ -11,8 +11,32 @@ export const authRoutes = new Hono<AppEnv>();
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
+function missingOAuthConfig(env: AppEnv['Bindings']) {
+  const required = {
+    DISCORD_CLIENT_ID: env.DISCORD_CLIENT_ID,
+    DISCORD_CLIENT_SECRET: env.DISCORD_CLIENT_SECRET,
+    DISCORD_REDIRECT_URI: env.DISCORD_REDIRECT_URI,
+  };
+
+  return Object.entries(required)
+    .filter(([, value]) => !value || value === 'undefined')
+    .map(([key]) => key);
+}
+
 // Redirect to Discord OAuth
 authRoutes.get('/discord', (c) => {
+  const missingConfig = missingOAuthConfig(c.env);
+  if (missingConfig.length > 0) {
+    return c.json(
+      {
+        error: 'Discord OAuth is not configured',
+        missing: missingConfig,
+        hint: 'Copy apps/server/.dev.vars.example to apps/server/.dev.vars and fill in real Discord OAuth values.',
+      },
+      500,
+    );
+  }
+
   const params = new URLSearchParams({
     client_id: c.env.DISCORD_CLIENT_ID,
     redirect_uri: c.env.DISCORD_REDIRECT_URI,
@@ -24,6 +48,18 @@ authRoutes.get('/discord', (c) => {
 
 // Discord OAuth callback
 authRoutes.get('/callback', async (c) => {
+  const missingConfig = missingOAuthConfig(c.env);
+  if (missingConfig.length > 0) {
+    return c.json(
+      {
+        error: 'Discord OAuth is not configured',
+        missing: missingConfig,
+        hint: 'Copy apps/server/.dev.vars.example to apps/server/.dev.vars and fill in real Discord OAuth values.',
+      },
+      500,
+    );
+  }
+
   const code = c.req.query('code');
   if (!code) {
     return c.json({ error: 'Missing code parameter' }, 400);
@@ -101,6 +137,53 @@ authRoutes.get('/callback', async (c) => {
 
   const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
   return c.redirect(`${frontendUrl}/app`);
+});
+
+
+// Development-only local login for iteration without Discord OAuth.
+authRoutes.get('/dev-login', async (c) => {
+  if (c.env.ENVIRONMENT !== 'development') {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const role = c.req.query('role') === 'player' ? 'player' : 'director';
+  const userId = `${role === 'director' ? 'dev-director' : 'dev-player'}`;
+  const discordId = `${userId}-discord`;
+  const username = role === 'director' ? 'Dev Director' : 'Dev Player';
+
+  await c.env.DB.prepare(
+    `INSERT INTO users (id, discord_id, username, avatar_url, role)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(discord_id) DO UPDATE SET
+       username = excluded.username,
+       avatar_url = excluded.avatar_url,
+       role = excluded.role,
+       updated_at = datetime('now')`,
+  )
+    .bind(userId, discordId, username, null, role)
+    .run();
+
+  const user = await c.env.DB.prepare('SELECT id FROM users WHERE discord_id = ?')
+    .bind(discordId)
+    .first<{ id: string }>();
+
+  if (!user) {
+    return c.json({ error: 'Failed to create dev user' }, 500);
+  }
+
+  const sessionId = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString();
+
+  await c.env.DB.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
+    .bind(sessionId, user.id, expiresAt)
+    .run();
+
+  setSessionCookie(c, sessionId, SESSION_MAX_AGE);
+
+  const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
+  const next = c.req.query('next');
+  const redirectPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app';
+  return c.redirect(`${frontendUrl}${redirectPath}`);
 });
 
 // Logout

@@ -1,37 +1,49 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { Landing } from './pages/Landing.js';
-import { Auth } from './pages/Auth.js';
 import { ProtectedRoute } from './pages/ProtectedRoute.js';
-import { CampaignList } from './pages/CampaignList.js';
-import { CampaignBuilder } from './pages/CampaignBuilder.js';
-import { HeroList } from './pages/HeroList.js';
-import { HeroWizard } from './pages/HeroWizard.js';
-import { HeroSheet } from './pages/HeroSheet.js';
-import { JoinCampaign } from './pages/JoinCampaign.js';
-import { JoinSession } from './pages/JoinSession.js';
-import { Lobby } from './pages/Lobby.js';
-import { Home } from './pages/Home.js';
-import { Assets } from './pages/Assets.js';
-import { Notes } from './pages/Notes.js';
-import { SessionPage } from './pages/session/SessionPage.js';
-import { LivePage } from './pages/LivePage.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
-import { AppLayout } from './components/layout/AppLayout.js';
+
+const Landing = lazy(() => import('./pages/Landing.js').then((module) => ({ default: module.Landing })));
+const Auth = lazy(() => import('./pages/Auth.js').then((module) => ({ default: module.Auth })));
+const JoinCampaign = lazy(() => import('./pages/JoinCampaign.js').then((module) => ({ default: module.JoinCampaign })));
+const AppLayout = lazy(() => import('./components/layout/AppLayout.js').then((module) => ({ default: module.AppLayout })));
+const CampaignList = lazy(() => import('./pages/CampaignList.js').then((module) => ({ default: module.CampaignList })));
+const CampaignBuilder = lazy(() => import('./pages/CampaignBuilder.js').then((module) => ({ default: module.CampaignBuilder })));
+const HeroList = lazy(() => import('./pages/HeroList.js').then((module) => ({ default: module.HeroList })));
+const HeroWizard = lazy(() => import('./pages/HeroWizard.js').then((module) => ({ default: module.HeroWizard })));
+const HeroSheet = lazy(() => import('./pages/HeroSheet.js').then((module) => ({ default: module.HeroSheet })));
+const JoinSession = lazy(() => import('./pages/JoinSession.js').then((module) => ({ default: module.JoinSession })));
+const Lobby = lazy(() => import('./pages/Lobby.js').then((module) => ({ default: module.Lobby })));
+const Home = lazy(() => import('./pages/Home.js').then((module) => ({ default: module.Home })));
+const Assets = lazy(() => import('./pages/Assets.js').then((module) => ({ default: module.Assets })));
+const Notes = lazy(() => import('./pages/Notes.js').then((module) => ({ default: module.Notes })));
+const SessionPage = lazy(() => import('./pages/session/SessionPage.js').then((module) => ({ default: module.SessionPage })));
+const LivePage = lazy(() => import('./pages/LivePage.js').then((module) => ({ default: module.LivePage })));
+
+const routeFallback = (
+  <div className="flex h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-400">
+    Loading...
+  </div>
+);
+
+function routeChunk(element: ReactNode) {
+  return <Suspense fallback={routeFallback}>{element}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Landing />,
+    element: routeChunk(<Landing />),
   },
   {
     path: '/auth',
-    element: <Auth />,
+    element: routeChunk(<Auth />),
   },
   {
     path: '/join/:token',
     element: (
       <ProtectedRoute>
-        <JoinCampaign />
+        {routeChunk(<JoinCampaign />)}
       </ProtectedRoute>
     ),
   },
@@ -40,54 +52,54 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ErrorBoundary label="app">
-          <AppLayout />
+          {routeChunk(<AppLayout />)}
         </ErrorBoundary>
       </ProtectedRoute>
     ),
     children: [
       {
         index: true,
-        element: <Home />,
+        element: routeChunk(<Home />),
       },
       {
         path: 'live',
-        element: <LivePage />,
+        element: routeChunk(<LivePage />),
       },
       {
         path: 'campaigns',
-        element: <CampaignList />,
+        element: routeChunk(<CampaignList />),
       },
       {
         path: 'assets',
-        element: <Assets />,
+        element: routeChunk(<Assets />),
       },
       {
         path: 'notes',
-        element: <Notes />,
+        element: routeChunk(<Notes />),
       },
       {
         path: 'campaigns/:id',
-        element: <CampaignBuilder />,
+        element: routeChunk(<CampaignBuilder />),
       },
       {
         path: 'heroes',
-        element: <HeroList />,
+        element: routeChunk(<HeroList />),
       },
       {
         path: 'heroes/new',
-        element: <HeroWizard />,
+        element: routeChunk(<HeroWizard />),
       },
       {
         path: 'heroes/:id',
-        element: <HeroSheet />,
+        element: routeChunk(<HeroSheet />),
       },
       {
         path: 'join/:code?',
-        element: <JoinSession />,
+        element: routeChunk(<JoinSession />),
       },
       {
         path: 'session/:id/lobby',
-        element: <Lobby />,
+        element: routeChunk(<Lobby />),
       },
     ],
   },
@@ -95,7 +107,7 @@ export const router = createBrowserRouter([
     path: '/app/session/:id',
     element: (
       <ProtectedRoute>
-        <SessionPage />
+        {routeChunk(<SessionPage />)}
       </ProtectedRoute>
     ),
   },

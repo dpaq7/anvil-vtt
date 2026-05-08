@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { CreateMapInput, MapAsset, UpdateMapInput } from '@anvil/types';
@@ -6,8 +7,6 @@ import type { CreateMapInput, MapAsset, UpdateMapInput } from '@anvil/types';
 export const mapRoutes = new Hono<AppEnv>();
 
 mapRoutes.use('/*', authMiddleware);
-
-// ── Helpers ──
 
 interface MapRow {
   id: string;
@@ -21,6 +20,34 @@ interface MapRow {
   height: number | null;
   created_at: string;
   updated_at: string;
+}
+
+async function getCampaignRole(c: Context<AppEnv>, campaignId: string, userId: string): Promise<string | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT cm.role FROM campaign_members cm
+     JOIN campaigns c ON c.id = cm.campaign_id
+     WHERE cm.campaign_id = ? AND cm.user_id = ? AND c.deleted_at IS NULL`,
+  ).bind(campaignId, userId).first<{ role: string }>();
+  return row?.role ?? null;
+}
+
+async function requireCampaignMember(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
+  return (await getCampaignRole(c, campaignId, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
+}
+
+async function requireCampaignDirector(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
+  return (await getCampaignRole(c, campaignId, user.id)) === 'director' ? null : c.json({ error: 'Forbidden' }, 403);
+}
+
+async function validateOwnedMapAsset(c: Context<AppEnv>, assetId: string | null | undefined, user: AuthUser): Promise<Response | null> {
+  if (!assetId) return null;
+  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<{ type: string; content_type: string | null }>();
+  if (!asset) return c.json({ error: 'Asset not found' }, 404);
+  if (asset.type !== 'map') return c.json({ error: 'Asset must be a map' }, 400);
+  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('image/')) return c.json({ error: 'Asset must be an image' }, 400);
+  return null;
 }
 
 async function hydrateMap(db: D1Database, row: MapRow): Promise<MapAsset> {
@@ -49,26 +76,12 @@ async function hydrateMap(db: D1Database, row: MapRow): Promise<MapAsset> {
   };
 }
 
-async function insertJoinTables(
-  db: D1Database,
-  mapId: string,
-  terrains?: string[],
-  biomes?: string[],
-  tags?: string[],
-) {
+async function insertJoinTables(db: D1Database, mapId: string, terrains?: string[], biomes?: string[], tags?: string[]) {
   const stmts: D1PreparedStatement[] = [];
-  for (const t of terrains ?? []) {
-    stmts.push(db.prepare('INSERT INTO map_terrains (map_id, terrain) VALUES (?, ?)').bind(mapId, t));
-  }
-  for (const b of biomes ?? []) {
-    stmts.push(db.prepare('INSERT INTO map_biomes (map_id, biome) VALUES (?, ?)').bind(mapId, b));
-  }
-  for (const tag of tags ?? []) {
-    stmts.push(db.prepare('INSERT INTO map_tags (map_id, tag) VALUES (?, ?)').bind(mapId, tag));
-  }
-  if (stmts.length > 0) {
-    await db.batch(stmts);
-  }
+  for (const t of terrains ?? []) stmts.push(db.prepare('INSERT INTO map_terrains (map_id, terrain) VALUES (?, ?)').bind(mapId, t));
+  for (const b of biomes ?? []) stmts.push(db.prepare('INSERT INTO map_biomes (map_id, biome) VALUES (?, ?)').bind(mapId, b));
+  for (const tag of tags ?? []) stmts.push(db.prepare('INSERT INTO map_tags (map_id, tag) VALUES (?, ?)').bind(mapId, tag));
+  if (stmts.length > 0) await db.batch(stmts);
 }
 
 async function deleteJoinTables(db: D1Database, mapId: string) {
@@ -79,11 +92,12 @@ async function deleteJoinTables(db: D1Database, mapId: string) {
   ]);
 }
 
-// ── Routes ──
-
-// List maps with optional filters
 mapRoutes.get('/:campaignId/maps', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const membershipError = await requireCampaignMember(c, campaignId, user);
+  if (membershipError) return membershipError;
+
   const sceneType = c.req.query('scene_type');
   const terrain = c.req.query('terrain');
   const biome = c.req.query('biome');
@@ -94,129 +108,101 @@ mapRoutes.get('/:campaignId/maps', async (c) => {
 
   let query = 'SELECT * FROM maps WHERE campaign_id = ?';
   const binds: unknown[] = [campaignId];
-
   if (sceneType) { query += ' AND scene_type = ?'; binds.push(sceneType); }
   if (gridType) { query += ' AND grid_type = ?'; binds.push(gridType); }
   if (size) { query += ' AND size = ?'; binds.push(size); }
   if (q) { query += ' AND name LIKE ?'; binds.push(`%${q}%`); }
-
-  if (terrain) {
-    query += ' AND id IN (SELECT map_id FROM map_terrains WHERE terrain = ?)';
-    binds.push(terrain);
-  }
-  if (biome) {
-    query += ' AND id IN (SELECT map_id FROM map_biomes WHERE biome = ?)';
-    binds.push(biome);
-  }
-  if (tag) {
-    query += ' AND id IN (SELECT map_id FROM map_tags WHERE tag = ?)';
-    binds.push(tag);
-  }
-
+  if (terrain) { query += ' AND id IN (SELECT map_id FROM map_terrains WHERE terrain = ?)'; binds.push(terrain); }
+  if (biome) { query += ' AND id IN (SELECT map_id FROM map_biomes WHERE biome = ?)'; binds.push(biome); }
+  if (tag) { query += ' AND id IN (SELECT map_id FROM map_tags WHERE tag = ?)'; binds.push(tag); }
   query += ' ORDER BY updated_at DESC';
 
   const results = await c.env.DB.prepare(query).bind(...binds).all<MapRow>();
   const maps = await Promise.all(results.results.map((row) => hydrateMap(c.env.DB, row)));
-
   return c.json({ maps });
 });
 
-// Create map
 mapRoutes.post('/:campaignId/maps', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
-  const body = await c.req.json<CreateMapInput & { assetId?: string }>();
+  const directorError = await requireCampaignDirector(c, campaignId, user);
+  if (directorError) return directorError;
 
+  const body = await c.req.json<CreateMapInput & { assetId?: string }>();
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
+  const assetError = await validateOwnedMapAsset(c, body.assetId, user);
+  if (assetError) return assetError;
 
   const id = crypto.randomUUID();
-
   await c.env.DB.prepare(
     `INSERT INTO maps (id, campaign_id, name, asset_id, scene_type, grid_type, size, width, height)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      id,
-      campaignId,
-      body.name.trim(),
-      body.assetId ?? null,
-      body.sceneType ?? null,
-      body.gridType ?? 'gridded',
-      body.size ?? 'medium',
-      body.width ?? null,
-      body.height ?? null,
-    )
-    .run();
+  ).bind(
+    id,
+    campaignId,
+    body.name.trim(),
+    body.assetId ?? null,
+    body.sceneType ?? null,
+    body.gridType ?? 'gridded',
+    body.size ?? 'medium',
+    body.width ?? null,
+    body.height ?? null,
+  ).run();
 
   await insertJoinTables(c.env.DB, id, body.terrains, body.biomes, body.tags);
-
   const row = await c.env.DB.prepare('SELECT * FROM maps WHERE id = ?').bind(id).first<MapRow>();
   if (!row) return c.json({ error: 'Failed to create map' }, 500);
-
-  const map = await hydrateMap(c.env.DB, row);
-  return c.json({ map }, 201);
+  return c.json({ map: await hydrateMap(c.env.DB, row) }, 201);
 });
 
-// Update map
 mapRoutes.patch('/:campaignId/maps/:mapId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const directorError = await requireCampaignDirector(c, campaignId, user);
+  if (directorError) return directorError;
+
   const mapId = c.req.param('mapId');
   const body = await c.req.json<UpdateMapInput>();
-
-  const existing = await c.env.DB.prepare('SELECT * FROM maps WHERE id = ? AND campaign_id = ?')
-    .bind(mapId, campaignId)
-    .first<MapRow>();
+  const existing = await c.env.DB.prepare('SELECT * FROM maps WHERE id = ? AND campaign_id = ?').bind(mapId, campaignId).first<MapRow>();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const sets: string[] = [];
   const vals: unknown[] = [];
-
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name.trim()); }
   if (body.sceneType !== undefined) { sets.push('scene_type = ?'); vals.push(body.sceneType); }
   if (body.gridType !== undefined) { sets.push('grid_type = ?'); vals.push(body.gridType); }
   if (body.size !== undefined) { sets.push('size = ?'); vals.push(body.size); }
-
   if (sets.length > 0) {
     sets.push("updated_at = datetime('now')");
     vals.push(mapId);
-    await c.env.DB.prepare(`UPDATE maps SET ${sets.join(', ')} WHERE id = ?`)
-      .bind(...vals)
-      .run();
+    await c.env.DB.prepare(`UPDATE maps SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
   }
 
-  // Replace join tables if provided
   if (body.terrains !== undefined || body.biomes !== undefined || body.tags !== undefined) {
+    const oldTerrains = (await c.env.DB.prepare('SELECT terrain FROM map_terrains WHERE map_id = ?').bind(mapId).all<{ terrain: string }>()).results.map((r) => r.terrain);
+    const oldBiomes = (await c.env.DB.prepare('SELECT biome FROM map_biomes WHERE map_id = ?').bind(mapId).all<{ biome: string }>()).results.map((r) => r.biome);
+    const oldTags = (await c.env.DB.prepare('SELECT tag FROM map_tags WHERE map_id = ?').bind(mapId).all<{ tag: string }>()).results.map((r) => r.tag);
     await deleteJoinTables(c.env.DB, mapId);
-    await insertJoinTables(
-      c.env.DB,
-      mapId,
-      body.terrains ?? (await c.env.DB.prepare('SELECT terrain FROM map_terrains WHERE map_id = ?').bind(mapId).all<{ terrain: string }>()).results.map((r) => r.terrain),
-      body.biomes ?? (await c.env.DB.prepare('SELECT biome FROM map_biomes WHERE map_id = ?').bind(mapId).all<{ biome: string }>()).results.map((r) => r.biome),
-      body.tags ?? (await c.env.DB.prepare('SELECT tag FROM map_tags WHERE map_id = ?').bind(mapId).all<{ tag: string }>()).results.map((r) => r.tag),
-    );
+    await insertJoinTables(c.env.DB, mapId, body.terrains ?? oldTerrains, body.biomes ?? oldBiomes, body.tags ?? oldTags);
   }
 
   const row = await c.env.DB.prepare('SELECT * FROM maps WHERE id = ?').bind(mapId).first<MapRow>();
   if (!row) return c.json({ error: 'Not found' }, 404);
-
-  const map = await hydrateMap(c.env.DB, row);
-  return c.json({ map });
+  return c.json({ map: await hydrateMap(c.env.DB, row) });
 });
 
-// Delete map
 mapRoutes.delete('/:campaignId/maps/:mapId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
-  const mapId = c.req.param('mapId');
+  const directorError = await requireCampaignDirector(c, campaignId, user);
+  if (directorError) return directorError;
 
-  const existing = await c.env.DB.prepare('SELECT * FROM maps WHERE id = ? AND campaign_id = ?')
-    .bind(mapId, campaignId)
-    .first<MapRow>();
+  const mapId = c.req.param('mapId');
+  const existing = await c.env.DB.prepare('SELECT * FROM maps WHERE id = ? AND campaign_id = ?').bind(mapId, campaignId).first<MapRow>();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  // Clean up R2 asset if linked
   if (existing.asset_id) {
-    const asset = await c.env.DB.prepare('SELECT storage_key FROM assets WHERE id = ?')
-      .bind(existing.asset_id)
-      .first<{ storage_key: string }>();
+    const asset = await c.env.DB.prepare('SELECT storage_key FROM assets WHERE id = ?').bind(existing.asset_id).first<{ storage_key: string }>();
     if (asset) {
       await c.env.ASSETS.delete(asset.storage_key);
       await c.env.DB.prepare('DELETE FROM assets WHERE id = ?').bind(existing.asset_id).run();

@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { Button } from '@anvil/ui';
+import { Expand, Swords } from 'lucide-react';
 import { api } from '../../lib/api.js';
 
 // Scene-type-specific workspaces (will be created in subsequent phases)
@@ -26,6 +28,9 @@ export interface SceneWorkspaceProps {
   scene: Scene;
   campaignId: string;
   onSave?: () => void;
+  onBeginCombat?: (scene: Scene) => void;
+  focusMode?: boolean;
+  onFocusModeChange?: (enabled: boolean) => void;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -42,7 +47,7 @@ interface SceneSnapshot {
 // Component
 // ---------------------------------------------------------------------------
 
-export function SceneWorkspace({ scene, campaignId, onSave }: SceneWorkspaceProps) {
+export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focusMode = false, onFocusModeChange }: SceneWorkspaceProps) {
   const hasSnapshot = Boolean(scene.snapshot);
   const [viewMode, setViewMode] = useState<ViewMode>('original');
   const isReadOnly = viewMode === 'endState';
@@ -166,7 +171,7 @@ export function SceneWorkspace({ scene, campaignId, onSave }: SceneWorkspaceProp
       case 'respite':
         return <RespiteWorkspace {...workspaceProps} />;
       case 'battle':
-        return <BattleWorkspace {...workspaceProps} />;
+        return <BattleWorkspace {...workspaceProps} focusMode={focusMode} />;
       default:
         return (
           <div className="flex h-full items-center justify-center text-zinc-500">
@@ -179,6 +184,7 @@ export function SceneWorkspace({ scene, campaignId, onSave }: SceneWorkspaceProp
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
+      {!focusMode && (
       <div
         className={`flex items-center justify-between border-b-2 bg-zinc-900/80 px-4 py-3 ${sceneColors[scene.type] ?? 'border-zinc-700'}`}
       >
@@ -190,6 +196,41 @@ export function SceneWorkspace({ scene, campaignId, onSave }: SceneWorkspaceProp
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Save status indicator */}
+          {!isReadOnly && (
+            <>
+              {saveStatus === 'saving' && (
+                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                  Saving...
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center gap-1.5 text-xs text-emerald-500">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Saved
+                </span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="flex items-center gap-1.5 text-xs text-red-500">
+                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                  Save failed
+                </span>
+              )}
+            </>
+          )}
+
+          {scene.type === 'battle' && !isReadOnly && (
+            <Button
+              size="sm"
+              className="bg-red-600 text-zinc-100 hover:bg-red-500"
+              onClick={() => onBeginCombat?.(scene)}
+            >
+              <Swords className="size-4" />
+              Draw Steel!
+            </Button>
+          )}
+
           {/* Original / End State toggle */}
           {hasSnapshot && (
             <div className="flex rounded-md border border-zinc-700 bg-zinc-800/60">
@@ -216,6 +257,20 @@ export function SceneWorkspace({ scene, campaignId, onSave }: SceneWorkspaceProp
             </div>
           )}
 
+          {onFocusModeChange && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title="Focus scene"
+              aria-label="Focus scene"
+              onClick={() => onFocusModeChange(true)}
+              className="text-zinc-400 hover:text-zinc-100"
+            >
+              <Expand className="size-4" />
+            </Button>
+          )}
+
           {/* Read-only indicator */}
           {isReadOnly && (
             <span className="flex items-center gap-1.5 text-xs text-amber-500">
@@ -224,31 +279,9 @@ export function SceneWorkspace({ scene, campaignId, onSave }: SceneWorkspaceProp
             </span>
           )}
 
-          {/* Save status indicator */}
-          {!isReadOnly && (
-            <>
-              {saveStatus === 'saving' && (
-                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                  Saving...
-                </span>
-              )}
-              {saveStatus === 'saved' && (
-                <span className="flex items-center gap-1.5 text-xs text-emerald-500">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Saved
-                </span>
-              )}
-              {saveStatus === 'error' && (
-                <span className="flex items-center gap-1.5 text-xs text-red-500">
-                  <span className="h-2 w-2 rounded-full bg-red-500" />
-                  Save failed
-                </span>
-              )}
-            </>
-          )}
         </div>
       </div>
+      )}
 
       {/* Workspace content */}
       <div className="flex-1 overflow-hidden">{renderWorkspace()}</div>

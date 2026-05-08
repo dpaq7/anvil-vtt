@@ -1,6 +1,6 @@
 import { GameData, WizardLogic } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
-import { cn } from '@anvil/ui';
+import { Card, CardContent, cn } from '@anvil/ui';
 import { Check } from 'lucide-react';
 
 interface Props {
@@ -28,23 +28,34 @@ export function LanguagesStep({ character, onChange }: Props) {
         Choose {needed} language{needed !== 1 ? 's' : ''}.
       </p>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {languages.map((lang) => {
           const isSelected = character.selectedLanguages.includes(lang.id);
           return (
-            <button
+            <Card
               key={lang.id}
               className={cn(
-                'rounded-md border px-3 py-1.5 text-sm transition-all flex items-center gap-1.5',
+                'cursor-pointer bg-creator-card transition-all',
                 isSelected
-                  ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20 text-creator-highlight'
-                  : 'border-creator-border text-creator-text hover:border-creator-text-muted hover:bg-creator-card-hover'
+                  ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20'
+                  : 'border-creator-border hover:border-creator-highlight/60 hover:bg-creator-card-hover'
               )}
               onClick={() => toggle(lang.id)}
             >
-              {lang.name}
-              {isSelected && <Check className="h-3.5 w-3.5 text-creator-highlight" />}
-            </button>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className={cn('font-medium text-creator-text', isSelected && 'text-creator-highlight')}>
+                      {lang.name}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-creator-text-muted">
+                      {lang.relatedTo}
+                    </p>
+                  </div>
+                  {isSelected && <Check className="h-5 w-5 shrink-0 text-creator-highlight" />}
+                </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>

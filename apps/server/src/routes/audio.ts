@@ -1,13 +1,12 @@
 import { Hono } from 'hono';
-import type { AppEnv } from '../types.js';
+import type { Context } from 'hono';
+import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { AudioAsset, CreateAudioInput, UpdateAudioInput } from '@anvil/types';
 
 export const audioRoutes = new Hono<AppEnv>();
 
 audioRoutes.use('/*', authMiddleware);
-
-// ── Helpers ──
 
 interface AudioRow {
   id: string;
@@ -18,6 +17,33 @@ interface AudioRow {
   audio_type: string | null;
   mood: string | null;
   created_at: string;
+}
+
+async function getCampaignRole(c: Context<AppEnv>, campaignId: string, userId: string): Promise<string | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT cm.role FROM campaign_members cm
+     JOIN campaigns c ON c.id = cm.campaign_id
+     WHERE cm.campaign_id = ? AND cm.user_id = ? AND c.deleted_at IS NULL`,
+  ).bind(campaignId, userId).first<{ role: string }>();
+  return row?.role ?? null;
+}
+
+async function requireCampaignMember(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
+  return (await getCampaignRole(c, campaignId, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
+}
+
+async function requireCampaignDirector(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
+  return (await getCampaignRole(c, campaignId, user.id)) === 'director' ? null : c.json({ error: 'Forbidden' }, 403);
+}
+
+async function validateOwnedAudioAsset(c: Context<AppEnv>, assetId: string, user: AuthUser): Promise<Response | null> {
+  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<{ type: string; content_type: string | null }>();
+  if (!asset) return c.json({ error: 'Asset not found' }, 404);
+  if (asset.type !== 'audio' && asset.type !== 'other') return c.json({ error: 'Asset must be audio' }, 400);
+  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('audio/')) return c.json({ error: 'Asset must be audio' }, 400);
+  return null;
 }
 
 async function hydrateAudio(db: D1Database, row: AudioRow): Promise<AudioAsset> {
@@ -41,22 +67,11 @@ async function hydrateAudio(db: D1Database, row: AudioRow): Promise<AudioAsset> 
   };
 }
 
-async function insertJoinTables(
-  db: D1Database,
-  audioId: string,
-  sceneTypes?: string[],
-  tags?: string[],
-) {
+async function insertJoinTables(db: D1Database, audioId: string, sceneTypes?: string[], tags?: string[]) {
   const stmts: D1PreparedStatement[] = [];
-  for (const st of sceneTypes ?? []) {
-    stmts.push(db.prepare('INSERT INTO audio_scene_types (audio_id, scene_type) VALUES (?, ?)').bind(audioId, st));
-  }
-  for (const tag of tags ?? []) {
-    stmts.push(db.prepare('INSERT INTO audio_tags (audio_id, tag) VALUES (?, ?)').bind(audioId, tag));
-  }
-  if (stmts.length > 0) {
-    await db.batch(stmts);
-  }
+  for (const st of sceneTypes ?? []) stmts.push(db.prepare('INSERT INTO audio_scene_types (audio_id, scene_type) VALUES (?, ?)').bind(audioId, st));
+  for (const tag of tags ?? []) stmts.push(db.prepare('INSERT INTO audio_tags (audio_id, tag) VALUES (?, ?)').bind(audioId, tag));
+  if (stmts.length > 0) await db.batch(stmts);
 }
 
 async function deleteJoinTables(db: D1Database, audioId: string) {
@@ -66,11 +81,12 @@ async function deleteJoinTables(db: D1Database, audioId: string) {
   ]);
 }
 
-// ── Routes ──
-
-// List audio assets with optional filters
 audioRoutes.get('/:campaignId/audio', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const membershipError = await requireCampaignMember(c, campaignId, user);
+  if (membershipError) return membershipError;
+
   const sceneType = c.req.query('scene_type');
   const mood = c.req.query('mood');
   const audioType = c.req.query('audio_type');
@@ -79,119 +95,86 @@ audioRoutes.get('/:campaignId/audio', async (c) => {
 
   let query = 'SELECT * FROM audio_assets WHERE campaign_id = ?';
   const binds: unknown[] = [campaignId];
-
   if (mood) { query += ' AND mood = ?'; binds.push(mood); }
   if (audioType) { query += ' AND audio_type = ?'; binds.push(audioType); }
   if (q) { query += ' AND name LIKE ?'; binds.push(`%${q}%`); }
-
-  if (sceneType) {
-    query += ' AND id IN (SELECT audio_id FROM audio_scene_types WHERE scene_type = ?)';
-    binds.push(sceneType);
-  }
-  if (tag) {
-    query += ' AND id IN (SELECT audio_id FROM audio_tags WHERE tag = ?)';
-    binds.push(tag);
-  }
-
+  if (sceneType) { query += ' AND id IN (SELECT audio_id FROM audio_scene_types WHERE scene_type = ?)'; binds.push(sceneType); }
+  if (tag) { query += ' AND id IN (SELECT audio_id FROM audio_tags WHERE tag = ?)'; binds.push(tag); }
   query += ' ORDER BY created_at DESC';
 
   const results = await c.env.DB.prepare(query).bind(...binds).all<AudioRow>();
   const audio = await Promise.all(results.results.map((row) => hydrateAudio(c.env.DB, row)));
-
   return c.json({ audio });
 });
 
-// Create audio asset
 audioRoutes.post('/:campaignId/audio', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
-  const body = await c.req.json<CreateAudioInput & { assetId: string }>();
+  const directorError = await requireCampaignDirector(c, campaignId, user);
+  if (directorError) return directorError;
 
+  const body = await c.req.json<CreateAudioInput & { assetId: string }>();
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
   if (!body.assetId) return c.json({ error: 'Asset ID is required' }, 400);
+  const assetError = await validateOwnedAudioAsset(c, body.assetId, user);
+  if (assetError) return assetError;
 
   const id = crypto.randomUUID();
-
   await c.env.DB.prepare(
     `INSERT INTO audio_assets (id, campaign_id, name, asset_id, duration_seconds, audio_type, mood)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      id,
-      campaignId,
-      body.name.trim(),
-      body.assetId,
-      body.durationSeconds ?? null,
-      body.audioType ?? null,
-      body.mood ?? null,
-    )
-    .run();
+  ).bind(id, campaignId, body.name.trim(), body.assetId, body.durationSeconds ?? null, body.audioType ?? null, body.mood ?? null).run();
 
   await insertJoinTables(c.env.DB, id, body.sceneTypes, body.tags);
-
   const row = await c.env.DB.prepare('SELECT * FROM audio_assets WHERE id = ?').bind(id).first<AudioRow>();
   if (!row) return c.json({ error: 'Failed to create audio asset' }, 500);
-
-  const audio = await hydrateAudio(c.env.DB, row);
-  return c.json({ audio }, 201);
+  return c.json({ audio: await hydrateAudio(c.env.DB, row) }, 201);
 });
 
-// Update audio asset
 audioRoutes.patch('/:campaignId/audio/:audioId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const directorError = await requireCampaignDirector(c, campaignId, user);
+  if (directorError) return directorError;
+
   const audioId = c.req.param('audioId');
   const body = await c.req.json<UpdateAudioInput>();
-
-  const existing = await c.env.DB.prepare('SELECT id FROM audio_assets WHERE id = ? AND campaign_id = ?')
-    .bind(audioId, campaignId)
-    .first();
+  const existing = await c.env.DB.prepare('SELECT id FROM audio_assets WHERE id = ? AND campaign_id = ?').bind(audioId, campaignId).first();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const sets: string[] = [];
   const vals: unknown[] = [];
-
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name.trim()); }
   if (body.audioType !== undefined) { sets.push('audio_type = ?'); vals.push(body.audioType); }
   if (body.mood !== undefined) { sets.push('mood = ?'); vals.push(body.mood); }
-
   if (sets.length > 0) {
     vals.push(audioId);
-    await c.env.DB.prepare(`UPDATE audio_assets SET ${sets.join(', ')} WHERE id = ?`)
-      .bind(...vals)
-      .run();
+    await c.env.DB.prepare(`UPDATE audio_assets SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
   }
 
-  // Replace join tables if provided
   if (body.sceneTypes !== undefined || body.tags !== undefined) {
+    const oldSceneTypes = (await c.env.DB.prepare('SELECT scene_type FROM audio_scene_types WHERE audio_id = ?').bind(audioId).all<{ scene_type: string }>()).results.map((r) => r.scene_type);
+    const oldTags = (await c.env.DB.prepare('SELECT tag FROM audio_tags WHERE audio_id = ?').bind(audioId).all<{ tag: string }>()).results.map((r) => r.tag);
     await deleteJoinTables(c.env.DB, audioId);
-    await insertJoinTables(
-      c.env.DB,
-      audioId,
-      body.sceneTypes ?? (await c.env.DB.prepare('SELECT scene_type FROM audio_scene_types WHERE audio_id = ?').bind(audioId).all<{ scene_type: string }>()).results.map((r) => r.scene_type),
-      body.tags ?? (await c.env.DB.prepare('SELECT tag FROM audio_tags WHERE audio_id = ?').bind(audioId).all<{ tag: string }>()).results.map((r) => r.tag),
-    );
+    await insertJoinTables(c.env.DB, audioId, body.sceneTypes ?? oldSceneTypes, body.tags ?? oldTags);
   }
 
   const row = await c.env.DB.prepare('SELECT * FROM audio_assets WHERE id = ?').bind(audioId).first<AudioRow>();
   if (!row) return c.json({ error: 'Not found' }, 404);
-
-  const audio = await hydrateAudio(c.env.DB, row);
-  return c.json({ audio });
+  return c.json({ audio: await hydrateAudio(c.env.DB, row) });
 });
 
-// Delete audio asset
 audioRoutes.delete('/:campaignId/audio/:audioId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
-  const audioId = c.req.param('audioId');
+  const directorError = await requireCampaignDirector(c, campaignId, user);
+  if (directorError) return directorError;
 
-  const existing = await c.env.DB.prepare('SELECT * FROM audio_assets WHERE id = ? AND campaign_id = ?')
-    .bind(audioId, campaignId)
-    .first<AudioRow>();
+  const audioId = c.req.param('audioId');
+  const existing = await c.env.DB.prepare('SELECT * FROM audio_assets WHERE id = ? AND campaign_id = ?').bind(audioId, campaignId).first<AudioRow>();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  // Clean up R2 asset
-  const asset = await c.env.DB.prepare('SELECT storage_key FROM assets WHERE id = ?')
-    .bind(existing.asset_id)
-    .first<{ storage_key: string }>();
+  const asset = await c.env.DB.prepare('SELECT storage_key FROM assets WHERE id = ?').bind(existing.asset_id).first<{ storage_key: string }>();
   if (asset) {
     await c.env.ASSETS.delete(asset.storage_key);
     await c.env.DB.prepare('DELETE FROM assets WHERE id = ?').bind(existing.asset_id).run();

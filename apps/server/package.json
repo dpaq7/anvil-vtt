@@ -10,7 +10,10 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "db:migrate:local": "wrangler d1 migrations apply anvil-db --local"
+    "db:migrate:local": "wrangler d1 migrations apply anvil-db --local",
+    "deploy:dry": "wrangler deploy --dry-run --outdir=dist",
+    "db:migrate:remote": "wrangler d1 migrations apply anvil-db --remote",
+    "db:migrate:list": "wrangler d1 migrations list anvil-db"
   },
   "dependencies": {
     "@anvil/data": "workspace:*",

@@ -77,12 +77,14 @@ export interface Npc {
 
 export interface CreateNpcInput {
   name: string;
+  portraitAssetId?: string | null;
   location?: string;
   notes?: string;
 }
 
 export interface UpdateNpcInput {
   name?: string;
+  portraitAssetId?: string | null;
   location?: string | null;
   notes?: string | null;
 }

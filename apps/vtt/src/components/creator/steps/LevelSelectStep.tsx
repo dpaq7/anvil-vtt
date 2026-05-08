@@ -1,24 +1,25 @@
-import { HeroLogic } from '@anvil/data';
-import { cn } from '@anvil/ui';
-import { useWizardStore } from '../../../stores/wizardStore.js';
+import { HeroLogic } from "@anvil/data";
+import { cn } from "@anvil/ui";
+import { useWizardStore } from "../../../stores/wizardStore.js";
 
 const LEVEL_RANGE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 const ECHELON_NAMES: Record<number, string> = {
-  1: 'Adventurer',
-  2: 'Veteran',
-  3: 'Master',
-  4: 'Legend',
+  1: "Adventurer",
+  2: "Veteran",
+  3: "Master",
+  4: "Legend",
 };
 
 const ECHELON_COLORS: Record<number, string> = {
-  1: 'border-creator-border bg-creator-card',
-  2: 'border-blue-700/50 bg-blue-950/30',
-  3: 'border-purple-700/50 bg-purple-950/30',
-  4: 'border-amber-700/50 bg-amber-950/30',
+  1: "border-creator-border bg-creator-card",
+  2: "border-blue-700/50 bg-blue-950/30",
+  3: "border-purple-700/50 bg-purple-950/30",
+  4: "border-creator-highlight/50 bg-creator-highlight/20",
 };
 
-const SELECTED_COLOR = 'border-creator-highlight bg-creator-highlight/20 ring-1 ring-creator-highlight/50';
+const SELECTED_COLOR =
+  "border-creator-highlight bg-creator-highlight/20 ring-1 ring-creator-highlight/50";
 
 export function LevelSelectStep() {
   const character = useWizardStore((state) => state.character);
@@ -36,14 +37,14 @@ export function LevelSelectStep() {
       acc[echelon].push(level);
       return acc;
     },
-    {} as Record<number, number[]>
+    {} as Record<number, number[]>,
   );
 
   return (
     <div>
       <p className="mb-6 text-sm text-creator-text-muted">
-        Choose your starting level. Higher levels unlock additional abilities and power,
-        but require making level-up choices for each level.
+        Choose your starting level. Higher levels unlock additional abilities
+        and power, but require making level-up choices for each level.
       </p>
 
       <div className="space-y-4">
@@ -71,17 +72,19 @@ export function LevelSelectStep() {
                       type="button"
                       onClick={() => setLevel(level)}
                       className={cn(
-                        'w-12 h-12 flex items-center justify-center rounded-md border transition-all',
-                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-creator-highlight',
+                        "w-12 h-12 flex items-center justify-center rounded-md border transition-all",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-creator-highlight",
                         isSelected
                           ? SELECTED_COLOR
-                          : cn(ECHELON_COLORS[echelon], 'hover:brightness-125')
+                          : cn(ECHELON_COLORS[echelon], "hover:brightness-125"),
                       )}
                     >
                       <span
                         className={cn(
-                          'text-lg font-bold',
-                          isSelected ? 'text-creator-highlight' : 'text-creator-text'
+                          "text-lg font-bold",
+                          isSelected
+                            ? "text-creator-highlight"
+                            : "text-creator-text",
                         )}
                       >
                         {level}
@@ -96,14 +99,15 @@ export function LevelSelectStep() {
       </div>
 
       {selectedLevel > 1 && (
-        <div className="mt-6 rounded-lg border border-amber-700/50 bg-amber-950/20 p-3">
-          <h4 className="text-sm font-semibold text-amber-400">
+        <div className="mt-6 rounded-lg border border-creator-highlight/50 bg-creator-highlight/10 p-3">
+          <h4 className="text-sm font-semibold text-creator-highlight">
             Level {selectedLevel} Selected
           </h4>
           <p className="mt-1 text-xs text-creator-text">
-            You will complete {selectedLevel - 1} level-up{' '}
-            {selectedLevel - 1 === 1 ? 'step' : 'steps'} (L2{selectedLevel > 2 ? `–L${selectedLevel}` : ''})
-            after base character creation.
+            You will complete {selectedLevel - 1} level-up{" "}
+            {selectedLevel - 1 === 1 ? "step" : "steps"} (L2
+            {selectedLevel > 2 ? `–L${selectedLevel}` : ""}) after base
+            character creation.
           </p>
         </div>
       )}

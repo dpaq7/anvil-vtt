@@ -11,6 +11,22 @@ export function Auth() {
       >
         Login with Discord
       </a>
+      {import.meta.env.DEV ? (
+        <div className="flex gap-3">
+          <a
+            href={`${API_BASE}/api/auth/dev-login?role=director`}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Director
+          </a>
+          <a
+            href={`${API_BASE}/api/auth/dev-login?role=player`}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Player
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }

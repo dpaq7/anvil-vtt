@@ -313,49 +313,27 @@ describe('Audit: Culture — Upbringing Options', () => {
   // skill group; Climb, Endurance, or Ride from the exploration group; Intimidate from the
   // interpersonal group; Alertness or Track from the intrigue group; or Monsters or Strategy
   // from the lore skill group"
-  //
-  // NOTE: The code currently stores a simplified subset: ['Strategy', 'Intimidate', 'Alertness'].
-  // The full source list is much broader (10 specific skills across 5 groups).
-  // This test documents the CURRENT code representation. A comprehensive implementation
-  // would include all 10 skills: Blacksmithing, Fletching, Climb, Endurance, Ride,
-  // Intimidate, Alertness, Track, Monsters, Strategy.
   describe('Martial upbringing', () => {
+    const FULL_SOURCE_SKILLS = [
+      'Blacksmithing', 'Fletching',
+      'Climb', 'Endurance', 'Ride',
+      'Intimidate',
+      'Alertness', 'Track',
+      'Monsters', 'Strategy',
+    ];
+
     it('should exist with type "martial"', () => {
       const martial = upbringingOptions.find((u) => u.type === 'martial');
       expect(martial).toBeDefined();
       expect(martial!.name).toBe('Martial');
     });
 
-    it('should include key skills from source (current simplified representation)', () => {
+    it('should include all specific skills from source', () => {
       const martial = upbringingOptions.find((u) => u.type === 'martial')!;
-      // The code currently captures a representative subset of the full source list.
-      // Source allows: Blacksmithing, Fletching (crafting); Climb, Endurance, Ride (exploration);
-      //   Intimidate (interpersonal); Alertness, Track (intrigue); Monsters, Strategy (lore)
-      // Code stores: ['Strategy', 'Intimidate', 'Alertness']
-      expect(martial.skills).toContain('Intimidate');
-      expect(martial.skills).toContain('Alertness');
-      expect(martial.skills).toContain('Strategy');
-    });
-
-    it('KNOWN GAP: source has 10 specific skills but code only has 3', () => {
-      const martial = upbringingOptions.find((u) => u.type === 'martial')!;
-      // Full source list of allowed skills:
-      const FULL_SOURCE_SKILLS = [
-        'Blacksmithing', 'Fletching',       // crafting
-        'Climb', 'Endurance', 'Ride',       // exploration
-        'Intimidate',                        // interpersonal
-        'Alertness', 'Track',               // intrigue
-        'Monsters', 'Strategy',             // lore
-      ];
-      // Document the current code state (3 skills)
-      expect(martial.skills).toHaveLength(3);
-      // Document which source skills are missing from code
-      const missingSkills = FULL_SOURCE_SKILLS.filter(
-        (s) => !martial.skills.includes(s)
-      );
-      // These 7 skills from source are not currently in code:
-      // Blacksmithing, Fletching, Climb, Endurance, Ride, Track, Monsters
-      expect(missingSkills).toHaveLength(7);
+      expect(martial.skills).toHaveLength(FULL_SOURCE_SKILLS.length);
+      for (const skill of FULL_SOURCE_SKILLS) {
+        expect(martial.skills).toContain(skill);
+      }
     });
   });
 

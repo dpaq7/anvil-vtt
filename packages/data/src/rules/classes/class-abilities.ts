@@ -208,7 +208,8 @@ export function getBeastheartAbilities(wildNature?: string): AbilitiesByTier {
     elevenCost = [...elevenCost, ...getWildNatureAbilitiesByCost(wildNature, 11)];
   }
 
-  const triggeredActions = [...beastheartTriggeredActions];
+  // Triggered actions (wild nature-specific)
+  const triggeredActions: Ability[] = [];
   if (wildNature) {
     const wildNatureTriggered = getWildNatureTriggeredAction(wildNature);
     if (wildNatureTriggered) {

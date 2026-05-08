@@ -61,7 +61,7 @@ export function SidebarProvider({ children, labels = [] }: SidebarProviderProps)
   // Approximate 8px per character for text-sm font
   const longestLabel = labels.reduce((a, b) => (a.length > b.length ? a : b), '');
   const textWidth = longestLabel.length * 8;
-  const sidebarWidth = Math.max(120, 62 + textWidth);
+  const sidebarWidth = Math.max(144, 78 + textWidth);
 
   return (
     <SidebarContext.Provider value={{ collapsed, toggle, variant, setVariant }}>

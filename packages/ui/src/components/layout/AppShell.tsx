@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { cn } from '../../lib/utils.js';
 
@@ -10,6 +11,10 @@ export interface AppShellProps {
   filmStrip?: ReactNode;
   statusBar?: ReactNode;
   className?: string;
+  leftRailCollapsed?: boolean;
+  rightRailCollapsed?: boolean;
+  onToggleLeftRail?: () => void;
+  onToggleRightRail?: () => void;
 }
 
 export function AppShell({
@@ -20,9 +25,15 @@ export function AppShell({
   filmStrip,
   statusBar,
   className,
+  leftRailCollapsed = false,
+  rightRailCollapsed = false,
+  onToggleLeftRail,
+  onToggleRightRail,
 }: AppShellProps) {
-  const hasLeft = leftRail != null;
-  const hasRight = rightRail != null;
+  const hasLeft = leftRail != null && !leftRailCollapsed;
+  const hasRight = rightRail != null && !rightRailCollapsed;
+  const canRestoreLeft = leftRail != null && leftRailCollapsed && onToggleLeftRail;
+  const canRestoreRight = rightRail != null && rightRailCollapsed && onToggleRightRail;
 
   // Build panel IDs based on which rails are present
   const panelIds = [
@@ -30,6 +41,7 @@ export function AppShell({
     'stage',
     ...(hasRight ? ['right-rail'] : []),
   ];
+  const layoutKey = panelIds.join(':');
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'anvil-shell',
@@ -46,6 +58,7 @@ export function AppShell({
 
       {/* Main content area — resizable panels */}
       <Group
+        key={layoutKey}
         orientation="horizontal"
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
@@ -59,16 +72,51 @@ export function AppShell({
               defaultSize={15}
               minSize="10%"
               maxSize="30%"
-              className="overflow-y-auto bg-zinc-900/50"
+              className="relative overflow-y-auto bg-zinc-900/50"
             >
-              {leftRail}
+              {onToggleLeftRail && (
+                <button
+                  type="button"
+                  title="Collapse left pane"
+                  aria-label="Collapse left pane"
+                  className="absolute right-2 top-2 z-20 rounded border border-zinc-800 bg-zinc-900/90 p-1 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+                  onClick={onToggleLeftRail}
+                >
+                  <PanelLeftClose className="size-4" />
+                </button>
+              )}
+              <div className={onToggleLeftRail ? 'pr-8' : undefined}>
+                {leftRail}
+              </div>
             </Panel>
             <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
           </>
         )}
 
         {/* Stage */}
-        <Panel id="stage" className="overflow-y-auto">
+        <Panel id="stage" className="relative overflow-y-auto">
+          {canRestoreLeft && (
+            <button
+              type="button"
+              title="Open left pane"
+              aria-label="Open left pane"
+              className="absolute left-2 top-2 z-30 rounded border border-zinc-800 bg-zinc-900/90 p-1 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+              onClick={onToggleLeftRail}
+            >
+              <PanelLeftOpen className="size-4" />
+            </button>
+          )}
+          {canRestoreRight && (
+            <button
+              type="button"
+              title="Open right pane"
+              aria-label="Open right pane"
+              className="absolute right-2 top-2 z-30 rounded border border-zinc-800 bg-zinc-900/90 p-1 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+              onClick={onToggleRightRail}
+            >
+              <PanelRightOpen className="size-4" />
+            </button>
+          )}
           {children}
         </Panel>
 
@@ -81,9 +129,22 @@ export function AppShell({
               defaultSize={20}
               minSize="12%"
               maxSize="40%"
-              className="overflow-y-auto bg-zinc-900/50"
+              className="relative overflow-y-auto bg-zinc-900/50"
             >
-              {rightRail}
+              {onToggleRightRail && (
+                <button
+                  type="button"
+                  title="Collapse right pane"
+                  aria-label="Collapse right pane"
+                  className="absolute left-2 top-2 z-20 rounded border border-zinc-800 bg-zinc-900/90 p-1 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+                  onClick={onToggleRightRail}
+                >
+                  <PanelRightClose className="size-4" />
+                </button>
+              )}
+              <div className={onToggleRightRail ? 'pl-8' : undefined}>
+                {rightRail}
+              </div>
             </Panel>
           </>
         )}

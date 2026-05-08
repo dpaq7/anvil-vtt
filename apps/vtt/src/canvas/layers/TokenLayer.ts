@@ -52,7 +52,21 @@ export class TokenLayer extends Container {
   private distanceLabel: Container | null = null;
 
   setCellSize(size: number): void {
+    if (this.cellSize === size) return;
+    const existingTokens = [...this.tokens.values()].map((token) => ({
+      entity: token.entity,
+      selected: token.selected,
+    }));
     this.cellSize = size;
+    if (existingTokens.length === 0) return;
+    this.clear();
+    for (const { entity, selected } of existingTokens) {
+      this.addToken(entity, {
+        size: 1,
+        color: TYPE_COLORS[entity.type] ?? 0x8b5cf6,
+        selected,
+      });
+    }
   }
 
   addToken(entity: EntityData, style: TokenStyle): void {
@@ -292,6 +306,16 @@ export class TokenLayer extends Container {
       newToken.container.x = preservedGridX * this.cellSize;
       newToken.container.y = preservedGridY * this.cellSize;
     }
+  }
+
+  clear(): void {
+    for (const [, token] of this.tokens) {
+      this.removeChild(token.container);
+      token.container.destroy({ children: true });
+    }
+    this.tokens.clear();
+    this.clearSelectionRect();
+    this.clearDistanceLabel();
   }
 
   removeToken(entityId: string): void {

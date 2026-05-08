@@ -11,7 +11,7 @@ function SidebarField({ label, value }: { label: string; value: string | null | 
   return (
     <div className="flex items-baseline justify-between py-1">
       <span className="text-sm text-creator-text-muted">{label}</span>
-      <span className="text-sm font-medium text-creator-text">
+      <span className="ml-3 max-w-36 text-right text-sm font-medium text-creator-text">
         {value || <span className="text-creator-border">—</span>}
       </span>
     </div>
@@ -27,6 +27,21 @@ function StatField({ label, value }: { label: string; value: string | number }) 
   );
 }
 
+function getCultureDisplay(character: CharacterInProgress): string | null {
+  const environment = character.culture.environment
+    ? GameData.getCulturesByType('environment').find((item) => item.id === character.culture.environment)?.name
+    : null;
+  const organization = character.culture.organization
+    ? GameData.getCulturesByType('organization').find((item) => item.id === character.culture.organization)?.name
+    : null;
+  const upbringing = character.culture.upbringing
+    ? GameData.getCulturesByType('upbringing').find((item) => item.id === character.culture.upbringing)?.name
+    : null;
+
+  const parts = [environment, organization, upbringing].filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : null;
+}
+
 export function CharacterSidebar({ character, visible }: Props) {
   // Get resolved names from IDs
   const ancestryName = character.ancestry
@@ -40,6 +55,9 @@ export function CharacterSidebar({ character, visible }: Props) {
   const kitName = character.kit
     ? GameData.getKit(character.kit)?.name ?? character.kit
     : null;
+
+  const cultureDisplay = getCultureDisplay(character);
+  const complicationName = character.complication?.name ?? null;
 
   // Format class name
   const className = character.heroClass
@@ -101,9 +119,11 @@ export function CharacterSidebar({ character, visible }: Props) {
                 value={`${character.level || 1} (${echelonName})`}
               />
               <SidebarField label="Ancestry" value={ancestryName} />
+              <SidebarField label="Culture" value={cultureDisplay} />
               <SidebarField label="Career" value={careerName} />
               <SidebarField label="Class" value={className} />
               <SidebarField label="Subclass" value={subclassDisplay} />
+              <SidebarField label="Complication" value={complicationName} />
               <SidebarField label="Kit" value={kitName} />
             </div>
           </div>

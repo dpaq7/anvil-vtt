@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
-import { X, Trash2, UserCircle } from 'lucide-react';
+import { useState, useCallback, useRef } from 'react';
+import { X, Trash2, UserCircle, Upload } from 'lucide-react';
 import { Button, Input, Textarea } from '@anvil/ui';
 import type { Npc, UpdateNpcInput } from '@anvil/types';
+import { uploadFile } from '../../stores/assetsStore.js';
 
 export interface NpcDetailPaneProps {
   npc: Npc;
@@ -15,7 +16,9 @@ export function NpcDetailPane({ npc, onUpdate, onDelete, onClose }: NpcDetailPan
   const [location, setLocation] = useState(npc.location ?? '');
   const [notes, setNotes] = useState(npc.notes ?? '');
   const [saving, setSaving] = useState(false);
+  const [uploadingPortrait, setUploadingPortrait] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isDirty =
     name !== npc.name ||
@@ -35,6 +38,28 @@ export function NpcDetailPane({ npc, onUpdate, onDelete, onClose }: NpcDetailPan
       setSaving(false);
     }
   }, [isDirty, name, location, notes, npc, onUpdate]);
+
+  const handlePortraitUpload = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingPortrait(true);
+    try {
+      const assetId = await uploadFile(file, 'portrait');
+      await onUpdate(npc.id, { portraitAssetId: assetId });
+    } finally {
+      setUploadingPortrait(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [npc.id, onUpdate]);
+
+  const handlePortraitClear = useCallback(async () => {
+    if (!npc.portraitAssetId) return;
+    setUploadingPortrait(true);
+    try {
+      await onUpdate(npc.id, { portraitAssetId: null });
+    } finally {
+      setUploadingPortrait(false);
+    }
+  }, [npc.id, npc.portraitAssetId, onUpdate]);
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) {
@@ -61,16 +86,46 @@ export function NpcDetailPane({ npc, onUpdate, onDelete, onClose }: NpcDetailPan
       {/* Content */}
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {/* Portrait */}
-        <div className="flex items-center justify-center">
-          <div className="flex size-24 items-center justify-center rounded-lg bg-zinc-800">
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex size-24 items-center justify-center overflow-hidden rounded-lg bg-zinc-800">
             {npc.portraitUrl ? (
               <img
                 src={npc.portraitUrl}
                 alt={npc.name}
-                className="size-24 rounded-lg object-cover"
+                className="size-24 object-cover"
               />
             ) : (
               <UserCircle className="size-10 text-zinc-500" />
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handlePortraitUpload(e.target.files?.[0])}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploadingPortrait}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="mr-1.5 size-3.5" />
+              {uploadingPortrait ? 'Uploading...' : 'Upload Image'}
+            </Button>
+            {npc.portraitAssetId && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={uploadingPortrait}
+                onClick={handlePortraitClear}
+              >
+                Clear
+              </Button>
             )}
           </div>
         </div>

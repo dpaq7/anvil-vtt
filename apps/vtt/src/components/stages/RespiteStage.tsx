@@ -89,6 +89,16 @@ function LiveActivityCard({
       <div className="flex items-center gap-2">
         {activity.completed ? (
           <CheckCircle2 className="size-5 text-emerald-400" />
+        ) : isDirector && onComplete ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs text-emerald-400"
+            onClick={onComplete}
+          >
+            <CheckCircle2 className="size-3" />
+            Complete
+          </Button>
         ) : !isDirector && !isClaimed && onClaim ? (
           <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClaim}>
             <Hand className="size-3" />

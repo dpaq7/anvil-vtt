@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input } from '@anvil/ui';
+import type { SceneImportDocument, SceneImportResult } from '@anvil/types';
 import { api } from '../lib/api.js';
+import { SceneImportDialog } from '../components/import/SceneImportDialog.js';
 
 interface Campaign {
   id: string;
@@ -12,6 +14,7 @@ interface Campaign {
 }
 
 export function CampaignList() {
+  const navigate = useNavigate();
   const [directed, setDirected] = useState<Campaign[]>([]);
   const [joined, setJoined] = useState<Campaign[]>([]);
   const [newName, setNewName] = useState('');
@@ -35,28 +38,37 @@ export function CampaignList() {
     await load();
   };
 
+  const importCampaign = async (document: SceneImportDocument) => {
+    const result = await api.post<SceneImportResult>('/api/campaigns/import', { document });
+    await load();
+    navigate(`/app/campaigns/${result.campaignId}`);
+  };
+
   return (
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Campaigns</h1>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Create Campaign</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogTitle>New Campaign</DialogTitle>
-            <div className="mt-4 flex flex-col gap-4">
-              <Input placeholder="Campaign name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-              <Input placeholder="Description (optional)" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
-              <div className="flex justify-end gap-2">
-                <DialogClose asChild>
-                  <Button variant="ghost">Cancel</Button>
-                </DialogClose>
-                <Button onClick={createCampaign}>Create</Button>
+        <div className="flex items-center gap-2">
+          <SceneImportDialog onImport={importCampaign} />
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>Create Campaign</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogTitle>New Campaign</DialogTitle>
+              <div className="mt-4 flex flex-col gap-4">
+                <Input placeholder="Campaign name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <Input placeholder="Description (optional)" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+                <div className="flex justify-end gap-2">
+                  <DialogClose asChild>
+                    <Button variant="ghost">Cancel</Button>
+                  </DialogClose>
+                  <Button onClick={createCampaign}>Create</Button>
+                </div>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {directed.length > 0 && (

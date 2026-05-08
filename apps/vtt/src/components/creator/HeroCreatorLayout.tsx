@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { WizardLogic } from '@anvil/data';
 import { Button } from '@anvil/ui';
 import { BreadcrumbNav } from './BreadcrumbNav.js';
 import { CharacterSidebar } from './CharacterSidebar.js';
@@ -23,7 +24,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
 
   // For the last step, check if character is complete
   const canProceed = isLastStep
-    ? getStepStatus(currentStepId) !== 'not-begun'
+    ? WizardLogic.isCharacterComplete(character)
     : true;
 
   const handleNext = () => {

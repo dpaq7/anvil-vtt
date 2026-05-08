@@ -45,6 +45,8 @@ export interface BattleCanvasProps {
   fogZones?: FogZoneData[];
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
+  fogBrushMode?: 'draw' | 'reveal';
+  fogBrushSize?: number;
   gridVisible?: boolean;
   gridOpacity?: number;
   gridColor?: string;
@@ -88,6 +90,8 @@ export function BattleCanvas({
   fogZones = [],
   onFogAdd,
   onFogRemove,
+  fogBrushMode = 'draw',
+  fogBrushSize = 1,
   gridVisible = true,
   gridOpacity = 0.4,
   gridColor = '#444444',
@@ -206,11 +210,12 @@ export function BattleCanvas({
           onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
           onTokenRightClick: (...args) => onTokenRightClickRef.current?.(...args),
         },
+        { cols, rows },
         isDirector,
       );
 
-      // Wire builder layers for hit-testing and previews
-      if (builderMode) {
+      // Wire editable overlay layers for hit-testing and previews.
+      if (builderMode || isDirector) {
         interaction.setBuilderLayers(drawingLayer, terrainLayer, fog);
       }
 
@@ -251,6 +256,34 @@ export function BattleCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep Pixi's renderer synchronized with flex layout changes such as pane collapse and focus mode.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    let frame = 0;
+    const resize = () => {
+      const app = appRef.current;
+      if (!app) return;
+      const width = Math.max(1, Math.floor(el.clientWidth));
+      const height = Math.max(1, Math.floor(el.clientHeight));
+      app.renderer.resize(width, height);
+    };
+
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(resize);
+    });
+
+    observer.observe(el);
+    frame = requestAnimationFrame(resize);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [pixiReady]);
+
   // Callback for when background image loads at native dimensions
   const handleImageLoaded = useCallback(
     (info: { naturalWidth: number; naturalHeight: number }) => {
@@ -259,6 +292,17 @@ export function BattleCanvas({
     },
     [],
   );
+
+  // Keep layer scale and interaction bounds in sync with map settings.
+  useEffect(() => {
+    const layers = layersRef.current;
+    if (!layers) return;
+    layers.tokens.setCellSize(cellSize);
+    layers.terrain.setCellSize(cellSize);
+    layers.fog.setCellSize(cellSize);
+    layers.interaction.setCellSize(cellSize);
+    layers.interaction.setGridBounds({ cols, rows });
+  }, [cellSize, cols, rows, pixiReady]);
 
   // Update background — renders at native image dimensions, independent of grid.
   // Only re-runs when the URL actually changes (not on grid resize).
@@ -342,6 +386,11 @@ export function BattleCanvas({
   useEffect(() => {
     layersRef.current?.interaction.setDrawConfig(drawColor, drawWidth);
   }, [drawColor, drawWidth, pixiReady]);
+
+  // Sync fog brush config to InteractionManager
+  useEffect(() => {
+    layersRef.current?.interaction.setFogConfig(fogBrushMode, fogBrushSize);
+  }, [fogBrushMode, fogBrushSize, pixiReady]);
 
   // Sync drawings layer
   useEffect(() => {

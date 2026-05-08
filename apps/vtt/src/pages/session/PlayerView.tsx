@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { Expand, Minimize2 } from 'lucide-react';
 import { AppShell } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
@@ -34,6 +35,9 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   useAudioSync(sessionState.audio);
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+  const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const { scenes, activeSceneId, participants, entities, combat } = sessionState;
   const activeScene = scenes.find((s) => s.id === activeSceneId);
   const sceneType = (activeScene?.type as SceneType) ?? null;
@@ -67,20 +71,25 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   const handleUseAbility = useCallback(
     (abilityId: string) => {
       if (!heroEntity) return;
-      // Find the first enemy entity as default target
-      const targetEntity = selectedEntityId
-        ? entities.find((e) => e.id === selectedEntityId)
-        : entities.find((e) => e.type === 'monster' || e.type === 'npc');
+      if (!combat || !isMyTurn) {
+        toast.error('Wait until you take your turn.');
+        return;
+      }
+
+      const selectedTarget = selectedEntityId
+        ? entities.find((e) => e.id === selectedEntityId && (e.type === 'monster' || e.type === 'npc'))
+        : null;
+      const targetEntity = selectedTarget ?? entities.find((e) => e.type === 'monster' || e.type === 'npc');
 
       if (!targetEntity) {
-        toast.error('No target selected. Click an enemy on the map first.');
+        toast.error('No enemy target selected. Click an enemy on the map first.');
         return;
       }
 
       send({ type: 'use_ability', sourceId: heroEntity.id, targetId: targetEntity.id, abilityId });
       toast.info(`Using ability on ${targetEntity.name}...`);
     },
-    [heroEntity, entities, selectedEntityId, send],
+    [combat, heroEntity, entities, isMyTurn, selectedEntityId, send],
   );
 
   const handleCatchBreath = useCallback(() => {
@@ -172,9 +181,9 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             interest={liveNeg?.interest ?? neg.interest}
             patience={liveNeg?.patience ?? neg.patience}
             maxPatience={liveNeg?.maxPatience ?? neg.maxPatience}
-            phase={neg.phase}
-            motivations={neg.motivations}
-            pitfalls={neg.pitfalls}
+            phase={liveNeg?.phase ?? neg.phase}
+            motivations={liveNeg?.motivations ?? neg.motivations}
+            pitfalls={liveNeg?.pitfalls ?? neg.pitfalls}
             outcomes={neg.outcomes}
             isDirector={false}
             argumentLog={liveNeg?.argumentLog}
@@ -191,7 +200,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             activities={respite.activities}
             liveActivities={liveRespite?.activities}
             projects={respite.projects}
-            completed={false}
+            completed={liveRespite?.activities.every((activity) => activity.completed) ?? false}
             isDirector={false}
             currentUserId={user?.id}
             onClaimActivity={handleRespiteClaimActivity}
@@ -237,7 +246,19 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
 
   return (
     <AppShell
-      topBar={
+      topBar={focusMode ? (
+        <div className="flex w-full justify-end">
+          <button
+            type="button"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-800 px-3 text-sm font-medium text-zinc-100 transition hover:bg-zinc-700"
+            onClick={() => setFocusMode(false)}
+            title="Exit full screen"
+          >
+            <Minimize2 className="size-4" />
+            Exit full screen
+          </button>
+        </div>
+      ) : (
         <div className="flex w-full items-center gap-2">
           <div className="flex-1">
             <VitalsBar
@@ -262,9 +283,18 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               {sceneType}
             </span>
           )}
+          <button
+            type="button"
+            className="inline-flex size-9 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={() => setFocusMode(true)}
+            title="Focus map"
+            aria-label="Focus map"
+          >
+            <Expand className="size-4" />
+          </button>
         </div>
-      }
-      leftRail={
+      )}
+      leftRail={focusMode ? undefined : (
         combat ? (
           <AbilityPanel
             abilities={heroAbilities}
@@ -272,8 +302,8 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             onUseAbility={handleUseAbility}
           />
         ) : undefined
-      }
-      rightRail={
+      )}
+      rightRail={focusMode ? undefined : (
         combat ? (
           <div className="flex flex-col gap-3 overflow-y-auto p-3">
             {/* Turn action bar — shows action economy during player's turn */}
@@ -308,7 +338,11 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             </div>
           </div>
         ) : undefined
-      }
+      )}
+      leftRailCollapsed={leftRailCollapsed}
+      rightRailCollapsed={rightRailCollapsed}
+      onToggleLeftRail={() => setLeftRailCollapsed((value) => !value)}
+      onToggleRightRail={() => setRightRailCollapsed((value) => !value)}
       statusBar={
         <ParticipantStatusBar
           participants={participants}

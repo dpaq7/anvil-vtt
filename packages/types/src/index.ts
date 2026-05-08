@@ -24,3 +24,4 @@ export * from './terrain.js';
 export * from './hydration.js';
 export * from './assets.js';
 export * from './notes.js';
+export * from './scene-import.js';

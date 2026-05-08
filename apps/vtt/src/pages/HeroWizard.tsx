@@ -59,9 +59,7 @@ export function HeroWizard() {
   useWizardPersistence(currentStepId, character);
 
   const handleSave = async () => {
-    if (!WizardLogic.isCharacterComplete(character)) {
-      return;
-    }
+    if (!WizardLogic.isCharacterComplete(character)) return;
 
     setSaving(true);
     try {
@@ -75,10 +73,16 @@ export function HeroWizard() {
         subclass: Array.isArray(character.subclass) ? character.subclass.join(',') : character.subclass,
         characteristics: character.characteristics,
         kit: character.kit,
-        skills: character.selectedSkills,
+        skills: WizardLogic.getSelectedSkillNames(character),
         abilities: character.selectedAbilities,
         portraitUrl: character.portraitUrl,
         data: {
+          heroClass: character.heroClass,
+          subclass: character.subclass,
+          culture: character.culture,
+          kit: character.kit,
+          cultureSkills: character.cultureSkills,
+          careerSkillChoices: character.careerSkillChoices,
           ancestryTraits: character.ancestryTraits,
           incitingIncident: character.incitingIncident,
           complication: character.complication,

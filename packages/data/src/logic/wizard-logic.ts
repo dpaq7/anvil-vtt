@@ -10,6 +10,12 @@
 import { GameData } from '../game-data/index.js';
 import * as HeroLogic from './hero-logic.js';
 
+const CAREER_SKILL_GROUP_NAMES = new Set(['crafting', 'exploration', 'interpersonal', 'intrigue', 'lore']);
+
+export function isCareerSkillChoice(skillName: string): boolean {
+  return skillName.includes('/') || CAREER_SKILL_GROUP_NAMES.has(skillName.toLowerCase());
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -277,14 +283,28 @@ export function calculateGrantedItems(character: CharacterInProgress): GrantedIt
     const career = GameData.getCareer(character.career);
     if (career) {
       for (const skillName of career.skills) {
-        // Handle skill options (e.g., "Crafting/Exploration") - these are choices
-        if (!skillName.includes('/')) {
+        // Fixed named skills are granted; groups and slash-separated entries are player choices.
+        if (!isCareerSkillChoice(skillName)) {
           skills.push({
             id: skillName.toLowerCase().replace(/\s+/g, '-'),
             name: skillName,
             source: `Career: ${career.name}`,
           });
         }
+      }
+    }
+  }
+
+  // From Class - some classes grant fixed starting skills
+  if (character.heroClass) {
+    const classDef = GameData.getClass(character.heroClass);
+    if (classDef) {
+      for (const skillName of classDef.fixedSkills) {
+        skills.push({
+          id: skillName.toLowerCase().replace(/\s+/g, '-'),
+          name: skillName,
+          source: `Class: ${classDef.name}`,
+        });
       }
     }
   }
@@ -311,19 +331,74 @@ export function calculateGrantedItems(character: CharacterInProgress): GrantedIt
  * @returns Number of skill selections required
  */
 export function getSkillSelectionsNeeded(character: CharacterInProgress): number {
-  // Base: 2 skills from culture (1 from each of 2 skill groups)
-  let selections = 2;
+  // 1 skill from each culture source: environment, organization, upbringing
+  let selections = 0;
+  if (character.culture.environment) selections++;
+  if (character.culture.organization) selections++;
+  if (character.culture.upbringing) selections++;
 
   if (character.career) {
     const career = GameData.getCareer(character.career);
     if (career) {
-      // Count skills with "/" which are choices
-      const choiceSkills = career.skills.filter((s) => s.includes('/'));
+      const choiceSkills = career.skills.filter(isCareerSkillChoice);
       selections += choiceSkills.length;
     }
   }
 
   return selections;
+}
+
+/**
+ * Count required player-made skill selections already chosen.
+ *
+ * @param character - The character in progress
+ * @returns Number of culture/career choice selections made
+ */
+export function getSkillSelectionsMade(character: CharacterInProgress): number {
+  let selections = 0;
+  if (character.cultureSkills?.environment) selections++;
+  if (character.cultureSkills?.organization) selections++;
+  if (character.cultureSkills?.upbringing) selections++;
+
+  if (character.career) {
+    const career = GameData.getCareer(character.career);
+    const choiceCount = career?.skills.filter(isCareerSkillChoice).length ?? 0;
+    for (let i = 0; i < choiceCount; i++) {
+      if (character.careerSkillChoices?.[i]) selections++;
+    }
+  }
+
+  return selections;
+}
+
+/**
+ * Resolve the final unique skill names to persist on the hero.
+ * Includes automatic grants and player-selected culture/career choices.
+ *
+ * @param character - The character in progress
+ * @returns Unique skill names in stable display order
+ */
+export function getSelectedSkillNames(character: CharacterInProgress): string[] {
+  const names: string[] = [];
+  const push = (skillName: string | null | undefined) => {
+    if (skillName && !names.includes(skillName)) {
+      names.push(skillName);
+    }
+  };
+
+  for (const granted of calculateGrantedItems(character).skills) {
+    push(granted.name);
+  }
+
+  push(character.cultureSkills?.environment);
+  push(character.cultureSkills?.organization);
+  push(character.cultureSkills?.upbringing);
+
+  for (const choice of character.careerSkillChoices ?? []) {
+    push(choice);
+  }
+
+  return names;
 }
 
 /**
@@ -512,7 +587,7 @@ export function getStepStatus(
 
     case WIZARD_STEP_IDS.SKILLS:
       const skillsNeeded = getSkillSelectionsNeeded(character);
-      if (character.selectedSkills.length >= skillsNeeded) return 'complete';
+      if (getSkillSelectionsMade(character) >= skillsNeeded) return 'complete';
       if (character.kit) return 'incomplete';
       return 'not-begun';
 
@@ -655,8 +730,9 @@ export function validateStep(
 
     case WIZARD_STEPS.SKILLS:
       const skillsNeeded = getSkillSelectionsNeeded(character);
-      if (character.selectedSkills.length < skillsNeeded) {
-        errors.push(`Select ${skillsNeeded} skills (have ${character.selectedSkills.length})`);
+      const skillsMade = getSkillSelectionsMade(character);
+      if (skillsMade < skillsNeeded) {
+        errors.push(`Select ${skillsNeeded} skills (have ${skillsMade})`);
       }
       break;
 

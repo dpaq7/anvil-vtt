@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { MessageSquare, Dice5 } from 'lucide-react';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
 import { NegotiationLogic, skills } from '@anvil/data';
-import type { MotivationType } from '@anvil/types';
 import type { ArgumentLogEntry } from '../../types/protocol.js';
 
 // ---------------------------------------------------------------------------
@@ -11,14 +10,14 @@ import type { ArgumentLogEntry } from '../../types/protocol.js';
 
 export interface NegotiationMotivationRuntime {
   id: string;
-  type: MotivationType;
+  type: string;
   description: string;
   revealed: boolean;
 }
 
 export interface NegotiationPitfallRuntime {
   id: string;
-  type: MotivationType;
+  type: string;
   description: string;
   revealed: boolean;
 }
@@ -556,8 +555,8 @@ export function NegotiationStage({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatMotivationType(type: MotivationType): string {
-  const labels: Record<MotivationType, string> = {
+function formatMotivationType(type: string): string {
+  const labels: Record<string, string> = {
     benevolence: 'Benevolence',
     discovery: 'Discovery',
     freedom: 'Freedom',

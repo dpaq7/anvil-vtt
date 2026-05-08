@@ -20,12 +20,20 @@ export type ClientMessage =
   | { type: 'scene_drawing_remove'; drawingId: string }
   | { type: 'scene_fog_add'; fog: FogSync }
   | { type: 'scene_fog_remove'; fogId: string }
+  | { type: 'scene_terrain_add'; terrain: TerrainSync }
+  | { type: 'scene_terrain_remove'; terrainId: string }
   // Negotiation
   | { type: 'negotiation_argument'; skillId: string; approachText: string }
   | { type: 'negotiation_adjust_patience'; delta: number }
   | { type: 'negotiation_adjust_interest'; delta: number }
+  | { type: 'negotiation_reveal_motivation'; id: string }
+  | { type: 'negotiation_reveal_pitfall'; id: string }
+  | { type: 'negotiation_end'; phase: 'success' | 'failure' }
   // Montage
   | { type: 'montage_roll'; skillId: string; characteristicId: string }
+  | { type: 'montage_adjust_successes'; delta: number }
+  | { type: 'montage_adjust_failures'; delta: number }
+  | { type: 'montage_reset' }
   // Respite
   | { type: 'respite_choose_activity'; activityId: string }
   | { type: 'respite_complete_activity'; activityId: string }
@@ -55,10 +63,29 @@ export type ServerMessage =
   | { type: 'scene_drawing_removed'; drawingId: string }
   | { type: 'scene_fog_added'; fog: FogSync }
   | { type: 'scene_fog_removed'; fogId: string }
+  | { type: 'scene_terrain_added'; terrain: TerrainSync }
+  | { type: 'scene_terrain_removed'; terrainId: string }
   // Negotiation
-  | { type: 'negotiation_updated'; interest: number; patience: number; argumentLog: ArgumentLogEntry[] }
+  | {
+      type: 'negotiation_updated';
+      interest: number;
+      patience: number;
+      maxPatience: number;
+      phase: 'active' | 'success' | 'failure';
+      motivations: NegotiationSecretState[];
+      pitfalls: NegotiationSecretState[];
+      argumentLog: ArgumentLogEntry[];
+    }
   // Montage
-  | { type: 'montage_updated'; successes: number; failures: number; testLog: TestLogEntry[]; outcome: string | null }
+  | {
+      type: 'montage_updated';
+      successes: number;
+      failures: number;
+      successLimit: number;
+      failureLimit: number;
+      testLog: TestLogEntry[];
+      outcome: string | null;
+    }
   // Respite
   | { type: 'respite_updated'; activities: RespiteActivityState[]; completedBy: Record<string, string[]> }
   // Audio
@@ -185,6 +212,17 @@ export interface FogSync {
   h: number;
 }
 
+export interface TerrainSync {
+  id: string;
+  terrainId: string;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color?: number;
+}
+
 // ── Negotiation ──
 
 export interface ArgumentLogEntry {
@@ -199,10 +237,20 @@ export interface ArgumentLogEntry {
   timestamp: number;
 }
 
+export interface NegotiationSecretState {
+  id: string;
+  type: string;
+  description: string;
+  revealed: boolean;
+}
+
 export interface NegotiationLiveState {
   interest: number;
   patience: number;
   maxPatience: number;
+  phase: 'active' | 'success' | 'failure';
+  motivations: NegotiationSecretState[];
+  pitfalls: NegotiationSecretState[];
   argumentLog: ArgumentLogEntry[];
 }
 

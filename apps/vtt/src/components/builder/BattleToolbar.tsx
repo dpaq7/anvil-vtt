@@ -1,6 +1,7 @@
 import { Button } from '@anvil/ui';
 
 export type BattleTool = 'select' | 'draw' | 'fog' | 'terrain' | 'eraser' | 'pan';
+export type FogBrushMode = 'draw' | 'reveal';
 
 export interface BattleToolbarProps {
   activeTool: BattleTool;
@@ -11,6 +12,12 @@ export interface BattleToolbarProps {
   onDrawWidthChange: (width: number) => void;
   gridVisible: boolean;
   onToggleGrid: () => void;
+  fogZoneCount?: number;
+  fogBrushMode?: FogBrushMode;
+  onFogBrushModeChange?: (mode: FogBrushMode) => void;
+  fogBrushSize?: number;
+  onFogBrushSizeChange?: (size: number) => void;
+  onClearFog?: () => void;
 }
 
 const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
@@ -35,6 +42,12 @@ export function BattleToolbar({
   onDrawWidthChange,
   gridVisible,
   onToggleGrid,
+  fogZoneCount = 0,
+  fogBrushMode = 'draw',
+  onFogBrushModeChange,
+  fogBrushSize = 1,
+  onFogBrushSizeChange,
+  onClearFog,
 }: BattleToolbarProps) {
   return (
     <div className="absolute left-4 top-4 z-10 flex flex-col gap-2">
@@ -104,6 +117,51 @@ export function BattleToolbar({
             />
             <span className="w-4 text-center text-xs text-zinc-400">{drawWidth}</span>
           </label>
+        </div>
+      )}
+
+      {activeTool === 'fog' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-900/90 p-2 shadow-lg backdrop-blur-sm">
+          <div className="flex overflow-hidden rounded-md border border-zinc-700">
+            <button
+              type="button"
+              className={`px-2 py-1 text-xs transition ${fogBrushMode === 'draw' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
+              onClick={() => onFogBrushModeChange?.('draw')}
+            >
+              Draw
+            </button>
+            <button
+              type="button"
+              className={`px-2 py-1 text-xs transition ${fogBrushMode === 'reveal' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}`}
+              onClick={() => onFogBrushModeChange?.('reveal')}
+            >
+              Reveal
+            </button>
+          </div>
+          <label className="flex items-center gap-1.5">
+            <span className="text-xs text-zinc-400">Brush</span>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={fogBrushSize}
+              onChange={(e) => onFogBrushSizeChange?.(Number(e.target.value))}
+              className="h-1 w-16 accent-zinc-400"
+            />
+            <span className="w-4 text-center text-xs text-zinc-400">{fogBrushSize}</span>
+          </label>
+          <span className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400">
+            {fogZoneCount} zone{fogZoneCount !== 1 ? 's' : ''}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={fogZoneCount === 0}
+            onClick={onClearFog}
+            className="h-7 px-2 text-xs text-red-400"
+          >
+            Clear All
+          </Button>
         </div>
       )}
     </div>

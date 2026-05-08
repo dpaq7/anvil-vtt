@@ -16,5 +16,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    // Large Draw Steel rules data is loaded behind lazy routes; keep warnings above that known payload.
+    chunkSizeWarningLimit: 2400,
   },
 });

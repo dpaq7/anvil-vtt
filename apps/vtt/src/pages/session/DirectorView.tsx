@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package } from 'lucide-react';
+import { Expand, Minimize2, Package } from 'lucide-react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.js';
 import { AppShell, Button } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
@@ -62,6 +62,9 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
 
   const [showHelp, setShowHelp] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
+  const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+  const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState<string | null>(
     (sceneData['audioMusic'] as string) ?? null,
   );
@@ -92,6 +95,20 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     send({ type: 'end_session' });
     navigate('/app/live');
   }, [send, navigate]);
+
+  const handleStartCombat = useCallback(() => {
+    const heroEntityIds = entities
+      .filter((entity) => entity.type === 'hero')
+      .map((entity) => entity.id);
+    const villainEntityIds = entities
+      .filter((entity) => entity.type === 'monster' || entity.type === 'npc')
+      .map((entity) => entity.id);
+
+    send({
+      type: 'combat_action',
+      action: { type: 'START_COMBAT', heroEntityIds, villainEntityIds },
+    });
+  }, [entities, send]);
 
   // ── Audio sync: update local state AND broadcast to players ──
   const audioAssets = useAssetsStore((s) => s.audioAssets);
@@ -173,6 +190,29 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     [send, battleData, monsterPortraits],
   );
 
+  const handleAddTerrainToScene = useCallback(
+    (terrain: { id: string; name: string; category?: string; gridWidth?: number; gridHeight?: number }) => {
+      if (!battleData) return;
+      const w = Math.max(1, terrain.gridWidth ?? 1);
+      const h = Math.max(1, terrain.gridHeight ?? 1);
+      const x = Math.max(0, Math.floor((battleData.cols - w) / 2));
+      const y = Math.max(0, Math.floor((battleData.rows - h) / 2));
+      send({
+        type: 'scene_terrain_add',
+        terrain: {
+          id: `terrain-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          terrainId: terrain.id,
+          name: terrain.name,
+          x,
+          y,
+          w,
+          h,
+        },
+      });
+    },
+    [battleData, send],
+  );
+
   const renderStage = () => {
     if (!activeScene) {
       return (
@@ -189,6 +229,7 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             readAloudText={(sceneData['readAloud'] as string) ?? ''}
             directorNotes={(sceneData['notes'] as string) ?? ''}
             isDirector
+            onUpdateReadAloud={(readAloudText) => send({ type: 'story_update', readAloudText })}
           />
         );
       case 'montage': {
@@ -205,6 +246,9 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             challenges={montage.challenges}
             isDirector
             testLog={liveMontage?.testLog}
+            onAdjustSuccesses={(delta) => send({ type: 'montage_adjust_successes', delta })}
+            onAdjustFailures={(delta) => send({ type: 'montage_adjust_failures', delta })}
+            onResetMontage={() => send({ type: 'montage_reset' })}
           />
         );
       }
@@ -219,14 +263,17 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             interest={liveNeg?.interest ?? neg.interest}
             patience={liveNeg?.patience ?? neg.patience}
             maxPatience={liveNeg?.maxPatience ?? neg.maxPatience}
-            phase={neg.phase}
-            motivations={neg.motivations}
-            pitfalls={neg.pitfalls}
+            phase={liveNeg?.phase ?? neg.phase}
+            motivations={liveNeg?.motivations ?? neg.motivations}
+            pitfalls={liveNeg?.pitfalls ?? neg.pitfalls}
             outcomes={neg.outcomes}
             isDirector
             argumentLog={liveNeg?.argumentLog}
             onInterestChange={(delta) => send({ type: 'negotiation_adjust_interest', delta })}
             onPatienceChange={(delta) => send({ type: 'negotiation_adjust_patience', delta })}
+            onRevealMotivation={(id) => send({ type: 'negotiation_reveal_motivation', id })}
+            onRevealPitfall={(id) => send({ type: 'negotiation_reveal_pitfall', id })}
+            onEndNegotiation={() => send({ type: 'negotiation_end', phase: (liveNeg?.interest ?? neg.interest) >= 3 ? 'success' : 'failure' })}
           />
         );
       }
@@ -239,8 +286,9 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             activities={respite.activities}
             liveActivities={liveRespite?.activities}
             projects={respite.projects}
-            completed={false}
+            completed={liveRespite?.activities.every((activity) => activity.completed) ?? false}
             isDirector
+            onCompleteActivity={(activityId) => send({ type: 'respite_complete_activity', activityId })}
           />
         );
       }
@@ -279,7 +327,14 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
 
   return (
     <AppShell
-      topBar={
+      topBar={focusMode ? (
+        <div className="flex w-full justify-end">
+          <Button variant="secondary" size="sm" onClick={() => setFocusMode(false)} title="Exit full screen">
+            <Minimize2 className="size-4" />
+            Exit full screen
+          </Button>
+        </div>
+      ) : (
         <div className="flex w-full items-center gap-3">
           {/* Film strip scene navigator fills most of the top bar */}
           <div className="min-w-0 flex-1">
@@ -293,9 +348,21 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
           {/* Actions float right */}
           <div className="flex shrink-0 items-center gap-2">
             <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setFocusMode(true)}
+              title="Focus map"
+              aria-label="Focus map"
+            >
+              <Expand className="size-4" />
+            </Button>
+            <Button
               variant={showAssets ? 'secondary' : 'ghost'}
               size="sm"
-              onClick={() => setShowAssets((v) => !v)}
+              onClick={() => {
+                setShowAssets((v) => !v);
+                setRightRailCollapsed(false);
+              }}
               title="Toggle Assets Panel"
             >
               <Package className="mr-1 size-3.5" />
@@ -306,15 +373,15 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             </Button>
           </div>
         </div>
-      }
-      leftRail={
+      )}
+      leftRail={focusMode ? undefined : (
         <CreatureTracker
           entities={entities}
           combat={combat}
           send={send}
         />
-      }
-      rightRail={
+      )}
+      rightRail={focusMode ? undefined : (
         <div className="flex h-full flex-col overflow-hidden">
           {/* Scene audio — always visible at top of right rail */}
           <div className="shrink-0 border-b border-zinc-800 p-3">
@@ -334,10 +401,34 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
                 campaignId={sessionState.campaignId}
                 heroCount={heroCount}
                 onAddMonsterToScene={handleAddMonsterToScene}
+                onAddTerrainToScene={handleAddTerrainToScene}
               />
             </div>
           ) : (
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+              {sceneType === 'battle' && !combat && (
+                <div className="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Combat</p>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      {entities.filter((entity) => entity.type === 'hero').length} heroes ·{' '}
+                      {entities.filter((entity) => entity.type === 'monster' || entity.type === 'npc').length} villains
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full bg-red-600 hover:bg-red-700"
+                    disabled={
+                      entities.some((entity) => entity.type === 'hero') === false ||
+                      entities.some((entity) => entity.type === 'monster' || entity.type === 'npc') === false
+                    }
+                    onClick={handleStartCombat}
+                  >
+                    Start Combat
+                  </Button>
+                </div>
+              )}
+
               {combat && (
                 <>
                   <CombatTracker
@@ -404,7 +495,11 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             </div>
           )}
         </div>
-      }
+      )}
+      leftRailCollapsed={leftRailCollapsed}
+      rightRailCollapsed={rightRailCollapsed}
+      onToggleLeftRail={() => setLeftRailCollapsed((value) => !value)}
+      onToggleRightRail={() => setRightRailCollapsed((value) => !value)}
       statusBar={
         <ParticipantStatusBar
           participants={participants}
