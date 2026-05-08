@@ -54,13 +54,6 @@ Build order: `@anvil/types` → `@anvil/data` → `@anvil/ui` → `@anvil/vtt`, 
 - **Manual combat tracking** — Automate math, not judgment calls
 - **Logic modules** — All game calculations in pure static functions, never in components
 
-### Draw Steel Rules
-
-- **Power Roll:** 2d10 + characteristic. Tier 1 (≤11), Tier 2 (12–16), Tier 3 (17+)
-- **Edge/Bane:** Roll 3d10, keep highest/lowest 2
-- **Malice:** Director resource, +2 per round
-- **Recovery:** `floor(maxStamina / 3)`
-
 ## Scene Modes
 
 | Mode | Description |
