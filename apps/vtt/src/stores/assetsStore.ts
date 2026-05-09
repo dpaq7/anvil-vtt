@@ -126,7 +126,7 @@ export async function uploadFile(file: File, assetType: string): Promise<string>
     size: file.size,
   });
   const buffer = await file.arrayBuffer();
-  await api.putRaw(`/api/assets/${id}/data`, buffer, file.type);
+  await api.putRaw(`/api/assets/${id}/data`, buffer, file.type || 'application/octet-stream');
   return id;
 }
 

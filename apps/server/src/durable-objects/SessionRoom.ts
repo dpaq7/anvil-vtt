@@ -454,9 +454,19 @@ export class SessionRoom extends DurableObject<Env> {
       case 'update_entity':
         if (this.sessionState) {
           const entity = this.sessionState.entities.find((e) => e.id === msg.entityId);
-          if (entity) Object.assign(entity, msg.changes);
+          if (!entity) {
+            this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Entity not found' });
+            return;
+          }
+
+          const changes = meta.role === 'director'
+            ? msg.changes
+            : this.sanitizePlayerEntityChanges(ws, meta, entity, msg.changes);
+          if (!changes) return;
+
+          Object.assign(entity, changes);
+          this.broadcast({ type: 'entity_updated', entityId: msg.entityId, changes }, ws);
         }
-        this.broadcast({ type: 'entity_updated', entityId: msg.entityId, changes: msg.changes }, ws);
         break;
 
       case 'delete_entity':
@@ -1074,6 +1084,10 @@ export class SessionRoom extends DurableObject<Env> {
           this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Not a hero entity' });
           return;
         }
+        if (meta.role === 'player' && meta.heroId !== action.entityId) {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only claim your own hero turn' });
+          return;
+        }
         if (c.actedThisRound.includes(action.entityId)) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Already acted this round' });
           return;
@@ -1279,6 +1293,36 @@ export class SessionRoom extends DurableObject<Env> {
       triggeredUsedThisRound: false,
       mainConvertedTo: null,
     };
+  }
+
+  private sanitizePlayerEntityChanges(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    entity: SessionEntity,
+    changes: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    if (entity.type !== 'hero' || entity.id !== meta.heroId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own hero' });
+      return null;
+    }
+
+    const sanitized: Record<string, unknown> = {};
+    for (const key of ['currentStamina', 'recoveriesCurrent', 'heroicResource']) {
+      const value = changes[key];
+      if (typeof value === 'number' && Number.isFinite(value)) sanitized[key] = value;
+    }
+
+    const conditions = changes['conditions'];
+    if (Array.isArray(conditions) && conditions.every((condition) => typeof condition === 'string')) {
+      sanitized['conditions'] = conditions;
+    }
+
+    if (Object.keys(sanitized).length === 0) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'No permitted entity changes' });
+      return null;
+    }
+
+    return sanitized;
   }
 
   /** Roll n d10 using crypto-secure randomness. */

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignDirector, requireCampaignMember } from '../lib/access.js';
 import type { CreateNpcInput, Npc, UpdateNpcInput } from '@anvil/types';
 
 export const npcRoutes = new Hono<AppEnv>();
@@ -57,8 +58,11 @@ async function validateOwnedPortraitAsset(
 
 // List NPCs with optional search
 npcRoutes.get('/:campaignId/npcs', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const q = c.req.query('q');
+  const accessError = await requireCampaignMember(c, campaignId, user);
+  if (accessError) return accessError;
 
   let query = 'SELECT * FROM npcs WHERE campaign_id = ?';
   const binds: unknown[] = [campaignId];
@@ -78,6 +82,9 @@ npcRoutes.get('/:campaignId/npcs', async (c) => {
 npcRoutes.post('/:campaignId/npcs', async (c) => {
   const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<CreateNpcInput>();
 
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
@@ -105,6 +112,9 @@ npcRoutes.patch('/:campaignId/npcs/:npcId', async (c) => {
   const campaignId = c.req.param('campaignId');
   const npcId = c.req.param('npcId');
   const user = c.get('user') as AuthUser;
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<UpdateNpcInput>();
 
   if (body.portraitAssetId !== undefined) {
@@ -142,8 +152,11 @@ npcRoutes.patch('/:campaignId/npcs/:npcId', async (c) => {
 
 // Delete NPC
 npcRoutes.delete('/:campaignId/npcs/:npcId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const npcId = c.req.param('npcId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
 
   const existing = await c.env.DB.prepare('SELECT id FROM npcs WHERE id = ? AND campaign_id = ?')
     .bind(npcId, campaignId)

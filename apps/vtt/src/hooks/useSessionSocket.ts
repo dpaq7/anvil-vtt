@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import type { ClientMessage, ServerMessage, SessionState, AbilityResult } from '../types/protocol.js';
+import { csrfHeaders } from '../lib/csrf.js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -280,7 +281,7 @@ export function useSessionSocket(sessionId: string | null) {
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/ws-token`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...csrfHeaders('POST') },
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };

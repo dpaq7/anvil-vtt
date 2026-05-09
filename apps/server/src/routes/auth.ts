@@ -2,6 +2,10 @@ import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import {
   authMiddleware,
+  constantTimeEqual,
+  createCsrfToken,
+  getCookieAttributes,
+  getCookieValue,
   getSessionCookie,
   setSessionCookie,
   clearSessionCookie,
@@ -23,6 +27,14 @@ function missingOAuthConfig(env: AppEnv['Bindings']) {
     .map(([key]) => key);
 }
 
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 // Redirect to Discord OAuth
 authRoutes.get('/discord', (c) => {
   const missingConfig = missingOAuthConfig(c.env);
@@ -37,12 +49,15 @@ authRoutes.get('/discord', (c) => {
     );
   }
 
+  const state = randomHex(32);
   const params = new URLSearchParams({
     client_id: c.env.DISCORD_CLIENT_ID,
     redirect_uri: c.env.DISCORD_REDIRECT_URI,
     response_type: 'code',
     scope: 'identify',
+    state,
   });
+  c.header('Set-Cookie', `anvil_oauth_state=${state}; ${getCookieAttributes(c, 5 * 60)}`);
   return c.redirect(`https://discord.com/api/oauth2/authorize?${params.toString()}`);
 });
 
@@ -61,6 +76,12 @@ authRoutes.get('/callback', async (c) => {
   }
 
   const code = c.req.query('code');
+  const state = c.req.query('state');
+  const stateCookie = getCookieValue(c, 'anvil_oauth_state');
+  if (!state || !stateCookie || !constantTimeEqual(state, stateCookie)) {
+    return c.json({ error: 'Invalid OAuth state' }, 400);
+  }
+
   if (!code) {
     return c.json({ error: 'Missing code parameter' }, 400);
   }
@@ -197,9 +218,13 @@ authRoutes.post('/logout', async (c) => {
 });
 
 // Get current user
-authRoutes.get('/me', authMiddleware, (c) => {
+authRoutes.get('/me', authMiddleware, async (c) => {
   const user = c.get('user') as AuthUser;
-  return c.json({ user });
+  const sessionId = getSessionCookie(c);
+  return c.json({
+    user,
+    csrfToken: sessionId ? await createCsrfToken(sessionId, c.env) : '',
+  });
 });
 
 // Update user role

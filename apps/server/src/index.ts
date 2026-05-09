@@ -20,6 +20,7 @@ import { noteRoutes } from './routes/notes.js';
 import { gameSessionRoutes } from './routes/game-sessions.js';
 import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 import { sceneImportRoutes } from './routes/scene-imports.js';
+import { csrfMiddleware } from './middleware/auth.js';
 
 const app = new Hono<AppEnv>();
 
@@ -33,9 +34,11 @@ app.use(
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   }),
 );
+
+app.use('/api/*', csrfMiddleware);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));

@@ -9,6 +9,13 @@ assetRoutes.use('/*', authMiddleware);
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const VALID_TYPES = ['map', 'token', 'portrait', 'handout', 'audio', 'other'] as const;
+const ACTIVE_CONTENT_TYPES = new Set([
+  'application/xhtml+xml',
+  'application/xml',
+  'image/svg+xml',
+  'text/html',
+  'text/xml',
+]);
 
 interface AssetRow {
   id: string;
@@ -40,10 +47,15 @@ function extensionForContentType(contentType: string): string {
 
 function isAllowedContentType(assetType: string, contentType: string): boolean {
   const normalized = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
+  if (!normalized || ACTIVE_CONTENT_TYPES.has(normalized)) return false;
   if (assetType === 'map' || assetType === 'token' || assetType === 'portrait') return normalized.startsWith('image/');
   if (assetType === 'audio') return normalized.startsWith('audio/');
-  if (assetType === 'handout') return normalized.startsWith('image/') || normalized === 'application/pdf' || normalized.startsWith('text/');
+  if (assetType === 'handout') return normalized.startsWith('image/') || normalized === 'application/pdf' || normalized === 'text/plain' || normalized === 'text/markdown';
   return normalized.startsWith('image/') || normalized.startsWith('audio/') || normalized === 'application/pdf' || normalized === 'application/octet-stream';
+}
+
+function safeAttachmentName(name: string): string {
+  return name.replace(/[\r\n"\\/]/g, '_').trim() || 'asset';
 }
 
 async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: string): Promise<boolean> {
@@ -158,10 +170,15 @@ assetRoutes.get('/:id/data', async (c) => {
 
   const size = asset.file_size ?? object.size;
   const range = parseRange(c.req.header('range') ?? null, size);
+  const contentType = object.httpMetadata?.contentType ?? asset.content_type ?? 'application/octet-stream';
   const headers = new Headers();
-  headers.set('Content-Type', object.httpMetadata?.contentType ?? asset.content_type ?? 'application/octet-stream');
+  headers.set('Content-Type', contentType);
+  headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Cache-Control', 'private, max-age=3600');
   headers.set('Accept-Ranges', 'bytes');
+  if (asset.type === 'handout' || asset.type === 'other') {
+    headers.set('Content-Disposition', `attachment; filename="${safeAttachmentName(asset.name)}"`);
+  }
 
   if (range) {
     const fullBuffer = await object.arrayBuffer();
