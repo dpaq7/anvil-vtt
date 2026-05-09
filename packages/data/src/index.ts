@@ -29,6 +29,7 @@ export {
   EncounterLogic,
   // Factory Logic
   FactoryLogic,
+  UniversalActions,
   // Phase 6: Core Gaps
   AbilityLogic,
   EntityStatusLogic,

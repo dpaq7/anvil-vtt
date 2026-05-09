@@ -44,8 +44,11 @@ interface MonsterFeature {
 
 export interface TokenContextMenuProps {
   entity: EntityData;
+  entities: EntityData[];
+  selectedTargetId?: string | null;
   x: number;
   y: number;
+  isDirector: boolean;
   send: (msg: ClientMessage) => void;
   onClose: () => void;
 }
@@ -55,8 +58,9 @@ export interface TokenContextMenuProps {
  * Shows HP tracking, condition toggles, quick damage/heal, and monster abilities.
  * Positioned at click coordinates, clamped to viewport.
  */
-export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMenuProps) {
+export function TokenContextMenu({ entity, entities, selectedTargetId, x, y, isDirector, send, onClose }: TokenContextMenuProps) {
   const [damageInput, setDamageInput] = useState('');
+  const [targetId, setTargetId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const maxStamina = typeof entity['maxStamina'] === 'number' ? (entity['maxStamina'] as number) : 0;
@@ -74,6 +78,28 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
     () => features.filter((f) => f.feature_type === 'ability'),
     [features],
   );
+  const abilityTargets = useMemo(
+    () => entities.filter((candidate) =>
+      candidate.id !== entity.id && ['hero', 'monster', 'npc'].includes(candidate.type),
+    ),
+    [entities, entity.id],
+  );
+  const defaultTargetId = useMemo(() => {
+    if (selectedTargetId && abilityTargets.some((candidate) => candidate.id === selectedTargetId)) {
+      return selectedTargetId;
+    }
+    const preferredTarget = entity.type === 'hero'
+      ? abilityTargets.find((candidate) => candidate.type === 'monster' || candidate.type === 'npc')
+      : abilityTargets.find((candidate) => candidate.type === 'hero');
+    return preferredTarget?.id ?? abilityTargets[0]?.id ?? entity.id;
+  }, [abilityTargets, entity.id, entity.type, selectedTargetId]);
+
+  useEffect(() => {
+    setTargetId((current) => {
+      if (current && abilityTargets.some((candidate) => candidate.id === current)) return current;
+      return defaultTargetId;
+    });
+  }, [abilityTargets, defaultTargetId, entity.id]);
 
   // Click-outside to close (left-click only — right-click is handled by canvas contextmenu)
   useEffect(() => {
@@ -106,8 +132,8 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
     (amount: number) => {
       if (amount <= 0) return;
       send({
-        type: 'combat_action',
-        action: { type: 'APPLY_DAMAGE', entityId: entity.id, amount },
+        type: 'token_action',
+        action: { kind: 'manual-damage', targetId: entity.id, amount },
       });
     },
     [send, entity.id],
@@ -117,8 +143,8 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
     (amount: number) => {
       if (amount <= 0) return;
       send({
-        type: 'combat_action',
-        action: { type: 'APPLY_HEALING', entityId: entity.id, amount },
+        type: 'token_action',
+        action: { kind: 'manual-heal', targetId: entity.id, amount },
       });
     },
     [send, entity.id],
@@ -129,13 +155,13 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
       const has = conditions.includes(conditionId);
       if (has) {
         send({
-          type: 'combat_action',
-          action: { type: 'REMOVE_CONDITION', entityId: entity.id, conditionId },
+          type: 'token_action',
+          action: { kind: 'remove-condition', targetId: entity.id, condition: conditionId },
         });
       } else {
         send({
-          type: 'combat_action',
-          action: { type: 'APPLY_CONDITION', entityId: entity.id, condition: conditionId },
+          type: 'token_action',
+          action: { kind: 'apply-condition', targetId: entity.id, condition: conditionId },
         });
       }
     },
@@ -145,13 +171,16 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
   const handleUseAbility = useCallback(
     (abilityName: string) => {
       send({
-        type: 'use_ability',
-        sourceId: entity.id,
-        targetId: entity.id, // Director picks target later; default self
-        abilityId: abilityName,
+        type: 'token_action',
+        action: {
+          kind: 'ability',
+          sourceId: entity.id,
+          targetId: targetId ?? defaultTargetId,
+          abilityId: abilityName,
+        },
       });
     },
-    [send, entity.id],
+    [send, entity.id, targetId, defaultTargetId],
   );
 
   const handleQuickDamageHeal = () => {
@@ -218,43 +247,61 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
         )}
 
         {/* Quick damage/heal row */}
-        <div className="flex items-center gap-1 px-3 py-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            onClick={() => handleDamage(1)}
-            title="1 damage"
-          >
-            <Minus className="size-3 text-red-400" />
-          </Button>
-          <input
-            type="number"
-            value={damageInput}
-            onChange={(e) => setDamageInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleQuickDamageHeal();
-            }}
-            placeholder="+/- HP"
-            className="h-6 flex-1 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            onClick={() => handleHeal(1)}
-            title="1 heal"
-          >
-            <Plus className="size-3 text-emerald-400" />
-          </Button>
-        </div>
+        {isDirector && (
+          <div className="flex items-center gap-1 px-3 py-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6"
+              onClick={() => handleDamage(1)}
+              title="1 damage"
+            >
+              <Minus className="size-3 text-red-400" />
+            </Button>
+            <input
+              type="number"
+              value={damageInput}
+              onChange={(e) => setDamageInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleQuickDamageHeal();
+              }}
+              placeholder="+/- HP"
+              className="h-6 flex-1 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6"
+              onClick={() => handleHeal(1)}
+              title="1 heal"
+            >
+              <Plus className="size-3 text-emerald-400" />
+            </Button>
+          </div>
+        )}
 
         {/* Monster abilities */}
-        {abilities.length > 0 && (
+        {isDirector && abilities.length > 0 && (
           <div className="border-t border-zinc-800/50 px-3 py-2">
             <p className="mb-1.5 flex items-center gap-1 text-[10px] font-medium text-zinc-500">
               <Sword className="size-3" /> Actions
             </p>
+            {abilityTargets.length > 0 && (
+              <label className="mb-2 block text-[10px] font-medium text-zinc-500">
+                Target
+                <select
+                  value={targetId ?? defaultTargetId}
+                  onChange={(event) => setTargetId(event.target.value)}
+                  className="mt-1 h-7 w-full rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
+                >
+                  {abilityTargets.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="flex flex-col gap-1">
               {abilities.map((ability) => (
                 <button
@@ -292,29 +339,31 @@ export function TokenContextMenu({ entity, x, y, send, onClose }: TokenContextMe
         )}
 
         {/* Condition toggles */}
-        <div className="border-t border-zinc-800/50 px-3 py-2">
-          <p className="mb-1 text-[10px] font-medium text-zinc-500">Conditions</p>
-          <div className="flex flex-wrap gap-1">
-            {ALL_CONDITION_IDS.map((id) => {
-              const active = conditions.includes(id);
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => handleToggleCondition(id)}
-                  title={id}
-                  className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                    active
-                      ? 'bg-amber-900/50 text-amber-300 ring-1 ring-amber-600/50'
-                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  {CONDITION_EMOJIS[id]} {id.slice(0, 5)}
-                </button>
-              );
-            })}
+        {isDirector && (
+          <div className="border-t border-zinc-800/50 px-3 py-2">
+            <p className="mb-1 text-[10px] font-medium text-zinc-500">Conditions</p>
+            <div className="flex flex-wrap gap-1">
+              {ALL_CONDITION_IDS.map((id) => {
+                const active = conditions.includes(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleToggleCondition(id)}
+                    title={id}
+                    className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+                      active
+                        ? 'bg-amber-900/50 text-amber-300 ring-1 ring-amber-600/50'
+                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {CONDITION_EMOJIS[id]} {id.slice(0, 5)}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </ScrollArea>
     </div>
   );

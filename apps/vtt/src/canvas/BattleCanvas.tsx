@@ -15,6 +15,12 @@ import type { DrawingData } from './layers/DrawingLayer.js';
 import type { TerrainZoneData } from './layers/TerrainLayer.js';
 import type { FogZoneData } from './layers/FogLayer.js';
 
+const getEntityTokenSize = (entity: EntityData): number => {
+  const rawSize = entity['size'];
+  const size = typeof rawSize === 'number' ? rawSize : typeof rawSize === 'string' ? Number(rawSize) : 1;
+  return Number.isFinite(size) ? Math.max(1, size) : 1;
+};
+
 export interface BattleCanvasProps {
   cols: number;
   rows: number;
@@ -348,17 +354,18 @@ export function BattleCanvas({
     // Add new tokens or update changed ones
     for (const entity of entities) {
       const color = entity.type === 'hero' ? 0x3b82f6 : entity.type === 'monster' ? 0xef4444 : 0x8b5cf6;
+      const size = getEntityTokenSize(entity);
       if (!prevIds.has(entity.id)) {
         // New entity — add token
         layers.tokens.addToken(entity, {
-          size: 1,
+          size,
           color,
           selected: selectedSet.has(entity.id),
         });
       } else {
         // Existing entity — update in place (position, selection, stamina, conditions)
         layers.tokens.updateToken(entity, {
-          size: 1,
+          size,
           color,
           selected: selectedSet.has(entity.id),
         });

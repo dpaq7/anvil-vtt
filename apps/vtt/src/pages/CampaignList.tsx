@@ -13,6 +13,23 @@ interface Campaign {
   created_at: string;
 }
 
+interface CampaignLibraryModule {
+  id: string;
+  name: string;
+  campaign_name: string;
+  session_count: number;
+  scene_count: number;
+}
+
+interface CampaignLibraryScene {
+  id: string;
+  title: string;
+  type: string;
+  campaign_name: string;
+  module_name: string | null;
+  session_name: string;
+}
+
 export function CampaignList() {
   const navigate = useNavigate();
   const [directed, setDirected] = useState<Campaign[]>([]);
@@ -20,6 +37,10 @@ export function CampaignList() {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [libraryModules, setLibraryModules] = useState<CampaignLibraryModule[]>([]);
+  const [libraryScenes, setLibraryScenes] = useState<CampaignLibraryScene[]>([]);
+  const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>([]);
+  const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     const data = await api.get<{ directed: Campaign[]; joined: Campaign[] }>('/api/campaigns');
@@ -29,14 +50,42 @@ export function CampaignList() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!dialogOpen) return;
+    let cancelled = false;
+    void api.get<{ modules: CampaignLibraryModule[]; scenes: CampaignLibraryScene[] }>('/api/campaigns/library')
+      .then((data) => {
+        if (cancelled) return;
+        setLibraryModules(data.modules);
+        setLibraryScenes(data.scenes);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLibraryModules([]);
+        setLibraryScenes([]);
+      });
+    return () => { cancelled = true; };
+  }, [dialogOpen]);
+
   const createCampaign = async () => {
     if (!newName.trim()) return;
-    await api.post('/api/campaigns', { name: newName, description: newDesc });
+    await api.post('/api/campaigns', {
+      name: newName,
+      description: newDesc,
+      sourceModuleIds: selectedModuleIds,
+      sourceSceneIds: selectedSceneIds,
+    });
     setNewName('');
     setNewDesc('');
+    setSelectedModuleIds([]);
+    setSelectedSceneIds([]);
     setDialogOpen(false);
     await load();
   };
+
+  const toggleId = (ids: string[], id: string) => (
+    ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]
+  );
 
   const importCampaign = async (document: SceneImportDocument) => {
     const result = await api.post<SceneImportResult>('/api/campaigns/import', { document });
@@ -59,6 +108,62 @@ export function CampaignList() {
               <div className="mt-4 flex flex-col gap-4">
                 <Input placeholder="Campaign name" value={newName} onChange={(e) => setNewName(e.target.value)} />
                 <Input placeholder="Description (optional)" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+                {(libraryModules.length > 0 || libraryScenes.length > 0) && (
+                  <div className="rounded-md border border-zinc-800 bg-zinc-950/50">
+                    <div className="border-b border-zinc-800 px-3 py-2">
+                      <p className="text-sm font-medium text-zinc-200">Select existing modules or scenes</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">Copies prepared starting state only.</p>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto p-3">
+                      {libraryModules.length > 0 && (
+                        <div className="mb-3">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">Modules</p>
+                          <div className="space-y-1.5">
+                            {libraryModules.map((module) => (
+                              <label key={module.id} className="flex cursor-pointer items-start gap-2 rounded border border-zinc-800 bg-zinc-900/60 p-2 text-sm hover:border-zinc-700">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 accent-zinc-200"
+                                  checked={selectedModuleIds.includes(module.id)}
+                                  onChange={() => setSelectedModuleIds((ids) => toggleId(ids, module.id))}
+                                />
+                                <span>
+                                  <span className="block font-medium text-zinc-200">{module.name}</span>
+                                  <span className="block text-xs text-zinc-500">
+                                    {module.campaign_name} · {module.session_count} sessions · {module.scene_count} scenes
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {libraryScenes.length > 0 && (
+                        <div>
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">Scenes</p>
+                          <div className="space-y-1.5">
+                            {libraryScenes.map((scene) => (
+                              <label key={scene.id} className="flex cursor-pointer items-start gap-2 rounded border border-zinc-800 bg-zinc-900/60 p-2 text-sm hover:border-zinc-700">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 accent-zinc-200"
+                                  checked={selectedSceneIds.includes(scene.id)}
+                                  onChange={() => setSelectedSceneIds((ids) => toggleId(ids, scene.id))}
+                                />
+                                <span>
+                                  <span className="block font-medium text-zinc-200">{scene.title}</span>
+                                  <span className="block text-xs text-zinc-500">
+                                    {scene.campaign_name} · {scene.module_name ? `${scene.module_name} · ` : ''}{scene.session_name} · {scene.type}
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2">
                   <DialogClose asChild>
                     <Button variant="ghost">Cancel</Button>

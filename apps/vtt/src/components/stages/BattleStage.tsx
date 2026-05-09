@@ -367,8 +367,11 @@ export function BattleStage({
       {contextMenu && entityMap.get(contextMenu.entityId) && (
         <TokenContextMenu
           entity={entityMap.get(contextMenu.entityId)!}
+          entities={entities}
+          selectedTargetId={selectedEntityId}
           x={contextMenu.x}
           y={contextMenu.y}
+          isDirector={isDirector}
           send={send}
           onClose={handleCloseContextMenu}
         />

@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
 import { SceneTypeIcon, SCENE_BG_COLORS, SCENE_BORDER_COLORS, cn } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
-import type { SceneRef } from '../../types/protocol.js';
+import type { CombatState, EntityData, SceneRef } from '../../types/protocol.js';
+import { BattleTurnTracker } from './BattleTurnTracker.js';
 
 interface DirectorFilmStripProps {
   scenes: SceneRef[];
   activeSceneId: string | null;
+  combat: CombatState | null;
+  entities: EntityData[];
   onSelectScene: (sceneId: string) => void;
 }
 
@@ -40,7 +43,13 @@ function SceneChip({
  * Director-only top bar: horizontal scene flow with respite floated right
  * behind a vertical separator. Replaces the old "Session" title bar.
  */
-export function DirectorFilmStrip({ scenes, activeSceneId, onSelectScene }: DirectorFilmStripProps) {
+export function DirectorFilmStrip({
+  scenes,
+  activeSceneId,
+  combat,
+  entities,
+  onSelectScene,
+}: DirectorFilmStripProps) {
   const { mainScenes, respiteScene } = useMemo(() => {
     const main: SceneRef[] = [];
     let respite: SceneRef | null = null;
@@ -70,6 +79,13 @@ export function DirectorFilmStrip({ scenes, activeSceneId, onSelectScene }: Dire
           <span className="text-xs text-zinc-600">No scenes</span>
         )}
       </div>
+
+      {combat && (
+        <>
+          <div className="h-6 w-px shrink-0 bg-zinc-800" />
+          <BattleTurnTracker combat={combat} entities={entities} />
+        </>
+      )}
 
       {/* Spacer pushes respite to the right */}
       <div className="flex-1" />

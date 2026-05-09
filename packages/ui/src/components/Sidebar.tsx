@@ -138,6 +138,7 @@ export interface SidebarNavItemProps extends HTMLAttributes<HTMLAnchorElement> {
   /** Pass-through for wrapper element (e.g. NavLink) */
   as?: React.ElementType;
   to?: string;
+  end?: boolean;
 }
 
 export const SidebarNavItem = forwardRef<HTMLAnchorElement, SidebarNavItemProps>(
@@ -148,6 +149,7 @@ export const SidebarNavItem = forwardRef<HTMLAnchorElement, SidebarNavItemProps>
     const content = (
       <Comp
         ref={ref}
+        aria-label={collapsed ? label : undefined}
         className={cn(
           'flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors',
           // Default (dark) variant

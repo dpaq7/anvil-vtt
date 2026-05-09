@@ -30,7 +30,7 @@ const TYPE_GLYPHS: Record<string, string> = {
 };
 
 export interface TokenStyle {
-  size: number; // grid cells (1, 2, or 3)
+  size: number; // grid cells
   color: number;
   selected: boolean;
 }
@@ -41,6 +41,7 @@ interface TokenSprite {
   entity: EntityData;
   gridX: number;
   gridY: number;
+  size: number;
   conditionBadge: Text | null;
   selected: boolean;
 }
@@ -55,14 +56,15 @@ export class TokenLayer extends Container {
     if (this.cellSize === size) return;
     const existingTokens = [...this.tokens.values()].map((token) => ({
       entity: token.entity,
+      size: token.size,
       selected: token.selected,
     }));
     this.cellSize = size;
     if (existingTokens.length === 0) return;
     this.clear();
-    for (const { entity, selected } of existingTokens) {
+    for (const { entity, size: tokenSize, selected } of existingTokens) {
       this.addToken(entity, {
-        size: 1,
+        size: tokenSize,
         color: TYPE_COLORS[entity.type] ?? 0x8b5cf6,
         selected,
       });
@@ -209,6 +211,7 @@ export class TokenLayer extends Container {
       entity,
       gridX: entity.x,
       gridY: entity.y,
+      size: style.size,
       conditionBadge,
       selected: style.selected,
     });
@@ -274,10 +277,11 @@ export class TokenLayer extends Container {
     const conditionsChanged =
       JSON.stringify(oldEntity['conditions']) !== JSON.stringify(entity['conditions']);
     const selectionChanged = style.selected !== existing.selected;
+    const sizeChanged = style.size !== existing.size;
     const nameChanged = oldEntity.name !== entity.name;
     const portraitChanged = oldEntity['portraitUrl'] !== entity['portraitUrl'];
 
-    if (!staminaChanged && !conditionsChanged && !selectionChanged && !nameChanged && !portraitChanged) {
+    if (!staminaChanged && !conditionsChanged && !selectionChanged && !sizeChanged && !nameChanged && !portraitChanged) {
       // Only position may have changed — sync from entity if not being dragged
       // (dragged tokens have their position updated by InteractionManager)
       if (existing.gridX !== entity.x || existing.gridY !== entity.y) {
@@ -339,7 +343,14 @@ export class TokenLayer extends Container {
 
   getTokenAt(gridX: number, gridY: number): string | null {
     for (const [id, token] of this.tokens) {
-      if (token.gridX === gridX && token.gridY === gridY) return id;
+      if (
+        gridX >= token.gridX &&
+        gridX < token.gridX + token.size &&
+        gridY >= token.gridY &&
+        gridY < token.gridY + token.size
+      ) {
+        return id;
+      }
     }
     return null;
   }
@@ -357,8 +368,8 @@ export class TokenLayer extends Container {
         bounds: {
           x: token.gridX * this.cellSize,
           y: token.gridY * this.cellSize,
-          width: this.cellSize,
-          height: this.cellSize,
+          width: token.size * this.cellSize,
+          height: token.size * this.cellSize,
         },
         data: id,
       });
@@ -416,7 +427,7 @@ export class TokenLayer extends Container {
     this.distanceLabel.addChild(text);
 
     // Position below the token
-    const size = this.cellSize;
+    const size = token.size * this.cellSize;
     this.distanceLabel.x = token.container.x + size / 2;
     this.distanceLabel.y = token.container.y + size + 18;
   }
@@ -513,8 +524,9 @@ export class TokenLayer extends Container {
 
     for (const [id, token] of this.tokens) {
       // Token center in world coords
-      const cx = token.gridX * this.cellSize + this.cellSize / 2;
-      const cy = token.gridY * this.cellSize + this.cellSize / 2;
+      const tokenSize = token.size * this.cellSize;
+      const cx = token.gridX * this.cellSize + tokenSize / 2;
+      const cy = token.gridY * this.cellSize + tokenSize / 2;
       if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
         ids.push(id);
       }
@@ -555,7 +567,8 @@ export class TokenLayer extends Container {
     for (const [, token] of this.tokens) {
       const tx = token.gridX * this.cellSize;
       const ty = token.gridY * this.cellSize;
-      token.container.visible = tx >= left && tx <= right && ty >= top && ty <= bottom;
+      const tokenSize = token.size * this.cellSize;
+      token.container.visible = tx + tokenSize >= left && tx <= right && ty + tokenSize >= top && ty <= bottom;
     }
   }
 }

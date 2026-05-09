@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Expand, Minimize2 } from 'lucide-react';
 import { AppShell } from '@anvil/ui';
@@ -12,9 +12,11 @@ import { useAudioSync } from '../../hooks/useAudioSync.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
+import { BattleTurnTracker } from '../../components/session/BattleTurnTracker.js';
 import { TurnActionBar } from '../../components/session/TurnActionBar.js';
 import { AbilityPanel } from '../../components/session/AbilityPanel.js';
 import { CombatLog } from '../../components/session/CombatLog.js';
+import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
@@ -38,6 +40,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const initiativePromptedRef = useRef(false);
   const { scenes, activeSceneId, participants, entities, combat } = sessionState;
   const activeScene = scenes.find((s) => s.id === activeSceneId);
   const sceneType = (activeScene?.type as SceneType) ?? null;
@@ -57,6 +60,16 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   const heroSpeed = typeof heroEntity?.['speed'] === 'number' ? (heroEntity['speed'] as number) : 5;
   const heroicResource = typeof heroEntity?.['heroicResource'] === 'number' ? (heroEntity['heroicResource'] as number) : 0;
   const resourceName = (heroEntity?.['heroicResourceName'] as string) ?? 'Resource';
+  const initiativePending = sceneType === 'battle' && combat?.initiativeRoll === null;
+
+  useEffect(() => {
+    if (initiativePending && !initiativePromptedRef.current) {
+      initiativePromptedRef.current = true;
+      toast.info('Combat started. Roll initiative d10.');
+    } else if (!initiativePending) {
+      initiativePromptedRef.current = false;
+    }
+  }, [initiativePending]);
 
   // Determine which action types have been used (for ability panel greying out)
   const usedActionTypes = useMemo(() => {
@@ -86,7 +99,10 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
         return;
       }
 
-      send({ type: 'use_ability', sourceId: heroEntity.id, targetId: targetEntity.id, abilityId });
+      send({
+        type: 'token_action',
+        action: { kind: 'ability', sourceId: heroEntity.id, targetId: targetEntity.id, abilityId },
+      });
       toast.info(`Using ability on ${targetEntity.name}...`);
     },
     [combat, heroEntity, entities, isMyTurn, selectedEntityId, send],
@@ -94,15 +110,25 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
 
   const handleCatchBreath = useCallback(() => {
     if (!heroEntity) return;
-    send({ type: 'combat_action', action: { type: 'CATCH_BREATH', entityId: heroEntity.id } });
+    send({
+      type: 'token_action',
+      action: { kind: 'catch-breath', sourceId: heroEntity.id, targetId: heroEntity.id },
+    });
     toast.success('Caught breath! Recovering stamina...');
   }, [heroEntity, send]);
 
   const handleDefend = useCallback(() => {
     if (!heroEntity) return;
-    send({ type: 'combat_action', action: { type: 'DEFEND', entityId: heroEntity.id } });
+    send({
+      type: 'token_action',
+      action: { kind: 'defend', sourceId: heroEntity.id, targetId: heroEntity.id },
+    });
     toast.info('Defending until your next turn.');
   }, [heroEntity, send]);
+
+  const handleRollInitiative = useCallback(() => {
+    send({ type: 'combat_action', action: { type: 'ROLL_INITIATIVE' } });
+  }, [send]);
 
   // ── Non-battle scene handlers ──
 
@@ -270,6 +296,14 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               heroicResource={heroicResource}
             />
           </div>
+          {sceneType === 'battle' && combat && (
+            <BattleTurnTracker
+              combat={combat}
+              entities={entities}
+              onRollInitiative={handleRollInitiative}
+              className="max-w-[420px]"
+            />
+          )}
           {/* Audio now-playing indicator */}
           {sessionState.audio?.playing && sessionState.audio.assetName && (
             <span className="mr-1 flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
@@ -294,14 +328,24 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
           </button>
         </div>
       )}
-      leftRail={focusMode ? undefined : (
-        combat ? (
-          <AbilityPanel
-            abilities={heroAbilities}
-            usedActionTypes={usedActionTypes}
-            onUseAbility={handleUseAbility}
+      leftRail={focusMode || !sceneType || sceneType === 'story' ? undefined : (
+        <div className="flex h-full min-h-0 flex-col">
+          {sceneType === 'battle' && combat && (
+            <div className="min-h-0 flex-1">
+              <AbilityPanel
+                abilities={heroAbilities}
+                usedActionTypes={usedActionTypes}
+                onUseAbility={handleUseAbility}
+              />
+            </div>
+          )}
+          <ActionLogPanel
+            entries={sessionState.actionLog ?? []}
+            sceneType={sceneType}
+            send={send}
+            className={sceneType === 'battle' && combat ? 'max-h-[45%] shrink-0 border-t' : 'h-full'}
           />
-        ) : undefined
+        </div>
       )}
       rightRail={focusMode ? undefined : (
         combat ? (
@@ -330,6 +374,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
               onEndCombat={() => {}}
               onAdjustMalice={() => {}}
+              onRollInitiative={handleRollInitiative}
             />
 
             {/* Combat log */}

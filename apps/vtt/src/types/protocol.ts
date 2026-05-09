@@ -7,11 +7,14 @@ export type ClientMessage =
   | { type: 'request_state' }
   | { type: 'ping' }
   | { type: 'switch_scene'; sceneId: string }
+  | { type: 'revert_scene'; sceneId?: string }
   | { type: 'create_entity'; entity: EntityData }
   | { type: 'update_entity'; entityId: string; changes: Record<string, unknown> }
   | { type: 'delete_entity'; entityId: string }
   | { type: 'move_token'; entityId: string; x: number; y: number }
   | { type: 'combat_action'; action: CombatAction }
+  | { type: 'token_action'; action: TokenActionRequest }
+  | { type: 'draw_steel_roll'; roll: DrawSteelRollRequest }
   | { type: 'use_ability'; sourceId: string; targetId: string; abilityId: string }
   | { type: 'ready'; ready: boolean }
   | { type: 'select_hero'; heroId: string }
@@ -48,12 +51,16 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'state'; state: SessionState }
   | { type: 'scene_changed'; sceneId: string }
+  | { type: 'scene_reverted'; sceneId: string }
   | { type: 'entity_created'; entity: EntityData }
   | { type: 'entity_updated'; entityId: string; changes: Record<string, unknown> }
   | { type: 'entity_deleted'; entityId: string }
   | { type: 'entity_moved'; entityId: string; x: number; y: number }
   | { type: 'combat_updated'; combat: CombatState | null }
   | { type: 'ability_resolved'; result: AbilityResult }
+  | { type: 'token_action_resolved'; result: TokenActionResult }
+  | { type: 'draw_steel_roll_resolved'; result: DrawSteelRollResult }
+  | { type: 'action_logged'; entry: ActionLogEntry }
   | { type: 'participant_update'; participants: ParticipantInfo[] }
   | { type: 'session_started' }
   | { type: 'session_ended' }
@@ -116,9 +123,11 @@ export interface TurnActionState {
 
 export interface CombatState {
   round: number;
-  activeSide: 'heroes' | 'villains';
-  firstSide: 'heroes' | 'villains';
-  initiativeRoll: number;
+  activeSide: 'heroes' | 'villains' | null;
+  firstSide: 'heroes' | 'villains' | null;
+  initiativeRoll: number | null;
+  initiativeRollerId?: string | null;
+  initiativeRollerName?: string | null;
   heroEntities: string[];
   villainEntities: string[];
   actedThisRound: string[];
@@ -129,6 +138,7 @@ export interface CombatState {
 
 export type CombatAction =
   | { type: 'START_COMBAT'; heroEntityIds: string[]; villainEntityIds: string[] }
+  | { type: 'ROLL_INITIATIVE' }
   | { type: 'END_COMBAT' }
   | { type: 'CLAIM_TURN'; entityId: string }
   | { type: 'SELECT_TURN'; entityId: string }
@@ -140,6 +150,133 @@ export type CombatAction =
   | { type: 'REMOVE_CONDITION'; entityId: string; conditionId: string }
   | { type: 'CATCH_BREATH'; entityId: string }
   | { type: 'DEFEND'; entityId: string };
+
+// ── Token Action Resolution ──
+
+export type CharacteristicId = 'might' | 'agility' | 'reason' | 'intuition' | 'presence';
+
+export type TokenActionKind =
+  | 'ability'
+  | 'free-strike'
+  | 'grab'
+  | 'knockback'
+  | 'catch-breath'
+  | 'defend'
+  | 'stand-up'
+  | 'escape-grab'
+  | 'manual-damage'
+  | 'manual-heal'
+  | 'apply-condition'
+  | 'remove-condition';
+
+export interface TokenActionRequest {
+  kind: TokenActionKind;
+  sourceId?: string;
+  targetId?: string;
+  abilityId?: string;
+  amount?: number;
+  condition?: string;
+  edges?: number;
+  banes?: number;
+  characteristic?: CharacteristicId;
+  notes?: string;
+}
+
+export interface TokenActionPowerRoll {
+  sourceId: string;
+  targetId?: string;
+  dice: number[];
+  characteristic: CharacteristicId;
+  characteristicValue: number;
+  modifier: number;
+  bonuses: number;
+  edges: number;
+  banes: number;
+  rollState: 'double-edge' | 'edge' | 'standard' | 'bane' | 'double-bane';
+  total: number;
+  tier: 1 | 2 | 3;
+  tierShifted: boolean;
+  isNatural19Or20: boolean;
+}
+
+export interface TokenActionEffect {
+  kind:
+    | 'damage'
+    | 'healing'
+    | 'condition-applied'
+    | 'condition-removed'
+    | 'resource'
+    | 'action-slot'
+    | 'movement'
+    | 'note';
+  entityId?: string;
+  amount?: number;
+  condition?: string;
+  before?: number;
+  after?: number;
+  message?: string;
+}
+
+export interface TokenActionResult {
+  id: string;
+  kind: TokenActionKind;
+  sourceId?: string;
+  targetId?: string;
+  abilityId?: string;
+  abilityName?: string;
+  powerRoll?: TokenActionPowerRoll;
+  effects: TokenActionEffect[];
+  summary: string;
+  timestamp: number;
+}
+
+// ── Draw Steel Dice + Shared Action Log ──
+
+export type SceneActionLogType = 'battle' | 'negotiation' | 'montage' | 'respite';
+
+export type DrawSteelRollKind = 'power' | 'heroic-resource' | 'd6';
+
+export type DrawSteelDieFaceSet = 'd10-twice' | 'd3-twice' | 'd6';
+
+export interface DrawSteelRollRequest {
+  kind: DrawSteelRollKind;
+  label?: string;
+  modifier?: number;
+  sourceId?: string;
+}
+
+export interface DrawSteelDieResult {
+  shape: 'd20' | 'd6';
+  faceSet: DrawSteelDieFaceSet;
+  value: number;
+}
+
+export interface DrawSteelRollResult {
+  id: string;
+  kind: DrawSteelRollKind;
+  label: string;
+  rollerId: string;
+  rollerName: string;
+  dice: DrawSteelDieResult[];
+  modifier: number;
+  total: number;
+  tier?: 1 | 2 | 3;
+  timestamp: number;
+}
+
+export interface ActionLogEntry {
+  id: string;
+  sceneId?: string;
+  sceneType: SceneActionLogType;
+  actorId?: string;
+  actorName?: string;
+  title: string;
+  detail?: string;
+  dice?: DrawSteelDieResult[];
+  total?: number;
+  tier?: 1 | 2 | 3;
+  timestamp: number;
+}
 
 // ── Ability Resolution ──
 
@@ -179,6 +316,7 @@ export interface SessionState {
   entities: EntityData[];
   combat: CombatState | null;
   participants: ParticipantInfo[];
+  actionLog: ActionLogEntry[];
   // Scene-specific live state
   negotiation: NegotiationLiveState | null;
   montage: MontageLiveState | null;

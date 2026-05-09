@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input, Collapsible, CollapsibleContent, CollapsibleTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@anvil/ui';
 import { ChevronDown, Minimize2, PanelLeftClose, PanelLeftOpen, Swords } from 'lucide-react';
-import { FORGESTEEL_MONSTERS, isMinion, isMonsterStatblock, loadMonsters } from '@anvil/data';
+import { FORGESTEEL_MONSTERS, LORD_RELG_STATBLOCK, isMinion, isMonsterStatblock, loadMonsters } from '@anvil/data';
 import type { CompendiumItemBase, CompendiumMonster, MonsterFeature } from '@anvil/data';
 import type { SceneImportDocument } from '@anvil/types';
 import { api } from '../lib/api.js';
@@ -25,6 +25,22 @@ interface BattleTokenSummary {
   roles?: string[];
   squadId?: string;
   squadSize?: number;
+  ev?: number | string;
+  speed?: number | string;
+  size?: number | string;
+  stability?: number | string;
+  freeStrike?: number | string;
+  characteristics?: {
+    might?: number;
+    agility?: number;
+    reason?: number;
+    intuition?: number;
+    presence?: number;
+  };
+  ancestry?: string[];
+  immunities?: string[];
+  weaknesses?: string[];
+  movement?: string;
   maxStamina?: number;
   currentStamina?: number;
   features?: MonsterFeature[];
@@ -54,6 +70,17 @@ interface InitiativeSection {
   creatures: InitiativeCreatureGroup[];
 }
 
+const BUILDER_SIDEBAR_DEFAULT_WIDTH = 256;
+const BUILDER_SIDEBAR_MIN_WIDTH = 220;
+
+function maxHalfViewportWidth(): number {
+  return typeof window === 'undefined' ? 760 : Math.floor(window.innerWidth * 0.5);
+}
+
+function clampBuilderPaneWidth(width: number): number {
+  return Math.min(maxHalfViewportWidth(), Math.max(BUILDER_SIDEBAR_MIN_WIDTH, Math.round(width)));
+}
+
 function stripTokenOrdinal(name: string): string {
   return name.replace(/\s+x\d+$/i, '').replace(/\s+\d+$/, '').trim();
 }
@@ -77,7 +104,7 @@ function monsterRoles(monster: CompendiumMonster | null, token?: BattleTokenSumm
 }
 
 function monsterEv(monster: CompendiumMonster | null, token?: BattleTokenSummary): number {
-  return parseNumber(monster?.ev ?? token?.level ?? 0);
+  return parseNumber(monster?.ev ?? token?.ev ?? token?.level ?? 0);
 }
 
 function renderFeatureEffect(feature: MonsterFeature): string {
@@ -106,13 +133,21 @@ function InitiativeCreatureDetails({ group }: { group: InitiativeCreatureGroup }
   const abilityFeatures = (monster?.features ?? token?.features ?? []).filter((feature) => feature.feature_type === 'ability');
   const traitFeatures = (monster?.features ?? token?.features ?? []).filter((feature) => feature.feature_type !== 'ability');
   const roleText = monsterRoles(monster, token);
+  const ancestryText = monster?.ancestry?.join(', ') ?? token?.ancestry?.join(', ') ?? roleText;
+  const characteristics = {
+    might: monster?.might ?? token?.characteristics?.might ?? 0,
+    agility: monster?.agility ?? token?.characteristics?.agility ?? 0,
+    reason: monster?.reason ?? token?.characteristics?.reason ?? 0,
+    intuition: monster?.intuition ?? token?.characteristics?.intuition ?? 0,
+    presence: monster?.presence ?? token?.characteristics?.presence ?? 0,
+  };
 
   return (
     <div className="rounded-b-md border border-t-0 border-zinc-700 bg-zinc-950/80 p-3 text-xs text-zinc-300">
       <div className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-2">
         <div>
           <div className="text-sm font-black uppercase tracking-wide text-zinc-100">{group.name}</div>
-          <div className="text-[11px] italic text-zinc-500">{monster?.ancestry?.join(', ') ?? roleText}</div>
+          <div className="text-[11px] italic text-zinc-500">{ancestryText}</div>
         </div>
         <div className="text-right text-[11px] font-semibold text-zinc-400">
           <div>Level {monster?.level ?? token?.level ?? '-'}</div>
@@ -122,11 +157,11 @@ function InitiativeCreatureDetails({ group }: { group: InitiativeCreatureGroup }
 
       <div className="grid grid-cols-5 gap-1 border-b border-yellow-500/60 py-2 text-center">
         {[
-          ['Size', monster?.size ?? '1M'],
-          ['Speed', monster?.speed ?? '-'],
+          ['Size', monster?.size ?? token?.size ?? '1M'],
+          ['Speed', monster?.speed ?? token?.speed ?? '-'],
           ['Stamina', token?.maxStamina ?? monster?.stamina ?? '-'],
-          ['Stability', monster?.stability ?? 0],
-          ['Free Strike', monster?.free_strike ?? '-'],
+          ['Stability', monster?.stability ?? token?.stability ?? 0],
+          ['Free Strike', monster?.free_strike ?? token?.freeStrike ?? '-'],
         ].map(([label, value]) => (
           <div key={label}>
             <div className="text-[10px] font-bold text-zinc-500">{label}</div>
@@ -136,19 +171,19 @@ function InitiativeCreatureDetails({ group }: { group: InitiativeCreatureGroup }
       </div>
 
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-        {monster?.immunities?.length ? <span><span className="font-semibold">Immunity</span> {monster.immunities.join(', ')}</span> : null}
-        {monster?.weaknesses?.length ? <span><span className="font-semibold">Weakness</span> {monster.weaknesses.join(', ')}</span> : null}
-        {monster?.movement ? <span><span className="font-semibold">Movement</span> {monster.movement}</span> : null}
+        {(monster?.immunities ?? token?.immunities)?.length ? <span><span className="font-semibold">Immunity</span> {(monster?.immunities ?? token?.immunities)?.join(', ')}</span> : null}
+        {(monster?.weaknesses ?? token?.weaknesses)?.length ? <span><span className="font-semibold">Weakness</span> {(monster?.weaknesses ?? token?.weaknesses)?.join(', ')}</span> : null}
+        {(monster?.movement ?? token?.movement) ? <span><span className="font-semibold">Movement</span> {monster?.movement ?? token?.movement}</span> : null}
       </div>
 
       <div className="mt-2 grid grid-cols-5 gap-1 text-center text-[11px]">
-        {[['M', monster?.might], ['A', monster?.agility], ['R', monster?.reason], ['I', monster?.intuition], ['P', monster?.presence]].map(([label, value]) => (
+        {[['M', characteristics.might], ['A', characteristics.agility], ['R', characteristics.reason], ['I', characteristics.intuition], ['P', characteristics.presence]].map(([label, value]) => (
           <div key={label} className="rounded bg-zinc-900 px-1 py-0.5"><span className="font-black text-zinc-100">{label}</span> {value ?? 0}</div>
         ))}
       </div>
 
       <div className="mt-3 space-y-2">
-        {abilityFeatures.slice(0, 3).map((feature, index) => (
+        {abilityFeatures.slice(0, 6).map((feature, index) => (
           <div key={feature.name} className={(index === 0 ? 'border-red-700 bg-red-950/30' : 'border-blue-700 bg-blue-950/30') + ' rounded border'}>
             <div className={(index === 0 ? 'bg-red-700' : 'bg-blue-700') + ' flex items-center justify-between px-2 py-1 text-xs font-bold text-white'}>
               <span>{feature.name}</span>
@@ -164,7 +199,7 @@ function InitiativeCreatureDetails({ group }: { group: InitiativeCreatureGroup }
             </div>
           </div>
         ))}
-        {traitFeatures.slice(0, 3).map((feature) => (
+        {traitFeatures.slice(0, 4).map((feature) => (
           <div key={feature.name} className="rounded border border-purple-700 bg-purple-950/25">
             <div className="bg-purple-700 px-2 py-1 text-xs font-bold text-white">{feature.name}</div>
             <p className="p-2 leading-relaxed">{renderFeatureEffect(feature) || 'No effect text loaded.'}</p>
@@ -224,6 +259,7 @@ export function CampaignBuilder() {
   const [structureOpen, setStructureOpen] = useState(true);
   const [initiativeOpen, setInitiativeOpen] = useState(true);
   const [structurePaneHeight, setStructurePaneHeight] = useState(360);
+  const [leftRailWidth, setLeftRailWidth] = useState(BUILDER_SIDEBAR_DEFAULT_WIDTH);
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [monsterItems, setMonsterItems] = useState<CompendiumItemBase[]>([]);
@@ -251,6 +287,12 @@ export function CampaignBuilder() {
   }, [campaignId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const handleResize = () => setLeftRailWidth((width) => clampBuilderPaneWidth(width));
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -396,6 +438,29 @@ export function CampaignBuilder() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [structurePaneHeight]);
 
+  const handleLeftRailResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = leftRailWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setLeftRailWidth(clampBuilderPaneWidth(startWidth + moveEvent.clientX - startX));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [leftRailWidth]);
+
   const handleBeginCombat = useCallback(async (scene: Scene) => {
     const session = sessions.find((s) => s.id === scene.game_session_id);
     if (!session) return;
@@ -417,7 +482,7 @@ export function CampaignBuilder() {
   const showInitiativeTracker = selectedScene?.type === 'battle';
   const monsterStatblocks = useMemo(() => {
     const byName = new Map<string, CompendiumMonster>();
-    for (const monster of [...monsterItems.filter(isMonsterStatblock), ...FORGESTEEL_MONSTERS]) {
+    for (const monster of [...monsterItems.filter(isMonsterStatblock), ...FORGESTEEL_MONSTERS, LORD_RELG_STATBLOCK]) {
       byName.set(monster.name.toLowerCase(), monster);
     }
     return [...byName.values()];
@@ -513,7 +578,21 @@ export function CampaignBuilder() {
   if (!campaign) return <div className="p-8 text-zinc-400">Loading...</div>;
 
   const builderSidebar = (
-    <div ref={sidebarRef} className="relative flex h-full w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/50 pr-8">
+    <div
+      ref={sidebarRef}
+      className="relative flex h-full shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/50 pr-8"
+      style={{ width: leftRailWidth, maxWidth: '50vw' }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize campaign pane"
+        title="Resize campaign pane"
+        onMouseDown={handleLeftRailResizeStart}
+        className="group absolute inset-y-0 right-0 z-10 flex w-2 cursor-ew-resize items-center justify-center hover:bg-zinc-800/70"
+      >
+        <div className="h-12 w-px bg-zinc-700 opacity-0 transition group-hover:opacity-100" />
+      </div>
       <button
         type="button"
         title="Collapse campaign pane"
@@ -548,6 +627,7 @@ export function CampaignBuilder() {
           <div
             role="separator"
             aria-orientation="horizontal"
+            aria-label="Resize campaign sections"
             title="Resize panes"
             onMouseDown={handleSidebarResizeStart}
             className="group flex h-2 flex-none cursor-ns-resize items-center bg-zinc-900 hover:bg-zinc-800"

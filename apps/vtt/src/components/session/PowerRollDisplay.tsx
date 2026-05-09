@@ -31,7 +31,9 @@ export function PowerRollDisplay({ result, className }: PowerRollDisplayProps) {
           {result.dice.map((d, i) => (
             <span
               key={i}
-              className="flex h-8 w-8 items-center justify-center rounded bg-zinc-800 font-mono text-sm font-bold text-zinc-100"
+              className="flex h-8 w-8 items-center justify-center bg-zinc-800 font-mono text-sm font-bold text-zinc-100"
+              style={{ clipPath: 'polygon(50% 0%, 88% 14%, 100% 50%, 88% 86%, 50% 100%, 12% 86%, 0 50%, 12% 14%)' }}
+              title="Draw Steel d10: d20 body numbered 1-10 twice"
             >
               {d}
             </span>

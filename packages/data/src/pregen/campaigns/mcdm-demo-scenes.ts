@@ -1,4 +1,6 @@
 import type { SceneImportDocument } from '@anvil/types';
+import { LORD_RELG_STATBLOCK } from '../lord-relg.js';
+import type { MonsterFeature } from '../../types/monster.js';
 
 interface DemoBattleToken {
   id: string;
@@ -15,6 +17,22 @@ interface DemoBattleToken {
   currentStamina?: number;
   squadId?: string;
   squadSize?: number;
+  ev?: number | string;
+  speed?: number | string;
+  stability?: number | string;
+  freeStrike?: number | string;
+  characteristics?: {
+    might?: number;
+    agility?: number;
+    reason?: number;
+    intuition?: number;
+    presence?: number;
+  };
+  ancestry?: string[];
+  immunities?: string[];
+  weaknesses?: string[];
+  movement?: string;
+  features?: MonsterFeature[];
   notes?: string;
 }
 
@@ -258,11 +276,28 @@ const killLordRelgTokens: DemoBattleToken[] = [
     y: 13,
     size: 6,
     color: 0xdc2626,
+    monsterName: LORD_RELG_STATBLOCK.name,
     level: 10,
-    roles: ['solo'],
+    roles: [...(LORD_RELG_STATBLOCK.roles ?? ['Solo'])],
+    ancestry: LORD_RELG_STATBLOCK.ancestry,
+    ev: LORD_RELG_STATBLOCK.ev,
     maxStamina: 650,
     currentStamina: 650,
-    notes: 'Level 10 Solo Abyssal Demon. Aura of Lethe within 3 squares; six intestines can grab size 3 or smaller creatures.',
+    speed: LORD_RELG_STATBLOCK.speed,
+    stability: LORD_RELG_STATBLOCK.stability,
+    freeStrike: LORD_RELG_STATBLOCK.free_strike,
+    characteristics: {
+      might: LORD_RELG_STATBLOCK.might,
+      agility: LORD_RELG_STATBLOCK.agility,
+      reason: LORD_RELG_STATBLOCK.reason,
+      intuition: LORD_RELG_STATBLOCK.intuition,
+      presence: LORD_RELG_STATBLOCK.presence,
+    },
+    immunities: LORD_RELG_STATBLOCK.immunities,
+    weaknesses: LORD_RELG_STATBLOCK.weaknesses,
+    movement: LORD_RELG_STATBLOCK.movement,
+    features: LORD_RELG_STATBLOCK.features,
+    notes: 'Level 10 Solo Abyssal Demon. Aura of Lethe within 3 squares; six intestines can grab size 3 or smaller creatures. Solo turns up to two per round, not consecutive.',
   }),
   ...[
     [3, 8], [4, 6], [5, 10], [6, 7],

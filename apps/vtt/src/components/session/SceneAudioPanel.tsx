@@ -14,6 +14,8 @@ export interface SceneAudioPanelProps {
   onAudioChange?: (audioId: string | null) => void;
   /** Label shown above the panel */
   label?: string;
+  /** Hide the panel label when a surrounding section already supplies one. */
+  hideLabel?: boolean;
 }
 
 export function SceneAudioPanel({
@@ -21,6 +23,7 @@ export function SceneAudioPanel({
   audioId,
   onAudioChange,
   label = 'Scene Audio',
+  hideLabel = false,
 }: SceneAudioPanelProps) {
   const audioAssets = useAssetsStore((s) => s.audioAssets);
   const loadAudio = useAssetsStore((s) => s.loadAudio);
@@ -52,7 +55,7 @@ export function SceneAudioPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-zinc-300">{label}</span>
+      {!hideLabel ? <span className="text-sm font-medium text-zinc-300">{label}</span> : null}
 
       {/* Player */}
       <AudioPlayer track={selectedTrack} onClear={onAudioChange ? handleClear : undefined} />

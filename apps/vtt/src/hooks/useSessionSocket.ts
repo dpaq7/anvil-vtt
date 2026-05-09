@@ -23,10 +23,13 @@ export function useSessionSocket(sessionId: string | null) {
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
       case 'state':
-        setState(msg.state);
+        setState({ ...msg.state, actionLog: msg.state.actionLog ?? [] });
         break;
       case 'scene_changed':
         setState((prev) => prev ? { ...prev, activeSceneId: msg.sceneId } : prev);
+        break;
+      case 'scene_reverted':
+        toast.info('Scene reverted to prepared state.');
         break;
       case 'entity_created':
         setState((prev) => {
@@ -71,6 +74,16 @@ export function useSessionSocket(sessionId: string | null) {
             (e) => e.timestamp === msg.result.timestamp && e.sourceId === msg.result.sourceId && e.abilityId === msg.result.abilityId,
           );
           return isDupe ? prev : [...prev, msg.result];
+        });
+        break;
+      case 'draw_steel_roll_resolved':
+        break;
+      case 'action_logged':
+        setState((prev) => {
+          if (!prev) return prev;
+          const currentLog = prev.actionLog ?? [];
+          if (currentLog.some((entry) => entry.id === msg.entry.id)) return prev;
+          return { ...prev, actionLog: [...currentLog, msg.entry].slice(-200) };
         });
         break;
       case 'participant_update':

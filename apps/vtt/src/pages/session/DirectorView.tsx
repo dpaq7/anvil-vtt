@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Expand, Minimize2, Package } from 'lucide-react';
+import { Expand, Minimize2, Package, RotateCcw } from 'lucide-react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.js';
 import { AppShell, Button } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
@@ -17,6 +17,7 @@ import { CreatureTracker } from '../../components/session/CreatureTracker.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
 import { DamageDialog } from '../../components/session/DamageDialog.js';
 import { CombatLog } from '../../components/session/CombatLog.js';
+import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
 import { AssetPanel } from '../../components/session/AssetPanel.js';
 import { SceneAudioPanel } from '../../components/session/SceneAudioPanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
@@ -109,6 +110,17 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
       action: { type: 'START_COMBAT', heroEntityIds, villainEntityIds },
     });
   }, [entities, send]);
+
+  const handleRollInitiative = useCallback(() => {
+    send({ type: 'combat_action', action: { type: 'ROLL_INITIATIVE' } });
+  }, [send]);
+
+  const handleRevertActiveScene = useCallback(() => {
+    if (!activeSceneId) return;
+    const ok = window.confirm('Revert this scene to its prepared starting state? Current token positions, stamina, combat, and scene progress for this scene will be discarded.');
+    if (!ok) return;
+    send({ type: 'revert_scene', sceneId: activeSceneId });
+  }, [activeSceneId, send]);
 
   // ── Audio sync: update local state AND broadcast to players ──
   const audioAssets = useAssetsStore((s) => s.audioAssets);
@@ -341,6 +353,8 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
             <DirectorFilmStrip
               scenes={scenes}
               activeSceneId={activeSceneId}
+              combat={sceneType === 'battle' ? combat : null}
+              entities={entities}
               onSelectScene={handleSelectScene}
             />
           </div>
@@ -368,6 +382,17 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
               <Package className="mr-1 size-3.5" />
               Assets
             </Button>
+            {activeSceneId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRevertActiveScene}
+                title="Revert active scene to prepared state"
+              >
+                <RotateCcw className="mr-1 size-3.5" />
+                Revert
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={handleEndSession}>
               End
             </Button>
@@ -375,11 +400,37 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
         </div>
       )}
       leftRail={focusMode ? undefined : (
-        <CreatureTracker
-          entities={entities}
-          combat={combat}
-          send={send}
-        />
+        <div className="flex h-full min-h-0 flex-col">
+          {sceneType === 'battle' && combat && (
+            <div className="shrink-0 border-b border-zinc-800 p-3">
+              <CombatTracker
+                combat={combat}
+                entities={entities}
+                isDirector
+                currentHeroEntityId={null}
+                onClaimTurn={() => {}}
+                onSelectTurn={(entityId) => send({ type: 'combat_action', action: { type: 'SELECT_TURN', entityId } })}
+                onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
+                onEndCombat={() => send({ type: 'combat_action', action: { type: 'END_COMBAT' } })}
+                onAdjustMalice={(delta) => send({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })}
+                onRollInitiative={handleRollInitiative}
+              />
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
+            <CreatureTracker
+              entities={entities}
+              combat={combat}
+              send={send}
+            />
+          </div>
+          <ActionLogPanel
+            entries={sessionState.actionLog ?? []}
+            sceneType={sceneType}
+            send={send}
+            className="max-h-[45%] shrink-0 border-t"
+          />
+        </div>
       )}
       rightRail={focusMode ? undefined : (
         <div className="flex h-full flex-col overflow-hidden">
@@ -431,21 +482,16 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
 
               {combat && (
                 <>
-                  <CombatTracker
-                    combat={combat}
-                    entities={entities}
-                    isDirector
-                    currentHeroEntityId={null}
-                    onClaimTurn={() => {}}
-                    onSelectTurn={(entityId) => send({ type: 'combat_action', action: { type: 'SELECT_TURN', entityId } })}
-                    onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
-                    onEndCombat={() => send({ type: 'combat_action', action: { type: 'END_COMBAT' } })}
-                    onAdjustMalice={(delta) => send({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })}
-                  />
                   <DamageDialog
                     entities={entities}
-                    onApplyDamage={(entityId, amount) => send({ type: 'combat_action', action: { type: 'APPLY_DAMAGE', entityId, amount } })}
-                    onApplyHealing={(entityId, amount) => send({ type: 'combat_action', action: { type: 'APPLY_HEALING', entityId, amount } })}
+                    onApplyDamage={(entityId, amount) => send({
+                      type: 'token_action',
+                      action: { kind: 'manual-damage', targetId: entityId, amount },
+                    })}
+                    onApplyHealing={(entityId, amount) => send({
+                      type: 'token_action',
+                      action: { kind: 'manual-heal', targetId: entityId, amount },
+                    })}
                   />
                   <div className="h-48">
                     <CombatLog entries={combatLog} entityNames={entityNames} />
