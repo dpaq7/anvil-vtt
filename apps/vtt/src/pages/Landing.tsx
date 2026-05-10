@@ -13,12 +13,20 @@ export function Landing() {
         story, montage, negotiation, and respite.
       </p>
 
-      <a
-        href={`${API_BASE}/api/auth/discord`}
-        className="rounded-lg bg-indigo-600 px-8 py-3 text-lg font-medium text-white transition hover:bg-indigo-500"
-      >
-        Login with Discord
-      </a>
+      <div className="flex w-full max-w-xs flex-col gap-3">
+        <a
+          href={`${API_BASE}/api/auth/google`}
+          className="rounded-lg bg-white px-8 py-3 text-center text-lg font-medium text-zinc-950 transition hover:bg-zinc-200"
+        >
+          Continue with Google
+        </a>
+        <a
+          href={`${API_BASE}/api/auth/discord`}
+          className="rounded-lg bg-indigo-600 px-8 py-3 text-center text-lg font-medium text-white transition hover:bg-indigo-500"
+        >
+          Continue with Discord
+        </a>
+      </div>
       {import.meta.env.DEV ? (
         <div className="flex gap-3">
           <a

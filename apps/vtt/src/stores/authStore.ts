@@ -5,7 +5,6 @@ type UserRole = 'director' | 'player';
 
 interface AuthUser {
   id: string;
-  discordId: string;
   username: string;
   avatarUrl: string | null;
   role: UserRole;

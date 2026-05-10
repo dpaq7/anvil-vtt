@@ -11,7 +11,7 @@ The app is currently in active product development. Core workflows are functiona
 - **State:** React state, Zustand stores, and XState scene flow where it fits
 - **Backend:** Cloudflare Workers, Hono, Durable Objects, D1, and R2
 - **Real-time:** WebSockets through Durable Objects for live sessions
-- **Auth:** Discord OAuth, with development-only local login
+- **Auth:** Discord and Google OAuth through Worker-managed D1 sessions, with development-only local login
 - **Data:** Workspace packages for Draw Steel rules data, compendium data, typed scene/session/campaign models, and reusable game logic
 - **Tooling:** pnpm workspaces, TypeScript project builds, Wrangler, Vite, ESLint, Vitest
 

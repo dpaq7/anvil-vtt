@@ -22,6 +22,8 @@ Set secrets with Wrangler for the deployed Worker:
 ```bash
 pnpm --filter @anvil/server wrangler secret put DISCORD_CLIENT_ID
 pnpm --filter @anvil/server wrangler secret put DISCORD_CLIENT_SECRET
+pnpm --filter @anvil/server wrangler secret put GOOGLE_CLIENT_ID
+pnpm --filter @anvil/server wrangler secret put GOOGLE_CLIENT_SECRET
 pnpm --filter @anvil/server wrangler secret put SESSION_SECRET
 ```
 
@@ -31,9 +33,11 @@ Set non-secret vars in `apps/server/wrangler.toml` or the Cloudflare dashboard:
 ENVIRONMENT=production
 FRONTEND_URL=https://<your-vtt-frontend-origin>
 DISCORD_REDIRECT_URI=https://<your-worker-origin>/api/auth/callback
+GOOGLE_REDIRECT_URI=https://<your-worker-origin>/api/auth/google/callback
 ```
 
 The Discord application must include the exact `DISCORD_REDIRECT_URI` in its OAuth2 redirect list.
+The Google OAuth client must include the exact `GOOGLE_REDIRECT_URI` in its authorized redirect URIs.
 
 ## Required VTT Build Env
 
@@ -59,7 +63,7 @@ The value should not have a trailing slash. It is used for HTTP API calls and li
 After deployment, verify:
 
 - `GET /api/health` returns `{ "status": "ok" }` from the Worker.
-- Discord OAuth completes and redirects back to the VTT frontend.
+- Discord and Google OAuth complete and redirect back to the VTT frontend.
 - `/api/auth/me` returns the signed-in user from the frontend.
 - A director can create a campaign, create a session, and enter live mode.
 - A player can join by code, ready up, reconnect, and receive scene changes.
