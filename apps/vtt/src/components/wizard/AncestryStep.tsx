@@ -12,10 +12,12 @@ interface Props {
   onChange: (patch: Partial<CharacterInProgress>) => void;
 }
 
+type AncestryWithLore = Ancestry & { lore?: string };
+
 export function AncestryStep({ character, onChange }: Props) {
   // Get ancestries from GameData and cast to the Ancestry type from @anvil/types
-  const ancestries = GameData.getAllAncestries() as unknown as Ancestry[];
-  const [previewedAncestry, setPreviewedAncestry] = useState<Ancestry | null>(
+  const ancestries = GameData.getAllAncestries() as unknown as AncestryWithLore[];
+  const [previewedAncestry, setPreviewedAncestry] = useState<AncestryWithLore | null>(
     () => {
       if (character.ancestry) {
         return ancestries.find((a) => a.id === character.ancestry) ?? null;
@@ -24,12 +26,12 @@ export function AncestryStep({ character, onChange }: Props) {
     }
   );
 
-  const handleSelect = (ancestry: Ancestry) => {
+  const handleSelect = (ancestry: AncestryWithLore) => {
     onChange({ ancestry: ancestry.id, ancestryTraits: [] });
   };
 
   const renderCard = (
-    ancestry: Ancestry,
+    ancestry: AncestryWithLore,
     isSelected: boolean,
     isPreviewed: boolean
   ) => (
@@ -47,14 +49,14 @@ export function AncestryStep({ character, onChange }: Props) {
             </p>
           </div>
           {isSelected && (
-            <Check className="h-5 w-5 text-green-500 shrink-0" />
+            <Check className="h-5 w-5 text-creator-highlight shrink-0" />
           )}
         </div>
       </CardContent>
     </SelectionCard>
   );
 
-  const renderDetail = (ancestry: Ancestry) => (
+  const renderDetail = (ancestry: AncestryWithLore) => (
     <DetailPanel
       title={ancestry.name}
       subtitle={`Size: ${ancestry.size} · Speed: ${ancestry.speed} · ${ancestry.ancestryPoints} Ancestry Points`}
@@ -62,7 +64,10 @@ export function AncestryStep({ character, onChange }: Props) {
       selectLabel={character.ancestry === ancestry.id ? 'Selected' : `Select ${ancestry.name}`}
     >
       {/* Description */}
-      <p className="text-sm text-zinc-300">{ancestry.description}</p>
+      <div className="space-y-3 text-sm text-zinc-300">
+        <p>{ancestry.description}</p>
+        {ancestry.lore && <p className="text-creator-text-muted">{ancestry.lore}</p>}
+      </div>
 
       {/* Signature Feature */}
       {ancestry.signatureFeature && (
@@ -106,7 +111,9 @@ export function AncestryStep({ character, onChange }: Props) {
         renderDetail={renderDetail}
         previewedItem={previewedAncestry}
         emptyMessage="No ancestries available"
-        gridCols={1}
+        gridCols={2}
+        listClassName="w-1/2"
+        detailClassName="w-1/2"
       />
     </div>
   );

@@ -81,6 +81,8 @@ export function StoryWorkspace({ data, onChange, campaignId }: StoryWorkspacePro
     onChange({ ...data, assetUrl: '', mapAssetId: '' });
   }, [data, onChange]);
 
+  const hasPreviewText = Boolean(storyData.readAloud || storyData.notes);
+
   return (
     <div className="flex h-full">
       {/* Main area: Live preview of StoryStage */}
@@ -94,18 +96,16 @@ export function StoryWorkspace({ data, onChange, campaignId }: StoryWorkspacePro
             />
           )}
 
-          {/* StoryStage preview */}
-          <div className="relative z-10 h-full">
-            <StoryStage
-              readAloudText={storyData.readAloud}
-              directorNotes={storyData.notes}
-              isDirector={true}
-            />
-          </div>
-
-          {/* Empty state hint */}
-          {!storyData.readAloud && !storyData.notes && (
-            <div className="absolute inset-0 flex items-center justify-center">
+          {hasPreviewText ? (
+            <div className="relative z-10 h-full">
+              <StoryStage
+                readAloudText={storyData.readAloud}
+                directorNotes={storyData.notes}
+                isDirector={true}
+              />
+            </div>
+          ) : (
+            <div className="relative z-10 flex h-full items-center justify-center">
               <div className="text-center text-zinc-600">
                 <p className="text-lg font-medium">Story Scene</p>
                 <p className="mt-1 text-sm">Add read-aloud text in the sidebar to preview</p>

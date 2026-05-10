@@ -251,19 +251,20 @@ function TumblingDie({ finalValue, phase, delayMs }: TumblingDieProps) {
   return (
     <div
       className={cn(
-        'relative flex size-10 items-center justify-center rounded-lg border-2 font-mono text-lg font-black transition-all duration-200',
+        'relative flex size-10 items-center justify-center border-2 font-mono text-lg font-black transition-all duration-200',
         isTumbling
           ? 'border-zinc-500/80 bg-zinc-800 text-zinc-300'
           : 'border-zinc-600/60 bg-zinc-800/80 text-zinc-50',
       )}
       style={{
+        clipPath: 'polygon(50% 0%, 88% 14%, 100% 50%, 88% 86%, 50% 100%, 12% 86%, 0 50%, 12% 14%)',
         animation: isTumbling ? 'dt-tumble 0.15s ease-in-out infinite' : 'dt-settle 0.3s ease-out',
         animationDelay: isTumbling ? `${delayMs}ms` : '0ms',
       }}
+      title="Draw Steel d10: d20 body numbered 1-10 twice"
     >
       <span className="tabular-nums">{display}</span>
-      {/* d10 marker */}
-      <span className="absolute -top-1 -right-1 rounded bg-zinc-700/80 px-0.5 text-[7px] font-bold leading-tight text-zinc-400">
+      <span className="absolute bottom-1 right-1 text-[7px] font-bold leading-tight text-zinc-500">
         d10
       </span>
     </div>

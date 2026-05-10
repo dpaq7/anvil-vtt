@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
-import type { AppEnv } from '../types.js';
+import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireSceneDirector, requireSceneMember } from '../lib/access.js';
 import type { CreateMontageTestInput, MontageTestRecord, UpdateMontageTestInput } from '@anvil/types';
 
 export const montageTestRoutes = new Hono<AppEnv>();
@@ -41,7 +42,10 @@ function rowToMontageTest(row: MontageTestRow): MontageTestRecord {
 
 // List montage tests for a scene
 montageTestRoutes.get('/scenes/:sceneId/montage-tests', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
+  const accessError = await requireSceneMember(c, sceneId, user);
+  if (accessError) return accessError;
 
   const results = await c.env.DB.prepare(
     'SELECT * FROM montage_tests WHERE scene_id = ? ORDER BY created_at DESC',
@@ -54,7 +58,11 @@ montageTestRoutes.get('/scenes/:sceneId/montage-tests', async (c) => {
 
 // Create montage test
 montageTestRoutes.post('/scenes/:sceneId/montage-tests', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<CreateMontageTestInput>();
 
   if (!body.testName?.trim()) return c.json({ error: 'Test name is required' }, 400);
@@ -87,8 +95,12 @@ montageTestRoutes.post('/scenes/:sceneId/montage-tests', async (c) => {
 
 // Update montage test progress/status
 montageTestRoutes.patch('/scenes/:sceneId/montage-tests/:testId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
   const testId = c.req.param('testId');
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<UpdateMontageTestInput>();
 
   const existing = await c.env.DB.prepare('SELECT id FROM montage_tests WHERE id = ? AND scene_id = ?')
@@ -120,8 +132,11 @@ montageTestRoutes.patch('/scenes/:sceneId/montage-tests/:testId', async (c) => {
 
 // Delete montage test
 montageTestRoutes.delete('/scenes/:sceneId/montage-tests/:testId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
   const testId = c.req.param('testId');
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
 
   const existing = await c.env.DB.prepare('SELECT id FROM montage_tests WHERE id = ? AND scene_id = ?')
     .bind(testId, sceneId)

@@ -153,8 +153,17 @@ export interface RespiteStageData {
 export function parseRespiteData(sceneData: Record<string, unknown>): RespiteStageData {
   const location = (sceneData['location'] as string) ?? (sceneData['locationDescription'] as string) ?? '';
 
-  const activities =
+  let activities =
     (sceneData['activities'] as { heroName: string; activityType: string; completed: boolean }[]) ?? [];
+
+  const availableActivities = sceneData['availableActivities'];
+  if (activities.length === 0 && Array.isArray(availableActivities)) {
+    activities = availableActivities.map((activityId) => ({
+      heroName: 'Available',
+      activityType: String(activityId),
+      completed: false,
+    }));
+  }
 
   const rawProjects = sceneData['projects'];
   const projects: ParsedProject[] = Array.isArray(rawProjects)

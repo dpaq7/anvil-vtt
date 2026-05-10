@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { Swords, Image, StickyNote, User, Clapperboard } from 'lucide-react';
 import {
   SidebarProvider,
@@ -31,8 +31,13 @@ const ALL_LABELS = [...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => it
 
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
+  const location = useLocation();
   const isPlayer = user?.role === 'player';
   const navItems = isPlayer ? PLAYER_NAV : DIRECTOR_NAV;
+
+  const isActive = (to: string, exact: boolean) => {
+    return exact ? location.pathname === to : location.pathname === to || location.pathname.startsWith(`${to}/`);
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -40,23 +45,25 @@ export function AppLayout() {
         <div className="flex h-screen overflow-hidden">
           <Sidebar variant={isPlayer ? 'player' : 'director'}>
             <SidebarNav>
-              {navItems.map(({ label, icon: Icon, to, ...rest }) => (
-                <NavLink key={to} to={to} end={'end' in rest}>
-                  {({ isActive }) => (
-                    <SidebarNavItem
-                      as="span"
-                      icon={<Icon size={18} />}
-                      label={label}
-                      active={isActive}
-                    />
-                  )}
-                </NavLink>
-              ))}
+              {navItems.map(({ label, icon: Icon, to, ...rest }) => {
+                const exact = 'end' in rest && rest.end === true;
+                return (
+                  <SidebarNavItem
+                    key={to}
+                    as={NavLink}
+                    to={to}
+                    end={exact}
+                    icon={<Icon size={18} />}
+                    label={label}
+                    active={isActive(to, exact)}
+                  />
+                );
+              })}
             </SidebarNav>
             <SidebarToggle />
           </Sidebar>
           <main className="flex-1 overflow-y-auto">
-            <Outlet />
+            <Outlet key={location.pathname} />
           </main>
         </div>
       </SidebarProvider>

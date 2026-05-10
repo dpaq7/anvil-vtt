@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
-import type { AppEnv } from '../types.js';
+import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignDirector, requireCampaignMember } from '../lib/access.js';
 import type { ActivityCard, CreateActivityCardInput, UpdateActivityCardInput } from '@anvil/types';
 
 export const activityRoutes = new Hono<AppEnv>();
@@ -43,8 +44,11 @@ function rowToActivityCard(row: ActivityCardRow): ActivityCard {
 
 // List activity cards with optional active filter
 activityRoutes.get('/:campaignId/activities', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const isActive = c.req.query('is_active');
+  const accessError = await requireCampaignMember(c, campaignId, user);
+  if (accessError) return accessError;
 
   let query = 'SELECT * FROM activity_cards WHERE campaign_id = ?';
   const binds: unknown[] = [campaignId];
@@ -62,7 +66,11 @@ activityRoutes.get('/:campaignId/activities', async (c) => {
 
 // Create activity card
 activityRoutes.post('/:campaignId/activities', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<CreateActivityCardInput>();
 
   if (!body.activityName?.trim()) return c.json({ error: 'Activity name is required' }, 400);
@@ -95,8 +103,12 @@ activityRoutes.post('/:campaignId/activities', async (c) => {
 
 // Update activity card progress/notes
 activityRoutes.patch('/:campaignId/activities/:activityId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const activityId = c.req.param('activityId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<UpdateActivityCardInput>();
 
   const existing = await c.env.DB.prepare('SELECT id FROM activity_cards WHERE id = ? AND campaign_id = ?')
@@ -130,8 +142,11 @@ activityRoutes.patch('/:campaignId/activities/:activityId', async (c) => {
 
 // Delete activity card
 activityRoutes.delete('/:campaignId/activities/:activityId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const activityId = c.req.param('activityId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
 
   const existing = await c.env.DB.prepare('SELECT id FROM activity_cards WHERE id = ? AND campaign_id = ?')
     .bind(activityId, campaignId)

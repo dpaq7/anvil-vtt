@@ -24,6 +24,7 @@ import monstersJson from '../generated/monsters.json' with { type: 'json' };
 import trapsJson from '../generated/traps.json' with { type: 'json' };
 // Parsed from MD files
 import skillsJson from '../generated/skills.json' with { type: 'json' };
+import ancestriesRawJson from '../generated/ancestries-raw.json' with { type: 'json' };
 // Existing structured data (richer than MD)
 import { ALL_CONDITIONS, type ConditionDefinition as SourceCondition } from '../data/conditions.js';
 import {
@@ -90,16 +91,16 @@ import {
  */
 const CLASS_STAMINA_CONFIG: Record<HeroClass, { level1: number; perLevel: number; recoveries: number }> = {
   beastheart: { level1: 21, perLevel: 12, recoveries: 12 },
-  censor: { level1: 21, perLevel: 9, recoveries: 8 },
-  conduit: { level1: 18, perLevel: 9, recoveries: 8 },
-  elementalist: { level1: 15, perLevel: 6, recoveries: 8 },
-  fury: { level1: 21, perLevel: 9, recoveries: 8 },
-  null: { level1: 18, perLevel: 9, recoveries: 8 },
-  shadow: { level1: 18, perLevel: 9, recoveries: 8 },
+  censor: { level1: 21, perLevel: 9, recoveries: 12 },
+  conduit: { level1: 18, perLevel: 6, recoveries: 8 },
+  elementalist: { level1: 18, perLevel: 6, recoveries: 8 },
+  fury: { level1: 21, perLevel: 9, recoveries: 10 },
+  null: { level1: 21, perLevel: 9, recoveries: 8 },
+  shadow: { level1: 18, perLevel: 6, recoveries: 8 },
   summoner: { level1: 15, perLevel: 6, recoveries: 8 },
   tactician: { level1: 21, perLevel: 9, recoveries: 10 },
-  talent: { level1: 18, perLevel: 9, recoveries: 8 },
-  troubadour: { level1: 18, perLevel: 9, recoveries: 8 },
+  talent: { level1: 18, perLevel: 6, recoveries: 8 },
+  troubadour: { level1: 18, perLevel: 6, recoveries: 8 },
 };
 
 /**
@@ -205,14 +206,25 @@ function initializeData(): DrawSteelData {
   const abilitiesData = abilitiesJson as { features: Feature[] };
   const featuresData = featuresJson as { features: Feature[] };
 
-  // Combine and deduplicate features from both sources
-  // Use a Map keyed by item_id to avoid duplicates
+  // Combine and deduplicate features from both sources. item_id is not globally
+  // unique (for example, many classes have a level 2 "perk" feature), so use
+  // the semantic content code as the primary key.
   const featureMap = new Map<string, Feature>();
 
   for (const feature of [...abilitiesData.features, ...featuresData.features]) {
-    const id = feature.metadata?.item_id;
-    if (id && !featureMap.has(id)) {
-      featureMap.set(id, feature);
+    const key =
+      feature.metadata?.scc?.[0] ??
+      [
+        feature.metadata?.class,
+        feature.metadata?.subclass,
+        feature.metadata?.level,
+        feature.metadata?.item_id,
+        feature.name,
+      ]
+        .filter(Boolean)
+        .join(':');
+    if (key && !featureMap.has(key)) {
+      featureMap.set(key, feature);
     }
   }
 
@@ -263,6 +275,37 @@ function initializeData(): DrawSteelData {
   }));
 
   // ─────────────────────────────────────────────
+  // Ancestry Lore Loading (from parsed MD)
+  // ─────────────────────────────────────────────
+
+  const ancestryRawData = ancestriesRawJson as {
+    ancestries: Array<{ id: string; rawContent: string }>;
+  };
+
+  const getIntroLore = (rawContent: string): string => {
+    const withoutHeading = rawContent.replace(/^##\s+[^\n]+\n+/, '').trim();
+    const intro = withoutHeading.split(/\n###\s+/)[0] ?? '';
+    return intro
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('\n\n');
+  };
+
+  const ancestryLoreById = new Map(
+    ancestryRawData.ancestries.map((ancestry) => [
+      ancestry.id,
+      getIntroLore(ancestry.rawContent),
+    ])
+  );
+
+  const ancestries = sourceAncestries.map((ancestry) => ({
+    ...ancestry,
+    lore: ancestryLoreById.get(ancestry.id),
+  }));
+
+  // ─────────────────────────────────────────────
   // Careers Data Loading (from existing reference data)
   // ─────────────────────────────────────────────
 
@@ -281,6 +324,7 @@ function initializeData(): DrawSteelData {
       type: 'environment' as const,
       effect: `Grants skills from ${o.skills.join(', ')} groups`,
       skill: o.skills[0],
+      skills: o.skills,
     })),
     ...organizationOptions.map((o) => ({
       id: o.type,
@@ -288,6 +332,7 @@ function initializeData(): DrawSteelData {
       type: 'organization' as const,
       effect: `Grants skills from ${o.skills.join(', ')} groups`,
       skill: o.skills[0],
+      skills: o.skills,
     })),
     ...upbringingOptions.map((o) => ({
       id: o.type,
@@ -295,6 +340,7 @@ function initializeData(): DrawSteelData {
       type: 'upbringing' as const,
       effect: `Grants skills: ${o.skills.join(', ')}`,
       skill: o.skills[0],
+      skills: o.skills,
     })),
   ];
 
@@ -306,7 +352,7 @@ function initializeData(): DrawSteelData {
     traps: trapsData.traps,
 
     // From existing reference data + parsed MD (using unknown to bypass strict checks)
-    ancestries: sourceAncestries as unknown as AncestryDefinition[],
+    ancestries: ancestries as unknown as AncestryDefinition[],
     careers,
     cultures,
     kits: sourceKits as unknown as KitDefinition[],
@@ -438,6 +484,19 @@ export const GameData = {
    * @returns Array of all hero features
    */
   getAllFeatures: (): Feature[] => getData().features,
+
+  /**
+   * Get class features for a specific class and level.
+   * @param heroClass - The class to filter by
+   * @param level - The level to filter by (1-10)
+   * @returns Array of matching class features
+   */
+  getFeaturesByClassAndLevel: (heroClass: HeroClass, level: number): Feature[] => {
+    validateLevel(level);
+    return getData().features.filter(
+      (f) => f.metadata.class === heroClass && f.metadata.level === level
+    );
+  },
 
   /**
    * Find an ability by its item_id.

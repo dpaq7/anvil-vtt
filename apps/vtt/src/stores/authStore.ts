@@ -1,10 +1,10 @@
 import { create } from 'zustand';
+import { csrfHeaders, setCsrfToken } from '../lib/csrf.js';
 
 type UserRole = 'director' | 'player';
 
 interface AuthUser {
   id: string;
-  discordId: string;
   username: string;
   avatarUrl: string | null;
   role: UserRole;
@@ -31,12 +31,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ loading: true, error: null });
       const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' });
       if (res.ok) {
-        const data = (await res.json()) as { user: AuthUser };
+        const data = (await res.json()) as { user: AuthUser; csrfToken?: string };
+        setCsrfToken(data.csrfToken ?? null);
         set({ user: data.user, loading: false });
       } else {
+        setCsrfToken(null);
         set({ user: null, loading: false });
       }
     } catch {
+      setCsrfToken(null);
       set({ user: null, loading: false, error: 'Failed to check auth' });
     }
   },
@@ -46,8 +49,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
+        headers: csrfHeaders('POST'),
       });
     } finally {
+      setCsrfToken(null);
       set({ user: null });
     }
   },
@@ -55,7 +60,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setRole: async (role: UserRole) => {
     const res = await fetch(`${API_BASE}/api/auth/role`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders('PATCH') },
       credentials: 'include',
       body: JSON.stringify({ role }),
     });

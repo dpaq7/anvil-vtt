@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
-import { WizardLogic } from '@anvil/data';
-import type { CharacterInProgress, Characteristics } from '@anvil/data';
-import type { HeroClass } from '@anvil/types';
-import { cn, Button } from '@anvil/ui';
-import { Sparkles, RotateCcw, Check } from 'lucide-react';
+import { useMemo } from "react";
+import { WizardLogic } from "@anvil/data";
+import type { CharacterInProgress, Characteristics } from "@anvil/data";
+import type { HeroClass } from "@anvil/types";
+import { cn, Button } from "@anvil/ui";
+import { Sparkles, RotateCcw, Check } from "lucide-react";
 
 interface Props {
   character: CharacterInProgress;
@@ -12,7 +12,13 @@ interface Props {
 
 type CharacteristicName = keyof Characteristics;
 
-const CHARACTERISTIC_NAMES: CharacteristicName[] = ['might', 'agility', 'reason', 'intuition', 'presence'];
+const CHARACTERISTIC_NAMES: CharacteristicName[] = [
+  "might",
+  "agility",
+  "reason",
+  "intuition",
+  "presence",
+];
 
 // The standard array values to assign
 const STANDARD_ARRAY = [2, 2, 1, 0, -1];
@@ -22,17 +28,17 @@ const AVAILABLE_VALUES = [2, 2, 1, 0, -1];
 
 // Class potency characteristics (the characteristics each class cares about most)
 const CLASS_POTENCY: Record<HeroClass, CharacteristicName[]> = {
-  beastheart: ['might', 'intuition'],
-  censor: ['might', 'presence'],
-  conduit: ['intuition'],
-  elementalist: ['reason'],
-  fury: ['might', 'agility'],
-  null: ['agility', 'intuition'],
-  shadow: ['agility'],
-  summoner: ['reason'],
-  tactician: ['might', 'reason'],
-  talent: ['reason', 'presence'],
-  troubadour: ['agility', 'presence'],
+  beastheart: ["might", "intuition"],
+  censor: ["might", "presence"],
+  conduit: ["intuition"],
+  elementalist: ["reason"],
+  fury: ["might", "agility"],
+  null: ["agility", "intuition"],
+  shadow: ["agility"],
+  summoner: ["reason"],
+  tactician: ["might", "reason"],
+  talent: ["reason", "presence"],
+  troubadour: ["agility", "presence"],
 };
 
 // Recommended arrays per class (puts highest values in potency characteristics)
@@ -89,14 +95,17 @@ function getAvailableValues(chars: Characteristics): number[] {
 
 // Check if current assignment is valid (uses exactly the standard array)
 function isValidAssignment(chars: Characteristics): boolean {
-  const values = CHARACTERISTIC_NAMES.map((n) => chars[n]).sort((a, b) => b - a);
+  const values = CHARACTERISTIC_NAMES.map((n) => chars[n]).sort(
+    (a, b) => b - a,
+  );
   const target = [...STANDARD_ARRAY].sort((a, b) => b - a);
   return values.every((v, i) => v === target[i]);
 }
 
 export function CharacteristicsStep({ character, onChange }: Props) {
   const heroClass = character.heroClass as HeroClass | null;
-  const chars = character.characteristics ?? WizardLogic.createDefaultCharacteristics();
+  const chars =
+    character.characteristics ?? WizardLogic.createDefaultCharacteristics();
 
   // Get potency characteristics for current class
   const potencyChars = useMemo(() => {
@@ -162,7 +171,10 @@ export function CharacteristicsStep({ character, onChange }: Props) {
   };
 
   // Check if a value button should be enabled
-  const isValueAvailable = (characteristic: CharacteristicName, value: number): boolean => {
+  const isValueAvailable = (
+    characteristic: CharacteristicName,
+    value: number,
+  ): boolean => {
     // Always allow selecting current value (to toggle off)
     if (chars[characteristic] === value) return true;
 
@@ -184,13 +196,16 @@ export function CharacteristicsStep({ character, onChange }: Props) {
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Assign Characteristics</h2>
         <p className="mb-4 text-sm text-zinc-400">
-          Click to assign values from the standard array: <strong>+2, +2, +1, 0, -1</strong>
+          Click to assign values from the standard array:{" "}
+          <strong>+2, +2, +1, 0, -1</strong>
           {potencyChars.length > 0 && (
             <>
-              {' '}
-              — Your class benefits most from{' '}
-              <span className="text-amber-400">
-                {potencyChars.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(' & ')}
+              {" "}
+              — Your class benefits most from{" "}
+              <span className="text-creator-highlight">
+                {potencyChars
+                  .map((c) => c.charAt(0).toUpperCase() + c.slice(1))
+                  .join(" & ")}
               </span>
             </>
           )}
@@ -231,24 +246,24 @@ export function CharacteristicsStep({ character, onChange }: Props) {
             <div
               key={name}
               className={cn(
-                'flex items-center gap-4 p-3 rounded-lg border transition',
+                "flex items-center gap-4 p-3 rounded-lg border transition",
                 isPotency
-                  ? 'border-amber-700/50 bg-amber-900/10'
-                  : 'border-zinc-700 bg-zinc-900/30'
+                  ? "border-creator-highlight/50 bg-creator-highlight/10"
+                  : "border-zinc-700 bg-zinc-900/30",
               )}
             >
               {/* Characteristic Name */}
               <div className="w-28 flex items-center gap-2">
                 <span
                   className={cn(
-                    'text-sm font-medium capitalize',
-                    isPotency ? 'text-amber-400' : 'text-zinc-300'
+                    "text-sm font-medium capitalize",
+                    isPotency ? "text-creator-highlight" : "text-zinc-300",
                   )}
                 >
                   {name}
                 </span>
                 {isPotency && (
-                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  <Sparkles className="h-3.5 w-3.5 text-creator-highlight" />
                 )}
               </div>
 
@@ -264,12 +279,12 @@ export function CharacteristicsStep({ character, onChange }: Props) {
                       onClick={() => assignValue(name, value)}
                       disabled={!isAvailable && !isSelected}
                       className={cn(
-                        'w-12 h-10 rounded-lg border text-sm font-bold transition',
+                        "w-12 h-10 rounded-lg border text-sm font-bold transition",
                         isSelected
-                          ? 'border-blue-500 bg-blue-500/20 text-blue-400'
+                          ? "border-blue-500 bg-blue-500/20 text-blue-400"
                           : isAvailable
-                            ? 'border-zinc-600 bg-zinc-800/50 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-700/50'
-                            : 'border-zinc-800 bg-zinc-900/50 text-zinc-600 cursor-not-allowed'
+                            ? "border-zinc-600 bg-zinc-800/50 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-700/50"
+                            : "border-zinc-800 bg-zinc-900/50 text-zinc-600 cursor-not-allowed",
                       )}
                     >
                       {value >= 0 ? `+${value}` : value}
@@ -282,8 +297,12 @@ export function CharacteristicsStep({ character, onChange }: Props) {
               <div className="ml-auto flex items-center gap-2">
                 <span
                   className={cn(
-                    'w-10 text-center text-lg font-bold',
-                    currentValue > 0 ? 'text-green-400' : currentValue < 0 ? 'text-red-400' : 'text-zinc-500'
+                    "w-10 text-center text-lg font-bold",
+                    currentValue > 0
+                      ? "text-green-400"
+                      : currentValue < 0
+                        ? "text-red-400"
+                        : "text-zinc-500",
                   )}
                 >
                   {currentValue >= 0 ? `+${currentValue}` : currentValue}
@@ -298,12 +317,12 @@ export function CharacteristicsStep({ character, onChange }: Props) {
       <div className="flex-shrink-0 mt-4 pt-3 border-t border-zinc-800">
         <div className="flex items-center justify-between">
           <div className="text-xs text-zinc-500">
-            Available values:{' '}
+            Available values:{" "}
             {availableValues.length > 0 ? (
               availableValues.map((v, i) => (
                 <span key={i} className="font-mono">
                   {v >= 0 ? `+${v}` : v}
-                  {i < availableValues.length - 1 ? ', ' : ''}
+                  {i < availableValues.length - 1 ? ", " : ""}
                 </span>
               ))
             ) : (
@@ -312,7 +331,10 @@ export function CharacteristicsStep({ character, onChange }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-zinc-500">
-              Total: <span className="font-mono">{total >= 0 ? `+${total}` : total}</span>
+              Total:{" "}
+              <span className="font-mono">
+                {total >= 0 ? `+${total}` : total}
+              </span>
             </span>
             {isComplete && (
               <span className="flex items-center gap-1 text-xs text-green-400">

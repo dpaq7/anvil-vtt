@@ -22,11 +22,22 @@ const TERRAIN_COLORS: Record<string, number> = {
 };
 
 export class TerrainLayer extends Container {
-  private zones = new Map<string, Container>();
+  private zones = new Map<string, { container: Container; zone: TerrainZoneData }>();
+  private preview: Graphics | null = null;
   private cellSize = 64;
 
   setCellSize(size: number): void {
+    if (this.cellSize === size) return;
+    const zones = [...this.zones.values()].map((entry) => entry.zone);
     this.cellSize = size;
+    if (zones.length > 0) {
+      for (const [, entry] of this.zones) {
+        this.removeChild(entry.container);
+        entry.container.destroy({ children: true });
+      }
+      this.zones.clear();
+      this.sync(zones);
+    }
   }
 
   /** Replace all terrain zones with the given array */
@@ -34,22 +45,37 @@ export class TerrainLayer extends Container {
     const newIds = new Set(zones.map((z) => z.id));
 
     // Remove stale
-    for (const [id, container] of this.zones) {
+    for (const [id, entry] of this.zones) {
       if (!newIds.has(id)) {
-        this.removeChild(container);
-        container.destroy({ children: true });
+        this.removeChild(entry.container);
+        entry.container.destroy({ children: true });
         this.zones.delete(id);
       }
     }
 
-    // Add new (don't re-render existing — positions don't change after placement)
     for (const zone of zones) {
-      if (!this.zones.has(zone.id)) {
+      const existing = this.zones.get(zone.id);
+      if (!existing || this.zoneChanged(existing.zone, zone)) {
+        if (existing) {
+          this.removeChild(existing.container);
+          existing.container.destroy({ children: true });
+        }
         const container = this.renderZone(zone);
         this.addChild(container);
-        this.zones.set(zone.id, container);
+        this.zones.set(zone.id, { container, zone });
       }
     }
+  }
+
+
+  private zoneChanged(a: TerrainZoneData, b: TerrainZoneData): boolean {
+    return a.terrainId !== b.terrainId ||
+      a.name !== b.name ||
+      a.x !== b.x ||
+      a.y !== b.y ||
+      a.w !== b.w ||
+      a.h !== b.h ||
+      a.color !== b.color;
   }
 
   private renderZone(zone: TerrainZoneData): Container {
@@ -101,10 +127,10 @@ export class TerrainLayer extends Container {
 
   /** Remove a single terrain zone */
   remove(id: string): void {
-    const container = this.zones.get(id);
-    if (container) {
-      this.removeChild(container);
-      container.destroy({ children: true });
+    const entry = this.zones.get(id);
+    if (entry) {
+      this.removeChild(entry.container);
+      entry.container.destroy({ children: true });
       this.zones.delete(id);
     }
   }
@@ -113,11 +139,12 @@ export class TerrainLayer extends Container {
   getZoneAt(gridX: number, gridY: number): string | null {
     // Search in reverse so top-most zone wins
     const entries = [...this.zones.entries()].reverse();
-    for (const [id, container] of entries) {
-      const zoneX = container.x / this.cellSize;
-      const zoneY = container.y / this.cellSize;
-      const zoneW = container.width / this.cellSize;
-      const zoneH = container.height / this.cellSize;
+    for (const [id, entry] of entries) {
+      const { zone } = entry;
+      const zoneX = zone.x;
+      const zoneY = zone.y;
+      const zoneW = zone.w;
+      const zoneH = zone.h;
       if (gridX >= zoneX && gridX < zoneX + zoneW && gridY >= zoneY && gridY < zoneY + zoneH) {
         return id;
       }
@@ -126,10 +153,30 @@ export class TerrainLayer extends Container {
   }
 
   clear(): void {
-    for (const [, container] of this.zones) {
-      this.removeChild(container);
-      container.destroy({ children: true });
+    for (const [, entry] of this.zones) {
+      this.removeChild(entry.container);
+      entry.container.destroy({ children: true });
     }
     this.zones.clear();
+    this.clearPreview();
+  }
+
+  previewZone(gridX: number, gridY: number, w: number, h: number, color: number = TERRAIN_COLORS['default']!): void {
+    if (!this.preview) {
+      this.preview = new Graphics();
+      this.addChild(this.preview);
+    }
+    this.preview.clear();
+    this.preview.rect(gridX * this.cellSize, gridY * this.cellSize, w * this.cellSize, h * this.cellSize);
+    this.preview.fill({ color, alpha: 0.18 });
+    this.preview.stroke({ width: 2, color, alpha: 0.85 });
+  }
+
+  clearPreview(): void {
+    if (this.preview) {
+      this.removeChild(this.preview);
+      this.preview.destroy();
+      this.preview = null;
+    }
   }
 }

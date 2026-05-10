@@ -5,6 +5,9 @@ export interface Env {
   DISCORD_CLIENT_ID: string;
   DISCORD_CLIENT_SECRET: string;
   DISCORD_REDIRECT_URI: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_REDIRECT_URI: string;
   SESSION_SECRET: string;
   FRONTEND_URL: string;
   ENVIRONMENT: string;
@@ -14,7 +17,6 @@ export type UserRole = 'director' | 'player';
 
 export interface AuthUser {
   id: string;
-  discordId: string;
   username: string;
   avatarUrl: string | null;
   role: UserRole;

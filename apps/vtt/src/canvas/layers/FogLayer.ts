@@ -34,7 +34,9 @@ export class FogLayer extends Container {
   }
 
   setCellSize(size: number): void {
+    if (this.cellSize === size) return;
     this.cellSize = size;
+    this.redraw();
   }
 
   /** Set whether the director is viewing (50% opacity) or a player (100% opaque) */
@@ -108,6 +110,18 @@ export class FogLayer extends Container {
       }
     }
     return null;
+  }
+
+  /** Hit-test all fog zones intersecting a rectangular brush in grid cells. */
+  getZonesInRect(gridX: number, gridY: number, w: number, h: number): string[] {
+    const ids: string[] = [];
+    const right = gridX + w;
+    const bottom = gridY + h;
+    for (const z of this.zones) {
+      const intersects = gridX < z.x + z.w && right > z.x && gridY < z.y + z.h && bottom > z.y;
+      if (intersects) ids.push(z.id);
+    }
+    return ids;
   }
 
   /** Hide fog entirely */

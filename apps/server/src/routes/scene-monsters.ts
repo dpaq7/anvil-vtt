@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
-import type { AppEnv } from '../types.js';
+import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireSceneDirector, requireSceneMember } from '../lib/access.js';
 import type { AddSceneMonstersInput, SceneMonster } from '@anvil/types';
 
 export const sceneMonsterRoutes = new Hono<AppEnv>();
@@ -31,7 +32,10 @@ function rowToSceneMonster(row: SceneMonsterRow): SceneMonster {
 
 // List monsters in a scene
 sceneMonsterRoutes.get('/scenes/:sceneId/monsters', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
+  const accessError = await requireSceneMember(c, sceneId, user);
+  if (accessError) return accessError;
 
   const results = await c.env.DB.prepare(
     'SELECT * FROM scene_monsters WHERE scene_id = ? ORDER BY created_at DESC',
@@ -44,7 +48,11 @@ sceneMonsterRoutes.get('/scenes/:sceneId/monsters', async (c) => {
 
 // Add monster(s) to a scene
 sceneMonsterRoutes.post('/scenes/:sceneId/monsters', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<AddSceneMonstersInput>();
 
   if (!body.monsterName?.trim()) return c.json({ error: 'Monster name is required' }, 400);
@@ -68,8 +76,11 @@ sceneMonsterRoutes.post('/scenes/:sceneId/monsters', async (c) => {
 
 // Remove a monster entry from a scene
 sceneMonsterRoutes.delete('/scenes/:sceneId/monsters/:entryId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('sceneId');
   const entryId = c.req.param('entryId');
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
 
   const existing = await c.env.DB.prepare(
     'SELECT id FROM scene_monsters WHERE id = ? AND scene_id = ?',

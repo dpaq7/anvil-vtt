@@ -1,11 +1,15 @@
+import { csrfHeaders } from './csrf.js';
+
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = options?.method ?? 'GET';
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...csrfHeaders(method),
       ...options?.headers,
     },
   });
@@ -23,7 +27,7 @@ async function putRaw(path: string, data: ArrayBuffer, contentType: string): Pro
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'PUT',
     credentials: 'include',
-    headers: { 'Content-Type': contentType },
+    headers: { 'Content-Type': contentType || 'application/octet-stream', ...csrfHeaders('PUT') },
     body: data,
   });
 

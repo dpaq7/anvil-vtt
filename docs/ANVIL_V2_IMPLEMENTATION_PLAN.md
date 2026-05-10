@@ -10,7 +10,7 @@
 - `@anvil/data` — Complete (20+ logic modules, GameData API, compendium, rules data)
 - `@anvil/ui`, `@anvil/vtt`, `@anvil/server` — Stubs
 - **Sync strategy**: WebSocket + last-write-wins (NO CRDTs)
-- **Auth strategy**: Discord OAuth + D1 sessions (Cloudflare only, no Supabase)
+- **Auth strategy**: Discord/Google OAuth + provider-neutral D1 identities and sessions (Cloudflare only, no Supabase)
 
 ---
 
@@ -29,7 +29,7 @@ These are non-negotiable based on production VTT research:
 
 ## Phase 1: Foundation (Infrastructure + Design System)
 
-**Goal**: Running Vite app with Discord auth, routing, dark theme, deployed Cloudflare Worker with D1 schema and R2 bucket.
+**Goal**: Running Vite app with OAuth auth, routing, dark theme, deployed Cloudflare Worker with D1 schema and R2 bucket.
 
 ### Deliverables
 
@@ -38,7 +38,8 @@ SQL migrations for all tables:
 
 ```sql
 -- Auth
-users (id, discord_id UNIQUE, username, avatar_url, created_at, updated_at)
+users (id, username, avatar_url, role, created_at, updated_at)
+user_identities (user_id FK, provider, provider_user_id, email, created_at, updated_at)
 sessions (id, user_id FK, expires_at, created_at)
 
 -- Campaigns
@@ -62,18 +63,20 @@ assets (id, user_id FK, name, type ENUM, storage_key, thumbnail_key, width, heig
 #### 1.2 Cloudflare Worker
 - Hono router in `apps/server/src/index.ts`
 - `wrangler.toml` with D1, R2, and Durable Object bindings
-- Environment variables for Discord OAuth secrets
+- Environment variables for Discord and Google OAuth secrets
 - CORS configuration for local dev
 
-#### 1.3 Discord OAuth (Cloudflare Only)
+#### 1.3 OAuth (Cloudflare Only)
 Routes:
 - `GET /api/auth/discord` — Redirect to Discord OAuth
+- `GET /api/auth/google` — Redirect to Google OAuth
 - `GET /api/auth/callback` — Exchange code, upsert user, create session, set cookie
+- `GET /api/auth/google/callback` — Exchange code, upsert user, create session, set cookie
 - `POST /api/auth/logout` — Delete session, clear cookie
 - `GET /api/auth/me` — Return current user from session cookie
 
 Implementation:
-- D1 tables: `users`, `sessions`
+- D1 tables: `users`, `user_identities`, `sessions`
 - HttpOnly session cookie (7 day expiry)
 - Auth middleware for protected API routes
 - Session cleanup (expired sessions)
@@ -97,7 +100,7 @@ Implementation:
 
 #### 1.7 Landing Page
 - Simple marketing page at `/`
-- "Login with Discord" CTA
+- OAuth login CTAs
 - Brief product description
 
 #### 1.8 R2 Bucket Setup
@@ -111,7 +114,7 @@ apps/server/
 ├── src/
 │   ├── index.ts                    # Hono entry
 │   ├── routes/
-│   │   └── auth.ts                 # Discord OAuth routes
+│   │   └── auth.ts                 # OAuth routes
 │   └── middleware/
 │       └── auth.ts                 # Session validation middleware
 ├── migrations/
@@ -155,7 +158,7 @@ packages/ui/src/
 - [ ] `pnpm typecheck` passes
 - [ ] Worker responds at `http://localhost:8787/api/health`
 - [ ] App loads at `http://localhost:5173`
-- [ ] Discord OAuth flow: click login → Discord → callback → redirected to `/app`
+- [ ] Discord and Google OAuth flows: click login → provider → callback → redirected to `/app`
 - [ ] Protected routes redirect to `/auth` when not logged in
 - [ ] Session persists across page refresh
 - [ ] Logout clears session

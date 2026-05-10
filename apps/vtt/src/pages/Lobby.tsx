@@ -43,12 +43,12 @@ export function Lobby() {
     api.get<HeroSummary[]>('/api/heroes').then(setHeroes).catch(() => {});
   }, [isDirector]);
 
-  // Navigate to session when session_started fires
+  // Navigate to session when the lobby transitions to active.
   useEffect(() => {
-    if (sessionStarted && id) {
+    if ((sessionStarted || session?.status === 'active') && id) {
       navigate(`/app/session/${id}`);
     }
-  }, [sessionStarted, id, navigate]);
+  }, [sessionStarted, session?.status, id, navigate]);
 
   // Toggle ready via WebSocket
   const toggleReady = () => {
@@ -146,7 +146,12 @@ export function Lobby() {
                   ))}
                 </select>
               </div>
-              <Button onClick={toggleReady} variant={ready ? 'default' : 'outline'} className="w-full">
+              <Button
+                onClick={toggleReady}
+                variant={ready ? 'default' : 'outline'}
+                className="w-full"
+                disabled={!selectedHeroId}
+              >
                 {ready ? 'Ready!' : 'Mark Ready'}
               </Button>
             </div>

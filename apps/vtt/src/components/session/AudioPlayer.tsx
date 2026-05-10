@@ -99,7 +99,6 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
       audio.load();
     };
     // Only re-create when track identity changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id, track?.audioUrl, track?.assetId]);
 
   // Sync volume

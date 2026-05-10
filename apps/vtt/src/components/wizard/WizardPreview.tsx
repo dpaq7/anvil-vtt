@@ -1,8 +1,23 @@
 import type { CharacterInProgress, DerivedStats } from '@anvil/data';
-import { WizardLogic } from '@anvil/data';
+import { GameData, WizardLogic } from '@anvil/data';
 
 interface Props {
   character: CharacterInProgress;
+}
+
+function getCultureDisplay(character: CharacterInProgress): string | null {
+  const environment = character.culture.environment
+    ? GameData.getCulturesByType('environment').find((item) => item.id === character.culture.environment)?.name
+    : null;
+  const organization = character.culture.organization
+    ? GameData.getCulturesByType('organization').find((item) => item.id === character.culture.organization)?.name
+    : null;
+  const upbringing = character.culture.upbringing
+    ? GameData.getCulturesByType('upbringing').find((item) => item.id === character.culture.upbringing)?.name
+    : null;
+
+  const parts = [environment, organization, upbringing].filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : null;
 }
 
 export function WizardPreview({ character }: Props) {
@@ -12,26 +27,51 @@ export function WizardPreview({ character }: Props) {
     stats = WizardLogic.calculateDerivedStats(character);
   }
 
+  const ancestryName = character.ancestry
+    ? GameData.getAncestry(character.ancestry)?.name ?? character.ancestry
+    : null;
+  const className = character.heroClass
+    ? GameData.getClass(character.heroClass)?.name ?? character.heroClass
+    : null;
+  const subclassName = character.subclass && character.heroClass
+    ? (Array.isArray(character.subclass) ? character.subclass : [character.subclass])
+        .map((id) => GameData.getSubclass(character.heroClass!, id)?.name ?? id)
+        .join(', ')
+    : null;
+  const careerName = character.career
+    ? GameData.getCareer(character.career)?.name ?? character.career
+    : null;
+  const cultureDisplay = getCultureDisplay(character);
+  const complicationName = character.complication?.name ?? null;
+  const kitName = character.kit
+    ? GameData.getKit(character.kit)?.name ?? character.kit
+    : null;
+  const selectedSkills = WizardLogic.getSelectedSkillNames(character);
+  const selectedAbilities = character.selectedAbilities.map((abilityId) => {
+    const slug = abilityId.includes(':') ? abilityId.split(':').pop() ?? abilityId : abilityId;
+    const ability = GameData.getByScc(abilityId) ?? GameData.getAbility(abilityId) ?? GameData.getAbility(slug);
+    return ability?.name ?? slug;
+  });
+
   return (
     <div className="flex flex-col gap-4 text-sm">
       <h3 className="font-semibold text-zinc-200">
         {character.name || 'Unnamed Hero'}
       </h3>
 
-      {character.ancestry && (
-        <Field label="Ancestry" value={character.ancestry} />
+      {ancestryName && (
+        <Field label="Ancestry" value={ancestryName} />
       )}
-      {character.heroClass && (
-        <Field label="Class" value={character.heroClass} />
+      {cultureDisplay && <Field label="Culture" value={cultureDisplay} />}
+      {className && (
+        <Field label="Class" value={className} />
       )}
-      {character.subclass && (
-        <Field
-          label="Subclass"
-          value={Array.isArray(character.subclass) ? character.subclass.join(', ') : character.subclass}
-        />
+      {subclassName && (
+        <Field label="Subclass" value={subclassName} />
       )}
-      {character.career && <Field label="Career" value={character.career} />}
-      {character.kit && <Field label="Kit" value={character.kit} />}
+      {careerName && <Field label="Career" value={careerName} />}
+      {complicationName && <Field label="Complication" value={complicationName} />}
+      {kitName && <Field label="Kit" value={kitName} />}
 
       {character.characteristics && (
         <div>
@@ -57,17 +97,17 @@ export function WizardPreview({ character }: Props) {
         </div>
       )}
 
-      {character.selectedSkills.length > 0 && (
+      {selectedSkills.length > 0 && (
         <div>
           <span className="text-zinc-500">Skills</span>
-          <p className="text-zinc-300">{character.selectedSkills.join(', ')}</p>
+          <p className="text-zinc-300">{selectedSkills.join(', ')}</p>
         </div>
       )}
 
-      {character.selectedAbilities.length > 0 && (
+      {selectedAbilities.length > 0 && (
         <div>
           <span className="text-zinc-500">Abilities</span>
-          <p className="text-zinc-300">{character.selectedAbilities.length} selected</p>
+          <p className="text-zinc-300">{selectedAbilities.join(', ')}</p>
         </div>
       )}
     </div>

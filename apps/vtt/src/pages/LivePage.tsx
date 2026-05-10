@@ -51,10 +51,10 @@ export function LivePage() {
   };
 
   /** Director: Go Live on a session. */
-  const handleGoLive = async (sessionId: string, _sceneId: string | null) => {
+  const handleGoLive = async (sessionId: string, sceneId: string | null) => {
     try {
       const roomCode = generateRoomCode();
-      await api.put(`/api/sessions/${sessionId}/go-live`, { roomCode });
+      await api.put(`/api/sessions/${sessionId}/go-live`, { roomCode, sceneId });
       navigate(`/app/session/${sessionId}/lobby`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to go live');

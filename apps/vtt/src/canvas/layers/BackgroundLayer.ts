@@ -9,6 +9,15 @@ export class BackgroundLayer extends Container {
   private bg: Sprite | null = null;
   private loadingUrl: string | null = null;
 
+  private shouldUseCors(url: string): boolean {
+    try {
+      const parsed = new URL(url, window.location.href);
+      return parsed.origin !== window.location.origin;
+    } catch {
+      return true;
+    }
+  }
+
   setImage(
     url: string | null,
     onLoaded?: (info: ImageLoadedInfo) => void,
@@ -31,7 +40,7 @@ export class BackgroundLayer extends Container {
     // correct parser. Our asset URLs (/api/assets/{id}/data) have no
     // extension, so we load the image directly and build a Texture from it.
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (this.shouldUseCors(url)) img.crossOrigin = 'anonymous';
     img.onload = () => {
       // Guard against stale loads (URL changed while loading) or destroyed layer
       if (this.loadingUrl !== url || this.destroyed) return;
@@ -46,6 +55,8 @@ export class BackgroundLayer extends Container {
 
       // Render at the image's native pixel dimensions — no stretching
       this.bg = new Sprite(texture);
+      this.bg.width = img.naturalWidth;
+      this.bg.height = img.naturalHeight;
       this.addChild(this.bg);
 
       // Notify caller of natural dimensions after sprite is created

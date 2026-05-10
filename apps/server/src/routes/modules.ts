@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignMember } from '../lib/access.js';
 
 export const moduleRoutes = new Hono<AppEnv>();
 
@@ -8,7 +9,11 @@ moduleRoutes.use('/*', authMiddleware);
 
 // List modules for a campaign
 moduleRoutes.get('/campaigns/:campaignId/modules', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const accessError = await requireCampaignMember(c, campaignId, user);
+  if (accessError) return accessError;
+
   const results = await c.env.DB.prepare(
     'SELECT * FROM modules WHERE campaign_id = ? ORDER BY order_index',
   )

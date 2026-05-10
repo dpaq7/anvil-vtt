@@ -1,6 +1,16 @@
 import { DurableObject } from 'cloudflare:workers';
+import {
+  AbilityLogic,
+  ConditionLogic,
+  GameData,
+  HeroLogic,
+  KitLogic,
+  RollLogic,
+  UniversalActions,
+} from '@anvil/data';
 import type { Env } from '../types.js';
 import type {
+  CharacteristicId,
   ClientMessage,
   ServerMessage,
   SessionState,
@@ -8,9 +18,27 @@ import type {
   SceneRef,
   CombatAction,
   CombatState,
+  TurnActionState,
   AbilityResult,
+  ActionLogEntry,
+  TokenActionEffect,
+  TokenActionPowerRoll,
+  TokenActionRequest,
+  TokenActionResult,
+  DrawSteelDieResult,
+  DrawSteelRollRequest,
+  DrawSteelRollResult,
+  SceneActionLogType,
   DrawingSync,
   FogSync,
+  TerrainSync,
+  NegotiationLiveState,
+  MontageLiveState,
+  RespiteLiveState,
+  AudioLiveState,
+  ArgumentLogEntry,
+  TestLogEntry,
+  RespiteActivityState,
 } from '../protocol.js';
 
 interface ConnectionMeta {
@@ -23,6 +51,86 @@ interface ConnectionMeta {
   sessionId: string;
   campaignId: string | null;
 }
+
+interface HeroEntityRow {
+  id: string;
+  name: string;
+  user_id: string;
+  ancestry: string | null;
+  hero_class: string | null;
+  subclass: string | null;
+  level: number;
+  characteristics: string | null;
+  kit: string | null;
+  abilities: string | null;
+  portrait_url: string | null;
+  data: string | null;
+}
+
+interface AbilityEffectLike {
+  roll?: string;
+  effect?: string;
+  tier1?: string;
+  tier2?: string;
+  tier3?: string;
+}
+
+interface AbilityLike {
+  id?: string;
+  name?: string;
+  usage?: string;
+  cost?: string;
+  cost_amount?: number;
+  cost_resource?: string;
+  distance?: string;
+  target?: string;
+  keywords?: string[];
+  effects?: AbilityEffectLike[];
+  feature_type?: string;
+  metadata?: {
+    item_id?: string;
+    scc?: string[];
+    cost_amount?: number;
+    cost_resource?: string;
+  };
+}
+
+interface RuntimeAbility {
+  id: string;
+  name: string;
+  keywords: string[];
+  actionType: string;
+  distance: string;
+  damage: string;
+  cost: string;
+  tier1Effect: string;
+  tier2Effect: string;
+  tier3Effect: string;
+}
+
+interface SceneLiveSnapshot {
+  data?: Record<string, unknown>;
+  entities?: SessionEntity[];
+  combat?: CombatState | null;
+  negotiation?: NegotiationLiveState | null;
+  montage?: MontageLiveState | null;
+  respite?: RespiteLiveState | null;
+  audio?: AudioLiveState | null;
+  actionLog?: ActionLogEntry[];
+  savedAt?: string;
+}
+
+interface HydratedSceneRef extends SceneRef {
+  preparedData: Record<string, unknown>;
+  snapshot: SceneLiveSnapshot | null;
+}
+
+type SessionEntity = SessionState['entities'][number];
+type ConditionName = ReturnType<typeof ConditionLogic.getAllConditionNames>[number];
+
+const CHARACTERISTIC_IDS = ['might', 'agility', 'reason', 'intuition', 'presence'] as const;
+const VALID_CONDITIONS = new Set<string>(ConditionLogic.getAllConditionNames());
+const MAX_ACTION_LOG_ENTRIES = 200;
 
 /**
  * Encode connection metadata as multiple short tags (each ≤256 chars).
@@ -69,10 +177,134 @@ function decodeTags(tags: string[]): ConnectionMeta | null {
   };
 }
 
+
+function parseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function resolveAbility(abilityId: string): AbilityLike | undefined {
+  const slug = abilityId.includes(':') ? abilityId.split(':').pop() ?? abilityId : abilityId;
+  return (
+    (GameData.getByScc(abilityId) as AbilityLike | undefined) ??
+    (GameData.getAbility(abilityId) as AbilityLike | undefined) ??
+    (GameData.getAbility(slug) as AbilityLike | undefined) ??
+    (GameData.getFeature(abilityId) as AbilityLike | undefined) ??
+    (GameData.getFeature(slug) as AbilityLike | undefined) ??
+    ((GameData.getAllAbilities() as AbilityLike[]).find((candidate) =>
+      candidate.metadata?.item_id === abilityId ||
+      candidate.metadata?.item_id === slug ||
+      candidate.metadata?.scc?.includes(abilityId)
+    ))
+  );
+}
+
+function normalizeActionType(usage: string | undefined): RuntimeAbility['actionType'] {
+  const value = usage?.toLowerCase() ?? '';
+  if (value.includes('free')) return 'free';
+  if (value.includes('maneuver')) return 'maneuver';
+  if (value.includes('triggered')) return 'triggered';
+  if (value.includes('move')) return 'move';
+  return 'action';
+}
+
+function getTierText(effect: AbilityEffectLike | undefined, tier: 1 | 2 | 3): string {
+  if (!effect) return '';
+  if (tier === 1) return effect.tier1 ?? effect.effect ?? '';
+  if (tier === 2) return effect.tier2 ?? effect.effect ?? '';
+  return effect.tier3 ?? effect.effect ?? '';
+}
+
+function extractDamage(effectText: string): number {
+  const match = /(\d+)(?:\s+\w+)*\s+damage/i.exec(effectText);
+  return match?.[1] ? Number.parseInt(match[1], 10) : 0;
+}
+
+function firstTieredEffect(ability: AbilityLike | undefined): AbilityEffectLike | undefined {
+  return ability?.effects?.find((effect) => effect.tier1 || effect.tier2 || effect.tier3);
+}
+
+function summarizeDamage(ability: AbilityLike | undefined): string {
+  const effect = firstTieredEffect(ability);
+  const values = [effect?.tier1, effect?.tier2, effect?.tier3]
+    .map((text) => extractDamage(text ?? ''))
+    .filter((damage) => damage > 0);
+  if (values.length === 0) return '';
+  return `${Array.from(new Set(values)).join('/')} damage`;
+}
+
+function toRuntimeAbility(abilityId: string, abilityOverride?: AbilityLike): RuntimeAbility {
+  const ability = abilityOverride ?? resolveAbility(abilityId);
+  const effect = firstTieredEffect(ability);
+  return {
+    id: abilityId,
+    name: ability?.name ?? abilityId,
+    keywords: ability?.keywords ?? [],
+    actionType: normalizeActionType(ability?.usage),
+    distance: ability?.distance ?? '',
+    damage: summarizeDamage(ability),
+    cost: ability?.cost ?? '',
+    tier1Effect: effect?.tier1 ?? '',
+    tier2Effect: effect?.tier2 ?? '',
+    tier3Effect: effect?.tier3 ?? '',
+  };
+}
+
+function findSourceFeature(source: Record<string, unknown>, abilityId: string): AbilityLike | undefined {
+  const features = Array.isArray(source['features']) ? source['features'] as AbilityLike[] : [];
+  const normalizedId = abilityId.toLowerCase();
+  return features.find((feature) => {
+    const ids = [
+      feature.id,
+      feature.name,
+      feature.metadata?.item_id,
+      ...(feature.metadata?.scc ?? []),
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.toLowerCase());
+    return ids.includes(normalizedId);
+  });
+}
+
+function getResolvedAbilityForSource(source: Record<string, unknown>, abilityId: string): AbilityLike | undefined {
+  return findSourceFeature(source, abilityId) ?? resolveAbility(abilityId);
+}
+
+function getAbilityForSource(source: Record<string, unknown>, abilityId: string): RuntimeAbility {
+  const abilities = Array.isArray(source['abilities']) ? source['abilities'] as RuntimeAbility[] : [];
+  const selected = abilities.find((ability) => ability.id === abilityId);
+  if (selected) return selected;
+  const sourceAbility = getResolvedAbilityForSource(source, abilityId);
+  return toRuntimeAbility(abilityId, sourceAbility);
+}
+
+function getRollModifier(source: Record<string, unknown>): number {
+  const values = ['might', 'agility', 'reason', 'intuition', 'presence']
+    .map((key) => (typeof source[key] === 'number' ? source[key] as number : 0));
+  return Math.max(0, ...values);
+}
+
+function isTargetInRange(source: Record<string, unknown>, target: Record<string, unknown>, distance: string): boolean {
+  const normalized = distance.toLowerCase();
+  if (normalized.includes('self')) return source['id'] === target['id'];
+  const range = /(?:melee|ranged|area|burst|line|cube)\s+(\d+)/i.exec(distance)?.[1];
+  if (!range) return true;
+  const sourceX = typeof source['x'] === 'number' ? source['x'] : 0;
+  const sourceY = typeof source['y'] === 'number' ? source['y'] : 0;
+  const targetX = typeof target['x'] === 'number' ? target['x'] : 0;
+  const targetY = typeof target['y'] === 'number' ? target['y'] : 0;
+  return Math.max(Math.abs(sourceX - targetX), Math.abs(sourceY - targetY)) <= Number.parseInt(range, 10);
+}
+
 export class SessionRoom extends DurableObject<Env> {
   private sessionId: string | null = null;
   private campaignId: string | null = null;
   private sessionState: SessionState | null = null;
+  private mutableConnectionMeta = new WeakMap<WebSocket, ConnectionMeta>();
   /** Guards against concurrent hydration from multiple async webSocketMessage calls. */
   private hydratePromise: Promise<void> | null = null;
 
@@ -82,9 +314,13 @@ export class SessionRoom extends DurableObject<Env> {
    * and after hibernation wake (tag persists, Map is gone).
    */
   private getMetaForSocket(ws: WebSocket): ConnectionMeta | null {
+    const mutableMeta = this.mutableConnectionMeta.get(ws);
+    if (mutableMeta) return mutableMeta;
     const tags = this.ctx.getTags(ws);
     if (tags.length === 0) return null;
-    return decodeTags(tags);
+    const meta = decodeTags(tags);
+    if (meta) this.mutableConnectionMeta.set(ws, meta);
+    return meta;
   }
 
   /**
@@ -105,6 +341,14 @@ export class SessionRoom extends DurableObject<Env> {
 
     if (url.pathname === '/ws') {
       return this.handleWebSocket(request, url);
+    }
+
+    // HTTP endpoint to start session from REST route — broadcasts session_started to lobby clients
+    if (url.pathname === '/start' && request.method === 'POST') {
+      this.broadcast({ type: 'session_started' });
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // HTTP endpoint to end session from outside the WebSocket (e.g. LivePage)
@@ -153,6 +397,8 @@ export class SessionRoom extends DurableObject<Env> {
       campaignId: campaignId ?? null,
     };
 
+    this.mutableConnectionMeta.set(server, meta);
+
     // Accept with tags — tags persist across hibernation, unlike in-memory state
     this.ctx.acceptWebSocket(server, encodeTags(meta));
 
@@ -195,14 +441,53 @@ export class SessionRoom extends DurableObject<Env> {
         break;
 
       case 'ready':
+        await this.env.DB.prepare(
+          `UPDATE session_participants
+           SET status = ?, ready_at = CASE WHEN ? THEN datetime('now') ELSE NULL END
+           WHERE game_session_id = ? AND user_id = ?`,
+        )
+          .bind(msg.ready ? 'ready' : 'joined', msg.ready ? 1 : 0, meta.sessionId, meta.userId)
+          .run();
         this.updateTag(ws, { ...meta, ready: msg.ready });
         this.broadcastParticipants();
         break;
 
-      case 'select_hero':
+      case 'select_hero': {
+        const hero = await this.env.DB.prepare('SELECT id FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+          .bind(msg.heroId, meta.userId)
+          .first<{ id: string }>();
+        if (!hero) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_HERO', message: 'Hero not found' });
+          return;
+        }
+
+        await this.env.DB.prepare(
+          `INSERT INTO session_participants (game_session_id, user_id, hero_id, status)
+           VALUES (?, ?, ?, 'joined')
+           ON CONFLICT(game_session_id, user_id) DO UPDATE SET hero_id = excluded.hero_id`,
+        )
+          .bind(meta.sessionId, meta.userId, msg.heroId)
+          .run();
+
+        if (meta.campaignId) {
+          await this.env.DB.prepare('UPDATE campaign_members SET hero_id = ? WHERE campaign_id = ? AND user_id = ?')
+            .bind(msg.heroId, meta.campaignId, meta.userId)
+            .run();
+        }
+
+        if (this.sessionState) {
+          const heroEntities = this.applyHeroStart(
+            await this.loadHeroEntities(meta.sessionId),
+            this.getActiveSceneData() ?? {},
+          );
+          const nonHeroEntities = this.sessionState.entities.filter((entity) => entity.type !== 'hero');
+          this.sessionState.entities = [...heroEntities, ...nonHeroEntities];
+        }
+
         this.updateTag(ws, { ...meta, heroId: msg.heroId });
         this.broadcastParticipants();
         break;
+      }
 
       case 'switch_scene':
         if (meta.role !== 'director') {
@@ -210,9 +495,28 @@ export class SessionRoom extends DurableObject<Env> {
           return;
         }
         if (this.sessionState) {
+          if (!this.sessionState.scenes.some((scene) => scene.id === msg.sceneId)) {
+            this.sendTo(ws, { type: 'error', code: 'INVALID_SCENE', message: 'Scene not found' });
+            return;
+          }
+          await this.persistActiveSceneSnapshot();
           this.sessionState.activeSceneId = msg.sceneId;
+          await this.persistActiveScene(msg.sceneId);
+          this.replaceSceneEntities(msg.sceneId);
+          // Initialize mode-specific live state for the new scene
+          this.initializeSceneLiveState(msg.sceneId);
+          await this.persistActiveSceneSnapshot();
         }
         this.broadcast({ type: 'scene_changed', sceneId: msg.sceneId });
+        if (this.sessionState) this.broadcast({ type: 'state', state: this.sessionState });
+        break;
+
+      case 'revert_scene':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        await this.handleRevertScene(ws, msg.sceneId);
         break;
 
       case 'create_entity':
@@ -230,9 +534,19 @@ export class SessionRoom extends DurableObject<Env> {
       case 'update_entity':
         if (this.sessionState) {
           const entity = this.sessionState.entities.find((e) => e.id === msg.entityId);
-          if (entity) Object.assign(entity, msg.changes);
+          if (!entity) {
+            this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Entity not found' });
+            return;
+          }
+
+          const changes = meta.role === 'director'
+            ? msg.changes
+            : this.sanitizePlayerEntityChanges(ws, meta, entity, msg.changes);
+          if (!changes) return;
+
+          Object.assign(entity, changes);
+          this.broadcast({ type: 'entity_updated', entityId: msg.entityId, changes }, ws);
         }
-        this.broadcast({ type: 'entity_updated', entityId: msg.entityId, changes: msg.changes }, ws);
         break;
 
       case 'delete_entity':
@@ -247,24 +561,40 @@ export class SessionRoom extends DurableObject<Env> {
         this.broadcast({ type: 'entity_deleted', entityId: msg.entityId });
         break;
 
-      case 'move_token':
-        if (this.sessionState) {
-          const entity = this.sessionState.entities.find((e) => e.id === msg.entityId);
-          if (entity) { entity.x = msg.x; entity.y = msg.y; }
-        }
-        this.broadcast({ type: 'entity_moved', entityId: msg.entityId, x: msg.x, y: msg.y }, ws);
-        break;
-
-      case 'combat_action':
-        if (meta.role !== 'director') {
-          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+      case 'move_token': {
+        const entity = this.sessionState?.entities.find((e) => e.id === msg.entityId);
+        if (!entity) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Token not found' });
           return;
         }
-        this.handleCombatAction(msg.action);
+
+        // Players can only move their own hero token; Director can move anything
+        if (meta.role === 'player' && (entity.type !== 'hero' || entity.id !== meta.heroId)) {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only move your own hero' });
+          return;
+        }
+
+        const bounded = this.clampToActiveBattleGrid(msg.x, msg.y);
+        entity.x = bounded.x;
+        entity.y = bounded.y;
+        this.broadcast({ type: 'entity_moved', entityId: msg.entityId, x: bounded.x, y: bounded.y });
+        break;
+      }
+
+      case 'combat_action':
+        await this.handleCombatAction(ws, meta, msg.action);
+        break;
+
+      case 'token_action':
+        await this.handleTokenAction(ws, meta, msg.action);
+        break;
+
+      case 'draw_steel_roll':
+        this.handleDrawSteelRoll(meta, msg.roll);
         break;
 
       case 'use_ability':
-        this.handleUseAbility(ws, msg.sourceId, msg.targetId, msg.abilityId);
+        await this.handleUseAbility(ws, meta, msg.sourceId, msg.targetId, msg.abilityId);
         break;
 
       case 'end_session':
@@ -315,17 +645,155 @@ export class SessionRoom extends DurableObject<Env> {
         this.broadcast({ type: 'scene_fog_removed', fogId: msg.fogId });
         break;
 
+      case 'scene_terrain_add':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.storeSceneTerrain(msg.terrain);
+        this.broadcast({ type: 'scene_terrain_added', terrain: msg.terrain });
+        break;
+
+      case 'scene_terrain_remove':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.removeSceneTerrain(msg.terrainId);
+        this.broadcast({ type: 'scene_terrain_removed', terrainId: msg.terrainId });
+        break;
+
+      // ── Negotiation ──
+      case 'negotiation_argument':
+        this.handleNegotiationArgument(ws, meta, msg.skillId, msg.approachText);
+        break;
+
+      case 'negotiation_adjust_patience':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationAdjustPatience(meta, msg.delta);
+        break;
+
+      case 'negotiation_adjust_interest':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationAdjustInterest(meta, msg.delta);
+        break;
+
+      case 'negotiation_reveal_motivation':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationReveal(meta, 'motivations', msg.id);
+        break;
+
+      case 'negotiation_reveal_pitfall':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationReveal(meta, 'pitfalls', msg.id);
+        break;
+
+      case 'negotiation_end':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleNegotiationEnd(meta, msg.phase);
+        break;
+
+      // ── Montage ──
+      case 'montage_roll':
+        this.handleMontageRoll(ws, meta, msg.skillId, msg.characteristicId);
+        break;
+
+      case 'montage_adjust_successes':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleMontageAdjust(meta, 'successes', msg.delta);
+        break;
+
+      case 'montage_adjust_failures':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleMontageAdjust(meta, 'failures', msg.delta);
+        break;
+
+      case 'montage_reset':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleMontageReset(meta);
+        break;
+
+      // ── Respite ──
+      case 'respite_choose_activity':
+        this.handleRespiteChooseActivity(ws, meta, msg.activityId);
+        break;
+
+      case 'respite_complete_activity':
+        this.handleRespiteCompleteActivity(ws, meta, msg.activityId);
+        break;
+
+      // ── Audio ──
+      case 'audio_play':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        await this.handleAudioPlay(ws, msg.audioAssetId, msg.loop);
+        break;
+
+      case 'audio_pause':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleAudioPause();
+        break;
+
+      case 'audio_stop':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.handleAudioStop();
+        break;
+
+      // ── Story ──
+      case 'story_update':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.storeStoryReadAloud(msg.readAloudText);
+        this.broadcast({ type: 'story_updated', readAloudText: msg.readAloudText });
+        break;
+
       default:
         break;
     }
   }
 
   override async webSocketClose(_ws: WebSocket): Promise<void> {
+    await this.persistActiveSceneSnapshot();
     // No Map to clean up — tags are on the socket itself
     this.broadcastParticipants();
   }
 
   override async webSocketError(_ws: WebSocket): Promise<void> {
+    await this.persistActiveSceneSnapshot();
     this.broadcastParticipants();
   }
 
@@ -338,10 +806,8 @@ export class SessionRoom extends DurableObject<Env> {
    * For now, ready/heroId are best-effort: they work within a single DO lifetime
    * but may reset on hibernation wake. This is acceptable for these fields.
    */
-  private updateTag(_ws: WebSocket, _meta: ConnectionMeta): void {
-    // Tags are immutable after acceptWebSocket. For mutable state like 'ready'
-    // we'd need ctx.storage or a different approach. Since ready/heroId are
-    // transient and reset on reconnect anyway, this is acceptable.
+  private updateTag(ws: WebSocket, meta: ConnectionMeta): void {
+    this.mutableConnectionMeta.set(ws, meta);
   }
 
   private async sendState(ws: WebSocket): Promise<void> {
@@ -374,30 +840,328 @@ export class SessionRoom extends DurableObject<Env> {
 
     const session = await db.prepare('SELECT * FROM game_sessions WHERE id = ?')
       .bind(sessionId)
-      .first<{ id: string; campaign_id: string }>();
+      .first<{ id: string; campaign_id: string; active_scene_id: string | null }>();
     if (!session) return;
 
     const scenes = await db.prepare(
-      'SELECT id, title AS name, type, order_index, data FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
+      'SELECT id, title AS name, type, order_index, data, snapshot FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
     )
       .bind(sessionId)
-      .all<SceneRef & { data?: string }>();
+      .all<SceneRef & { data?: string; snapshot?: string | null }>();
+
+    const sceneRefs: HydratedSceneRef[] = scenes.results.map((s) => {
+        let preparedData: Record<string, unknown> = {};
+        if (typeof s.data === 'string') {
+          try { preparedData = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
+        }
+        const snapshot = this.parseSceneSnapshot(s.snapshot);
+        const ref = {
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          order_index: s.order_index,
+          data: snapshot?.data ?? preparedData,
+        } as HydratedSceneRef;
+        Object.defineProperties(ref, {
+          preparedData: { value: preparedData, writable: true, enumerable: false },
+          snapshot: { value: snapshot, writable: true, enumerable: false },
+        });
+        return ref;
+      });
+    const activeSceneId = sceneRefs.some((scene) => scene.id === session.active_scene_id)
+      ? session.active_scene_id
+      : sceneRefs[0]?.id ?? null;
+
+    const activeScene = sceneRefs.find((scene) => scene.id === activeSceneId);
+    const heroEntities = this.applyHeroStart(await this.loadHeroEntities(sessionId), activeScene?.data ?? {});
 
     this.sessionState = {
       sessionId,
       campaignId: session.campaign_id,
-      scenes: scenes.results.map((s) => {
-        let data: Record<string, unknown> | undefined;
-        if (typeof s.data === 'string') {
-          try { data = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
-        }
-        return { id: s.id, name: s.name, type: s.type, order_index: s.order_index, data };
-      }),
-      activeSceneId: scenes.results[0]?.id ?? null,
-      entities: [],
-      combat: null,
+      scenes: sceneRefs,
+      activeSceneId,
+      entities: activeScene ? this.createLiveEntitiesForScene(activeScene, heroEntities) : heroEntities,
+      combat: activeScene?.snapshot?.combat ?? null,
       participants: this.getParticipantList(),
+      actionLog: activeScene?.snapshot?.actionLog ?? [],
+      negotiation: null,
+      montage: null,
+      respite: null,
+      audio: null,
     };
+
+    if (activeSceneId) this.initializeSceneLiveState(activeSceneId, false);
+  }
+
+  private async loadHeroEntities(sessionId: string): Promise<SessionState['entities']> {
+    const rows = await this.env.DB.prepare(
+      `SELECT h.id, h.name, h.user_id, h.ancestry, h.hero_class, h.subclass, h.level,
+              h.characteristics, h.kit, h.abilities, h.portrait_url, h.data
+       FROM session_participants sp
+       JOIN heroes h ON h.id = sp.hero_id
+       WHERE sp.game_session_id = ? AND h.deleted_at IS NULL
+       ORDER BY h.created_at`,
+    )
+      .bind(sessionId)
+      .all<HeroEntityRow>();
+
+    return rows.results.map((hero, index) => this.createHeroEntity(hero, index));
+  }
+
+  private parseSceneSnapshot(value: string | null | undefined): SceneLiveSnapshot | null {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value) as SceneLiveSnapshot;
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private activeSceneRef(): HydratedSceneRef | null {
+    if (!this.sessionState?.activeSceneId) return null;
+    return (this.sessionState.scenes.find((scene) => scene.id === this.sessionState!.activeSceneId) as HydratedSceneRef | undefined) ?? null;
+  }
+
+  private createLiveEntitiesForScene(scene: HydratedSceneRef, heroEntities: SessionEntity[]): SessionEntity[] {
+    const snapshotEntities = Array.isArray(scene.snapshot?.entities) ? scene.snapshot.entities : null;
+    if (!snapshotEntities) return [...heroEntities, ...this.createSceneEntities(scene.data ?? {})];
+
+    const snapshotById = new Map(snapshotEntities.map((entity) => [entity.id, entity]));
+    const mergedHeroes = heroEntities.map((hero) => {
+      const snapshot = snapshotById.get(hero.id);
+      return snapshot && snapshot.type === 'hero' ? { ...hero, ...snapshot } : hero;
+    });
+    const heroIds = new Set(mergedHeroes.map((hero) => hero.id));
+    const nonHeroes = snapshotEntities.filter((entity) => entity.type !== 'hero' || !heroIds.has(entity.id));
+    return [...mergedHeroes, ...nonHeroes];
+  }
+
+  private createHeroEntity(hero: HeroEntityRow, index: number): SessionState['entities'][number] {
+    const data = parseJson<Record<string, unknown>>(hero.data, {});
+    const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
+    const selectedAbilityIds = parseJson<string[]>(hero.abilities, []);
+    const heroClass = hero.hero_class && HeroLogic.isValidHeroClass(hero.hero_class)
+      ? hero.hero_class
+      : null;
+    const kit = hero.kit ? GameData.getKit(hero.kit) : null;
+    const maxStamina = heroClass
+      ? HeroLogic.getMaxStaminaWithKit(heroClass, hero.level, kit?.staminaPerEchelon ?? 0)
+      : 20;
+    const maxRecoveries = heroClass ? HeroLogic.getMaxRecoveries(heroClass) : null;
+    const resourceType = heroClass ? HeroLogic.getHeroicResourceType(heroClass) : null;
+    const speed = HeroLogic.getBaseSpeed(hero.ancestry ?? '') + (hero.kit ? KitLogic.getKitSpeedBonus(hero.kit) : 0);
+
+    return {
+      id: hero.id,
+      name: hero.name,
+      type: 'hero',
+      x: 2,
+      y: 2 + index,
+      ownerUserId: hero.user_id,
+      ancestry: hero.ancestry,
+      heroClass,
+      subclass: hero.subclass,
+      level: hero.level,
+      kit: hero.kit,
+      portraitUrl: hero.portrait_url,
+      maxStamina,
+      currentStamina: typeof data['staminaCurrent'] === 'number' ? data['staminaCurrent'] : maxStamina,
+      recoveriesMax: maxRecoveries,
+      recoveriesCurrent: typeof data['recoveriesCurrent'] === 'number' ? data['recoveriesCurrent'] : maxRecoveries,
+      heroicResource: heroClass ? HeroLogic.getStartingHeroicResource(heroClass) : 0,
+      heroicResourceName: resourceType ? HeroLogic.getHeroicResourceName(resourceType) : 'Resource',
+      speed,
+      conditions: [],
+      might: characteristics['might'] ?? 0,
+      agility: characteristics['agility'] ?? 0,
+      reason: characteristics['reason'] ?? 0,
+      intuition: characteristics['intuition'] ?? 0,
+      presence: characteristics['presence'] ?? 0,
+      abilities: selectedAbilityIds.map((abilityId) => toRuntimeAbility(abilityId)),
+    };
+  }
+
+  private replaceSceneEntities(sceneId: string): void {
+    if (!this.sessionState) return;
+    const scene = this.sessionState.scenes.find((candidate) => candidate.id === sceneId) as HydratedSceneRef | undefined;
+    const data = scene?.data ?? {};
+    const heroEntities = this.applyHeroStart(
+      this.sessionState.entities.filter((entity) => entity.type === 'hero'),
+      data,
+    );
+    this.sessionState.entities = scene ? this.createLiveEntitiesForScene(scene, heroEntities) : heroEntities;
+    this.sessionState.combat = scene?.snapshot?.combat ?? null;
+  }
+
+  private applyHeroStart(heroes: SessionEntity[], data: Record<string, unknown>): SessionEntity[] {
+    const start = data['heroStart'];
+    if (!start || typeof start !== 'object') return heroes;
+    const item = start as Record<string, unknown>;
+    const x = this.getNumericSceneValue(item['x'], undefined, 2);
+    const y = this.getNumericSceneValue(item['y'], undefined, 2);
+    const width = Math.max(1, this.getNumericSceneValue(item['width'], item['w'], 3));
+
+    return heroes.map((hero, index) => ({
+      ...hero,
+      x: x + (index % width),
+      y: y + Math.floor(index / width),
+    }));
+  }
+
+  private createSceneEntities(data: Record<string, unknown>): SessionEntity[] {
+    const rawTokens = data['tokens'];
+    if (!Array.isArray(rawTokens)) return [];
+    return rawTokens
+      .map((token, index) => this.createSceneEntityFromToken(token, index))
+      .filter((entity): entity is SessionEntity => entity !== null);
+  }
+
+  private createSceneEntityFromToken(rawToken: unknown, index: number): SessionEntity | null {
+    if (!rawToken || typeof rawToken !== 'object') return null;
+    const token = rawToken as Record<string, unknown>;
+    const rawType = typeof token['type'] === 'string' ? token['type'] : 'monster';
+    if (rawType === 'hero') return null;
+    const type = rawType === 'npc' ? 'npc' : 'monster';
+
+    const name = typeof token['name'] === 'string' && token['name'].trim()
+      ? token['name'].trim()
+      : `Scene Token ${index + 1}`;
+    const monsterName = typeof token['monsterName'] === 'string' && token['monsterName'].trim()
+      ? token['monsterName'].trim()
+      : type === 'monster'
+        ? name.replace(/\s+\d+$/, '').trim()
+        : undefined;
+    const monster = monsterName ? GameData.getMonster(monsterName) : undefined;
+    const monsterRecord = monster as Record<string, unknown> | undefined;
+    const maxStamina = this.getNumericSceneValue(token['maxStamina'], monster?.stamina, 0);
+    const currentStamina = this.getNumericSceneValue(token['currentStamina'], undefined, maxStamina);
+    const roles = Array.isArray(token['roles'])
+      ? token['roles'].map(String)
+      : monster?.roles ?? [];
+
+    return {
+      id: typeof token['id'] === 'string' && token['id'].trim() ? token['id'].trim() : `scene-token-${index}`,
+      name,
+      type,
+      x: this.getNumericSceneValue(token['x'], undefined, 0),
+      y: this.getNumericSceneValue(token['y'], undefined, 0),
+      size: this.getNumericSceneValue(token['size'], undefined, 1),
+      maxStamina,
+      currentStamina,
+      recoveriesCurrent: this.getNumericSceneValue(token['recoveriesCurrent'], monsterRecord?.['recoveries'], 6),
+      monsterName,
+      level: this.getNumericSceneValue(token['level'], monster?.level, 1),
+      roles,
+      conditions: Array.isArray(token['conditions']) ? token['conditions'].map(String) : [],
+      ...(typeof token['squadId'] === 'string' ? { squadId: token['squadId'] } : {}),
+      ...(typeof token['squadSize'] === 'number' ? { squadSize: token['squadSize'] } : {}),
+      ...(typeof token['portraitUrl'] === 'string' ? { portraitUrl: token['portraitUrl'] } : {}),
+      ...(typeof token['notes'] === 'string' ? { notes: token['notes'] } : {}),
+      ...(monster?.features ? { features: monster.features } : {}),
+      ...(token['freeStrike'] ? { freeStrike: token['freeStrike'] } : {}),
+      ...(token['free_strike'] ? { freeStrike: token['free_strike'] } : {}),
+      ...(monsterRecord?.['freeStrike'] ? { freeStrike: monsterRecord['freeStrike'] } : {}),
+      ...(monsterRecord?.['free_strike'] ? { freeStrike: monsterRecord['free_strike'] } : {}),
+    };
+  }
+
+  private async persistActiveScene(sceneId: string): Promise<void> {
+    if (!this.sessionId) return;
+    await this.env.DB.prepare('UPDATE game_sessions SET active_scene_id = ? WHERE id = ?')
+      .bind(sceneId, this.sessionId)
+      .run();
+  }
+
+  private async handleRevertScene(ws: WebSocket, sceneId?: string): Promise<void> {
+    if (!this.sessionState) return;
+    const targetSceneId = sceneId ?? this.sessionState.activeSceneId;
+    if (!targetSceneId) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_SCENE', message: 'No active scene' });
+      return;
+    }
+    const scene = this.sessionState.scenes.find((candidate) => candidate.id === targetSceneId) as HydratedSceneRef | undefined;
+    if (!scene) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_SCENE', message: 'Scene not found' });
+      return;
+    }
+
+    const row = await this.env.DB.prepare('SELECT data FROM scenes WHERE id = ? AND deleted_at IS NULL')
+      .bind(targetSceneId)
+      .first<{ data: string | null }>();
+    const preparedData = parseJson<Record<string, unknown>>(row?.data, {});
+
+    await this.env.DB.prepare('UPDATE scenes SET snapshot = NULL WHERE id = ?')
+      .bind(targetSceneId)
+      .run();
+
+    scene.preparedData = preparedData;
+    scene.snapshot = null;
+    scene.data = preparedData;
+
+    if (this.sessionState.activeSceneId !== targetSceneId) {
+      this.sessionState.activeSceneId = targetSceneId;
+      await this.persistActiveScene(targetSceneId);
+      this.broadcast({ type: 'scene_changed', sceneId: targetSceneId });
+    }
+
+    this.replaceSceneEntities(targetSceneId);
+    this.initializeSceneLiveState(targetSceneId, false);
+    this.broadcast({ type: 'scene_reverted', sceneId: targetSceneId });
+    this.broadcast({ type: 'state', state: this.sessionState });
+  }
+
+  private buildActiveSceneSnapshot(scene: HydratedSceneRef): SceneLiveSnapshot {
+    return {
+      data: scene.data ?? {},
+      entities: this.sessionState?.entities ?? [],
+      combat: this.sessionState?.combat ?? null,
+      negotiation: this.sessionState?.negotiation ?? null,
+      montage: this.sessionState?.montage ?? null,
+      respite: this.sessionState?.respite ?? null,
+      audio: this.sessionState?.audio ?? null,
+      actionLog: this.sessionState?.actionLog ?? [],
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  private async persistActiveSceneSnapshot(): Promise<void> {
+    if (!this.sessionState) return;
+    const scene = this.activeSceneRef();
+    if (!scene) return;
+    const snapshot = this.buildActiveSceneSnapshot(scene);
+    scene.snapshot = snapshot;
+    await this.env.DB.prepare('UPDATE scenes SET snapshot = ? WHERE id = ?')
+      .bind(JSON.stringify(snapshot), scene.id)
+      .run();
+  }
+
+  private scheduleActiveSceneSnapshot(): void {
+    if (!this.sessionState?.activeSceneId) return;
+    this.ctx.waitUntil(this.persistActiveSceneSnapshot().catch(() => undefined));
+  }
+
+  private shouldSnapshotAfterBroadcast(msg: ServerMessage): boolean {
+    return [
+      'entity_created',
+      'entity_updated',
+      'entity_deleted',
+      'entity_moved',
+      'combat_updated',
+      'action_logged',
+      'negotiation_updated',
+      'montage_updated',
+      'respite_updated',
+      'audio_command',
+      'story_updated',
+      'scene_drawing_added',
+      'scene_drawing_removed',
+      'scene_fog_added',
+      'scene_fog_removed',
+      'scene_terrain_added',
+      'scene_terrain_removed',
+    ].includes(msg.type);
   }
 
   private getParticipantList(): ParticipantInfo[] {
@@ -426,24 +1190,7 @@ export class SessionRoom extends DurableObject<Env> {
   private async handleEndSession(): Promise<void> {
     const db = this.env.DB;
 
-    // Save per-scene snapshots before clearing state
-    if (this.sessionState && this.sessionId) {
-      const now = new Date().toISOString();
-
-      for (const scene of this.sessionState.scenes) {
-        const isActive = scene.id === this.sessionState.activeSceneId;
-        const snapshot = JSON.stringify({
-          data: scene.data ?? {},
-          entities: isActive ? this.sessionState.entities : [],
-          combat: isActive ? this.sessionState.combat : null,
-          savedAt: now,
-        });
-
-        await db.prepare('UPDATE scenes SET snapshot = ? WHERE id = ?')
-          .bind(snapshot, scene.id)
-          .run();
-      }
-    }
+    await this.persistActiveSceneSnapshot();
 
     // Mark session as completed in D1
     if (this.sessionId) {
@@ -462,138 +1209,1531 @@ export class SessionRoom extends DurableObject<Env> {
     this.sessionState = null;
   }
 
-  private handleCombatAction(action: CombatAction): void {
+  /** Initialize mode-specific live state when switching to a scene. */
+  private initializeSceneLiveState(sceneId: string, shouldBroadcast = true): void {
+    if (!this.sessionState) return;
+    const scene = this.sessionState.scenes.find((s) => s.id === sceneId) as HydratedSceneRef | undefined;
+    if (!scene) return;
+
+    this.sessionState.negotiation = null;
+    this.sessionState.montage = null;
+    this.sessionState.respite = null;
+    this.sessionState.audio = scene.snapshot?.audio ?? this.sessionState.audio;
+
+    const data = scene.data ?? {};
+    if (scene.type === 'negotiation') {
+      this.sessionState.negotiation = scene.snapshot?.negotiation ?? this.createNegotiationState(data);
+      if (shouldBroadcast) this.broadcastNegotiationUpdate();
+    } else if (scene.type === 'montage') {
+      this.sessionState.montage = scene.snapshot?.montage ?? this.createMontageState(data);
+      if (shouldBroadcast) this.broadcastMontageUpdate();
+    } else if (scene.type === 'respite') {
+      this.sessionState.respite = scene.snapshot?.respite ?? this.createRespiteState(data);
+      if (shouldBroadcast) this.broadcastRespiteUpdate();
+    }
+  }
+
+  private async handleCombatAction(ws: WebSocket, meta: ConnectionMeta, action: CombatAction): Promise<void> {
     if (!this.sessionState) return;
 
     switch (action.type) {
       case 'START_COMBAT': {
+        // Director only
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        const heroEntityIds = action.heroEntityIds.filter((id) => {
+          const entity = this.sessionState?.entities.find((candidate) => candidate.id === id);
+          return entity?.type === 'hero' && this.canEntityAct(id);
+        });
+        const villainEntityIds = action.villainEntityIds.filter((id) => {
+          const entity = this.sessionState?.entities.find((candidate) => candidate.id === id);
+          return (entity?.type === 'monster' || entity?.type === 'npc') && this.canEntityAct(id);
+        });
+        if (heroEntityIds.length === 0 || villainEntityIds.length === 0) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Combat needs at least one hero and one villain' });
+          return;
+        }
+
+        const heroCount = heroEntityIds.length;
+
         const combat: CombatState = {
           round: 1,
-          turnOrder: action.initiativeOrder
-            .sort((a, b) => b.initiative - a.initiative)
-            .map((e) => e.entityId),
-          currentTurnIndex: 0,
-          malice: 0,
+          activeSide: null,
+          firstSide: null,
+          initiativeRoll: null,
+          initiativeRollerId: null,
+          initiativeRollerName: null,
+          heroEntities: heroEntityIds,
+          villainEntities: villainEntityIds,
+          actedThisRound: [],
+          activeEntityId: null,
+          malice: Math.max(0, heroCount + 1), // Starting malice = heroCount + round(1)
+          turnActions: {},
         };
         this.sessionState.combat = combat;
         break;
       }
-      case 'END_COMBAT':
-        this.sessionState.combat = null;
-        break;
-      case 'NEXT_TURN': {
+
+      case 'ROLL_INITIATIVE': {
         const c = this.sessionState.combat;
         if (!c) return;
-        c.currentTurnIndex++;
-        if (c.currentTurnIndex >= c.turnOrder.length) {
-          c.currentTurnIndex = 0;
-          c.round++;
-          c.malice += 2; // +2 malice per round
+        if (c.initiativeRoll !== null) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Initiative has already been rolled' });
+          return;
         }
+
+        const initiativeRoll = this.rollD10(1)[0] ?? 5;
+        const firstSide: 'heroes' | 'villains' = initiativeRoll >= 6 ? 'heroes' : 'villains';
+        c.initiativeRoll = initiativeRoll;
+        c.firstSide = firstSide;
+        c.activeSide = firstSide;
+        c.initiativeRollerId = meta.userId;
+        c.initiativeRollerName = meta.username;
+
+        this.appendActionLog({
+          actorId: meta.userId,
+          actorName: meta.username,
+          title: `${meta.username} rolled initiative`,
+          detail: initiativeRoll >= 6 ? 'Heroes act first.' : 'Director acts first.',
+          dice: this.toPowerDice([initiativeRoll]),
+          total: initiativeRoll,
+        });
         break;
       }
+
+      case 'END_COMBAT': {
+        // Director only
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.sessionState.combat = null;
+        break;
+      }
+
+      case 'CLAIM_TURN': {
+        // Players claim their hero's turn during heroes' side
+        const c = this.sessionState.combat;
+        if (!c) return;
+        if (c.initiativeRoll === null || !c.activeSide) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Roll initiative before taking turns' });
+          return;
+        }
+        if (c.activeSide !== 'heroes' || c.activeEntityId) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Cannot claim turn now' });
+          return;
+        }
+        if (!c.heroEntities.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Not a hero entity' });
+          return;
+        }
+        if (meta.role === 'player' && meta.heroId !== action.entityId) {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only claim your own hero turn' });
+          return;
+        }
+        if (c.actedThisRound.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Already acted this round' });
+          return;
+        }
+        c.activeEntityId = action.entityId;
+        // Initialize turn action state for this entity
+        const heroEntity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        const speed = typeof heroEntity?.['speed'] === 'number' ? (heroEntity['speed'] as number) : 5;
+        c.turnActions[action.entityId] = this.createTurnActions(speed);
+        this.clearDefending(action.entityId);
+        break;
+      }
+
+      case 'SELECT_TURN': {
+        // Director selects which villain takes a turn
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        const c = this.sessionState.combat;
+        if (!c) return;
+        if (c.initiativeRoll === null || !c.activeSide) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Roll initiative before taking turns' });
+          return;
+        }
+        if (c.activeSide !== 'villains' || c.activeEntityId) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Cannot select turn now' });
+          return;
+        }
+        if (!c.villainEntities.includes(action.entityId) && !c.heroEntities.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Entity not in combat' });
+          return;
+        }
+        if (c.actedThisRound.includes(action.entityId)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Already acted this round' });
+          return;
+        }
+        c.activeEntityId = action.entityId;
+        // Initialize turn action state
+        const villainEntity = this.sessionState.entities.find((e) => e.id === action.entityId);
+        const vSpeed = typeof villainEntity?.['speed'] === 'number' ? (villainEntity['speed'] as number) : 5;
+        c.turnActions[action.entityId] = this.createTurnActions(vSpeed);
+        this.clearDefending(action.entityId);
+        break;
+      }
+
+      case 'END_TURN': {
+        // Either director or the player whose turn it is
+        const c = this.sessionState.combat;
+        if (!c || !c.activeEntityId) return;
+        if (!c.activeSide || !c.firstSide) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Roll initiative before ending turns' });
+          return;
+        }
+
+        // Players can only end their own turn
+        if (meta.role === 'player' && meta.heroId !== c.activeEntityId) {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Not your turn' });
+          return;
+        }
+
+        const entityId = c.activeEntityId;
+        this.applyEndOfTurnConditionEffects(entityId);
+        c.actedThisRound.push(entityId);
+        c.activeEntityId = null;
+        delete c.turnActions[entityId];
+
+        // Check if the current side is done
+        const currentSideIds = this.getActingCombatants(c.activeSide === 'heroes' ? c.heroEntities : c.villainEntities);
+        const otherSideIds = this.getActingCombatants(c.activeSide === 'heroes' ? c.villainEntities : c.heroEntities);
+        const currentSideDone = currentSideIds.every((id) => c.actedThisRound.includes(id));
+        const otherSideDone = otherSideIds.every((id) => c.actedThisRound.includes(id));
+
+        if (currentSideDone && otherSideDone) {
+          // Both sides done → new round
+          c.round++;
+          c.actedThisRound = [];
+          c.activeSide = c.firstSide;
+          // Malice increases each round: heroCount + roundNumber
+          c.malice += c.heroEntities.length + c.round;
+        } else if (currentSideDone) {
+          // Switch to other side
+          c.activeSide = c.activeSide === 'heroes' ? 'villains' : 'heroes';
+        }
+        // If current side is NOT done, stay on the same side (next entity can claim/select)
+        break;
+      }
+
       case 'ADJUST_MALICE': {
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
         const c = this.sessionState.combat;
         if (!c) return;
         c.malice = Math.max(0, c.malice + action.delta);
         break;
       }
+
       case 'APPLY_DAMAGE': {
-        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
-        if (entity && typeof entity['currentStamina'] === 'number') {
-          (entity as Record<string, unknown>)['currentStamina'] =
-            Math.max(0, (entity['currentStamina'] as number) - action.amount);
-        }
-        this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { currentStamina: entity?.['currentStamina'] } });
-        break;
+        await this.handleTokenAction(ws, meta, {
+          kind: 'manual-damage',
+          targetId: action.entityId,
+          amount: action.amount,
+        });
+        return;
       }
+
       case 'APPLY_HEALING': {
-        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
-        if (entity && typeof entity['currentStamina'] === 'number' && typeof entity['maxStamina'] === 'number') {
-          (entity as Record<string, unknown>)['currentStamina'] =
-            Math.min(entity['maxStamina'] as number, (entity['currentStamina'] as number) + action.amount);
-        }
-        this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { currentStamina: entity?.['currentStamina'] } });
-        break;
+        await this.handleTokenAction(ws, meta, {
+          kind: 'manual-heal',
+          targetId: action.entityId,
+          amount: action.amount,
+        });
+        return;
       }
+
       case 'APPLY_CONDITION': {
-        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
-        if (entity) {
-          const conditions = Array.isArray(entity['conditions']) ? [...(entity['conditions'] as string[])] : [];
-          if (!conditions.includes(action.condition)) {
-            conditions.push(action.condition);
-          }
-          (entity as Record<string, unknown>)['conditions'] = conditions;
-          this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { conditions } });
-        }
-        break;
+        await this.handleTokenAction(ws, meta, {
+          kind: 'apply-condition',
+          targetId: action.entityId,
+          condition: action.condition,
+        });
+        return;
       }
+
       case 'REMOVE_CONDITION': {
-        const entity = this.sessionState.entities.find((e) => e.id === action.entityId);
-        if (entity) {
-          const conditions = Array.isArray(entity['conditions'])
-            ? (entity['conditions'] as string[]).filter((c) => c !== action.conditionId)
-            : [];
-          (entity as Record<string, unknown>)['conditions'] = conditions;
-          this.broadcast({ type: 'entity_updated', entityId: action.entityId, changes: { conditions } });
-        }
-        break;
+        await this.handleTokenAction(ws, meta, {
+          kind: 'remove-condition',
+          targetId: action.entityId,
+          condition: action.conditionId,
+        });
+        return;
+      }
+
+      case 'CATCH_BREATH': {
+        await this.handleTokenAction(ws, meta, {
+          kind: 'catch-breath',
+          sourceId: action.entityId,
+          targetId: action.entityId,
+        });
+        return;
+      }
+
+      case 'DEFEND': {
+        await this.handleTokenAction(ws, meta, {
+          kind: 'defend',
+          sourceId: action.entityId,
+          targetId: action.entityId,
+        });
+        return;
       }
     }
 
     this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });
   }
 
-  /** Roll n d10 using crypto-secure randomness. */
+  private canEntityAct(entityId: string): boolean {
+    const entity = this.sessionState?.entities.find((candidate) => candidate.id === entityId);
+    if (!entity) return false;
+    return typeof entity['currentStamina'] !== 'number' || entity['currentStamina'] > 0;
+  }
+
+  private getActingCombatants(entityIds: string[]): string[] {
+    return entityIds.filter((id) => this.canEntityAct(id));
+  }
+
+  /** Create initial turn action state for an entity. */
+  private createTurnActions(baseSpeed: number): TurnActionState {
+    return {
+      mainActionUsed: false,
+      maneuverUsed: false,
+      moveRemaining: baseSpeed,
+      triggeredUsedThisRound: false,
+      mainConvertedTo: null,
+    };
+  }
+
+  private sanitizePlayerEntityChanges(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    entity: SessionEntity,
+    changes: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    if (entity.type !== 'hero' || entity.id !== meta.heroId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own hero' });
+      return null;
+    }
+
+    if (Object.keys(changes).length > 0) {
+      this.sendTo(ws, {
+        type: 'error',
+        code: 'FORBIDDEN',
+        message: 'Use token actions for stamina, resources, and conditions',
+      });
+    }
+    return null;
+  }
+
+  /** Roll n d10 using crypto-secure, unbiased randomness. */
   private rollD10(count: number): number[] {
-    const bytes = new Uint8Array(count);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes).map((b) => (b % 10) + 1);
+    return Array.from({ length: count }, () => this.rollDie(10));
+  }
+
+  /** Roll Draw Steel heroic resource dice: d6 bodies labeled 1-3 twice. */
+  private rollD3(count: number): number[] {
+    return Array.from({ length: count }, () => this.rollDie(3));
+  }
+
+  private rollDie(sides: number): number {
+    if (!Number.isInteger(sides) || sides < 1 || sides > 256) return 1;
+    const maxAccepted = Math.floor(256 / sides) * sides;
+    const bytes = new Uint8Array(1);
+    do {
+      crypto.getRandomValues(bytes);
+    } while (bytes[0]! >= maxAccepted);
+    return (bytes[0]! % sides) + 1;
   }
 
   private getTier(total: number): 1 | 2 | 3 {
-    if (total >= 17) return 3;
-    if (total >= 12) return 2;
-    return 1;
+    return RollLogic.getTier(total);
   }
 
-  private handleUseAbility(ws: WebSocket, sourceId: string, _targetId: string, abilityId: string): void {
+  private asActionLogSceneType(sceneType: string | null | undefined): SceneActionLogType | null {
+    return sceneType === 'battle' || sceneType === 'negotiation' || sceneType === 'montage' || sceneType === 'respite'
+      ? sceneType
+      : null;
+  }
+
+  private appendActionLog(
+    entry: Omit<ActionLogEntry, 'id' | 'sceneType' | 'timestamp'> & {
+      id?: string;
+      sceneType?: SceneActionLogType;
+      timestamp?: number;
+    },
+  ): void {
     if (!this.sessionState) return;
+    const scene = this.activeSceneRef();
+    const sceneType = entry.sceneType ?? this.asActionLogSceneType(scene?.type);
+    if (!sceneType) return;
 
-    const source = this.sessionState.entities.find((e) => e.id === sourceId);
-    if (!source) {
-      this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source entity not found' });
-      return;
-    }
-
-    // Server-side power roll: 2d10 + modifier
-    const modifier = typeof source['might'] === 'number' ? (source['might'] as number) : 0;
-    const dice = this.rollD10(2);
-    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
-    const tier = this.getTier(total);
-
-    // Tier-based damage hint (Director applies manually via combat tracker)
-    const damage = tier === 3 ? 6 : tier === 2 ? 4 : 2;
-
-    const abilityName = typeof source[`ability_${abilityId}_name`] === 'string'
-      ? (source[`ability_${abilityId}_name`] as string)
-      : abilityId;
-
-    const result: AbilityResult = {
-      sourceId,
-      targetId: sourceId,
-      abilityId,
-      abilityName,
-      dice,
-      modifier,
-      total,
-      tier,
-      damage,
-      effects: [],
-      timestamp: Date.now(),
+    const loggedEntry: ActionLogEntry = {
+      id: entry.id ?? this.createActionResultId('log'),
+      sceneId: entry.sceneId ?? scene?.id,
+      sceneType,
+      actorId: entry.actorId,
+      actorName: this.clampLogText(entry.actorName, 80),
+      title: this.clampLogText(entry.title, 140) ?? 'Action',
+      detail: this.clampLogText(entry.detail, 500),
+      dice: entry.dice,
+      total: entry.total,
+      tier: entry.tier,
+      timestamp: entry.timestamp ?? Date.now(),
     };
 
-    this.broadcast({ type: 'ability_resolved', result });
+    const existing = this.sessionState.actionLog ?? [];
+    if (existing.some((candidate) => candidate.id === loggedEntry.id)) return;
+    this.sessionState.actionLog = [...existing, loggedEntry].slice(-MAX_ACTION_LOG_ENTRIES);
+    this.broadcast({ type: 'action_logged', entry: loggedEntry });
+  }
+
+  private clampLogText(value: unknown, maxLength: number): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const text = value.trim();
+    if (!text) return undefined;
+    return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+  }
+
+  private toPowerDice(values: number[]): DrawSteelDieResult[] {
+    return values.map((value) => ({ shape: 'd20', faceSet: 'd10-twice', value }));
+  }
+
+  private toHeroicResourceDice(values: number[]): DrawSteelDieResult[] {
+    return values.map((value) => ({ shape: 'd6', faceSet: 'd3-twice', value }));
+  }
+
+  private toD6Dice(values: number[]): DrawSteelDieResult[] {
+    return values.map((value) => ({ shape: 'd6', faceSet: 'd6', value }));
+  }
+
+  private normalizeRollModifier(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    return Math.max(-100, Math.min(100, Math.trunc(value)));
+  }
+
+  private normalizeRollLabel(value: unknown, fallback: string): string {
+    if (typeof value !== 'string') return fallback;
+    const label = value.trim();
+    return label.length > 0 && label.length <= 60 ? label : fallback;
+  }
+
+  private handleDrawSteelRoll(meta: ConnectionMeta, request: DrawSteelRollRequest): void {
+    const roll = (request && typeof request === 'object' ? request : {}) as Partial<DrawSteelRollRequest>;
+    const kind = roll.kind === 'heroic-resource' || roll.kind === 'd6' || roll.kind === 'power'
+      ? roll.kind
+      : 'power';
+    const timestamp = Date.now();
+    const modifier = kind === 'power' ? this.normalizeRollModifier(roll.modifier) : 0;
+    let result: DrawSteelRollResult;
+
+    if (kind === 'heroic-resource') {
+      const values = this.rollD3(2);
+      const total = values.reduce((sum, value) => sum + value, 0);
+      result = {
+        id: this.createActionResultId('heroic-resource-roll'),
+        kind,
+        label: this.normalizeRollLabel(roll.label, 'Heroic Resource'),
+        rollerId: meta.userId,
+        rollerName: meta.username,
+        dice: this.toHeroicResourceDice(values),
+        modifier: 0,
+        total,
+        timestamp,
+      };
+    } else if (kind === 'd6') {
+      const value = this.rollDie(6);
+      result = {
+        id: this.createActionResultId('d6-roll'),
+        kind,
+        label: this.normalizeRollLabel(roll.label, 'd6 Roll'),
+        rollerId: meta.userId,
+        rollerName: meta.username,
+        dice: this.toD6Dice([value]),
+        modifier: 0,
+        total: value,
+        timestamp,
+      };
+    } else {
+      const values = this.rollD10(2);
+      const total = values.reduce((sum, value) => sum + value, 0) + modifier;
+      result = {
+        id: this.createActionResultId('power-roll'),
+        kind: 'power',
+        label: this.normalizeRollLabel(roll.label, 'Power Roll'),
+        rollerId: meta.userId,
+        rollerName: meta.username,
+        dice: this.toPowerDice(values),
+        modifier,
+        total,
+        tier: this.getTier(total),
+        timestamp,
+      };
+    }
+
+    this.broadcast({ type: 'draw_steel_roll_resolved', result });
+    this.appendActionLog({
+      id: `log-${result.id}`,
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} rolled ${result.label}`,
+      detail: result.modifier === 0 ? undefined : `Modifier ${result.modifier >= 0 ? '+' : ''}${result.modifier}`,
+      dice: result.dice,
+      total: result.total,
+      tier: result.tier,
+      timestamp,
+    });
+  }
+
+  private async handleUseAbility(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    sourceId: string,
+    targetId: string,
+    abilityId: string,
+  ): Promise<void> {
+    await this.handleTokenAction(ws, meta, {
+      kind: 'ability',
+      sourceId,
+      targetId,
+      abilityId,
+    });
+  }
+
+  private async handleTokenAction(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    action: TokenActionRequest,
+  ): Promise<void> {
+    if (!this.sessionState) return;
+
+    const timestamp = Date.now();
+    const effects: TokenActionEffect[] = [];
+
+    switch (action.kind) {
+      case 'manual-damage':
+      case 'manual-heal':
+      case 'apply-condition':
+      case 'remove-condition': {
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+
+        const target = this.getEntity(action.targetId);
+        if (!target) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Target entity not found' });
+          return;
+        }
+
+        if (action.kind === 'manual-damage') {
+          const amount = this.getPositiveAmount(action.amount);
+          if (!amount) {
+            this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Damage must be a positive number' });
+            return;
+          }
+          this.applyDamageToEntity(target, amount, effects, { ignoreResistance: true });
+        } else if (action.kind === 'manual-heal') {
+          const amount = this.getPositiveAmount(action.amount);
+          if (!amount) {
+            this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Healing must be a positive number' });
+            return;
+          }
+          this.applyHealingToEntity(target, amount, effects);
+        } else if (action.kind === 'apply-condition') {
+          if (!action.condition || !this.applyConditionToEntity(ws, target, action.condition, effects)) return;
+        } else if (action.condition) {
+          this.removeConditionFromEntity(target, action.condition, effects);
+        }
+
+        this.finishTokenAction({
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          targetId: target.id,
+          effects,
+          summary: this.summarizeAction(action.kind, target, effects),
+          timestamp,
+        });
+        return;
+      }
+
+      case 'catch-breath': {
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        if (!source) return;
+        if (!this.canCatchBreath(ws, source)) return;
+        const turnActions = this.getActiveTurnActions(ws, source, 'maneuver');
+        if (!turnActions) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, 'maneuver', effects)) return;
+        this.resolveCatchBreath(ws, source, effects);
+        this.finishTokenAction({
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          sourceId: source.id,
+          targetId: source.id,
+          effects,
+          summary: this.summarizeAction(action.kind, source, effects),
+          timestamp,
+        });
+        return;
+      }
+
+      case 'defend': {
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        if (!source) return;
+        const turnActions = this.getActiveTurnActions(ws, source, 'main');
+        if (!turnActions) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, 'main', effects)) return;
+        this.applyDefend(source, effects);
+        this.finishTokenAction({
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          sourceId: source.id,
+          targetId: source.id,
+          effects,
+          summary: this.summarizeAction(action.kind, source, effects),
+          timestamp,
+        });
+        return;
+      }
+
+      case 'stand-up': {
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        if (!source) return;
+        const turnActions = this.getActiveTurnActions(ws, source, 'maneuver');
+        if (!turnActions) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, 'maneuver', effects)) return;
+        this.removeConditionFromEntity(source, 'prone', effects);
+        this.finishTokenAction({
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          sourceId: source.id,
+          targetId: source.id,
+          effects,
+          summary: this.summarizeAction(action.kind, source, effects),
+          timestamp,
+        });
+        return;
+      }
+
+      case 'escape-grab': {
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        if (!source) return;
+        if (!this.hasCondition(source, 'grabbed') && !this.hasCondition(source, 'restrained')) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Escape Grab requires grabbed or restrained' });
+          return;
+        }
+        const turnActions = this.getActiveTurnActions(ws, source, 'maneuver');
+        if (!turnActions) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, 'maneuver', effects)) return;
+        const characteristic = action.characteristic ?? this.bestCharacteristic(source, ['might', 'agility']).characteristic;
+        const powerRoll = this.resolvePowerRoll(source, undefined, characteristic, action, { isAttack: false });
+        const escape = UniversalActions.resolveEscapeGrab(powerRoll.tier);
+        if (escape.escaped) {
+          this.removeConditionFromEntity(source, 'grabbed', effects);
+          this.removeConditionFromEntity(source, 'restrained', effects);
+        }
+        if (escape.canShift) {
+          effects.push({ kind: 'movement', entityId: source.id, message: 'Can shift 1 square after escaping.' });
+        }
+        this.finishTokenAction({
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          sourceId: source.id,
+          targetId: source.id,
+          powerRoll,
+          effects,
+          summary: escape.escaped ? 'Escaped the grab.' : 'Could not escape the grab.',
+          timestamp,
+        }, this.toAbilityResult(action.kind, source, source, 'Escape Grab', powerRoll, effects, timestamp));
+        return;
+      }
+
+      case 'grab':
+      case 'knockback':
+      case 'free-strike': {
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        const target = this.getEntity(action.targetId);
+        if (!source || !target) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
+          return;
+        }
+        if (!this.isWithinDistance(source, target, action.kind === 'free-strike' ? 'Melee 1 or Ranged 5' : 'Melee 1')) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Target is out of range' });
+          return;
+        }
+
+        const actionType = action.kind === 'free-strike' ? 'main' : 'maneuver';
+        const turnActions = this.getActiveTurnActions(ws, source, actionType);
+        if (!turnActions) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, actionType, effects)) return;
+
+        const mode = this.getGridDistance(source, target) <= 1 ? 'melee' : 'ranged';
+        const characteristic = action.characteristic ?? this.bestCharacteristic(source, ['might', 'agility']).characteristic;
+        const powerRoll = this.resolvePowerRoll(source, target, characteristic, action, {
+          isAttack: true,
+          attackMode: mode,
+        });
+
+        if (action.kind === 'free-strike') {
+          const damage = this.getFreeStrikeDamage(source, powerRoll.tier, characteristic, mode);
+          this.applyDamageToEntity(target, damage, effects);
+        } else if (action.kind === 'grab') {
+          const grab = UniversalActions.resolveGrab(powerRoll.tier);
+          if (grab.targetGrabbed) this.applyConditionToEntity(ws, target, 'grabbed', effects);
+        } else {
+          const knockback = UniversalActions.resolveKnockback(powerRoll.tier);
+          effects.push({
+            kind: 'movement',
+            entityId: target.id,
+            amount: knockback.pushDistance,
+            message: `Push ${knockback.pushDistance} square${knockback.pushDistance === 1 ? '' : 's'}.`,
+          });
+          if (knockback.targetProne) this.applyConditionToEntity(ws, target, 'prone', effects);
+        }
+
+        const abilityName = this.formatActionName(action.kind);
+        this.finishTokenAction({
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          sourceId: source.id,
+          targetId: target.id,
+          abilityName,
+          powerRoll,
+          effects,
+          summary: this.summarizeAction(action.kind, target, effects),
+          timestamp,
+        }, this.toAbilityResult(action.kind, source, target, abilityName, powerRoll, effects, timestamp));
+        return;
+      }
+
+      case 'ability': {
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        const target = this.getEntity(action.targetId);
+        if (!source || !target || !action.abilityId) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source, target, and ability are required' });
+          return;
+        }
+
+        const rawAbility = getResolvedAbilityForSource(source, action.abilityId);
+        const ability = getAbilityForSource(source, action.abilityId);
+        if (!rawAbility && !ability) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Ability not found' });
+          return;
+        }
+        if (!this.isWithinDistance(source, target, ability.distance)) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Target is out of range' });
+          return;
+        }
+
+        const turnActions = this.getActiveTurnActions(ws, source, ability.actionType);
+        if (!turnActions) return;
+        if (!this.validateAbilityCost(ws, source, rawAbility, ability.cost)) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, ability.actionType, effects)) return;
+        this.spendAbilityCost(source, rawAbility, ability.cost, effects);
+
+        const tieredEffect = firstTieredEffect(rawAbility);
+        const hasPowerRoll = Boolean(tieredEffect?.roll || tieredEffect?.tier1 || tieredEffect?.tier2 || tieredEffect?.tier3);
+        const category = AbilityLogic.getAbilityCategory(ability.keywords);
+        let powerRoll: TokenActionPowerRoll | undefined;
+        let effectText = tieredEffect?.effect ?? '';
+        if (hasPowerRoll) {
+          const characteristic = action.characteristic ?? this.getAbilityRollCharacteristic(rawAbility, source);
+          powerRoll = this.resolvePowerRoll(source, target, characteristic, action, {
+            isAttack: true,
+            attackMode: category === 'ranged' ? 'ranged' : category === 'melee' ? 'melee' : 'magic',
+          });
+          effectText = getTierText(tieredEffect, powerRoll.tier);
+        }
+
+        if (effectText) {
+          effects.push({ kind: 'note', message: effectText });
+        }
+
+        const damage = this.calculateDamageFromEffect(source, target, rawAbility, ability, effectText, powerRoll?.tier ?? 2);
+        if (damage > 0) this.applyDamageToEntity(target, damage, effects);
+
+        const healing = this.extractHealingAmount(effectText, source, target);
+        if (healing > 0) this.applyHealingToEntity(target, healing, effects);
+
+        for (const condition of this.extractAutomaticConditions(effectText)) {
+          this.applyConditionToEntity(ws, target, condition, effects);
+        }
+
+        const result: TokenActionResult = {
+          id: this.createActionResultId(action.kind),
+          kind: action.kind,
+          sourceId: source.id,
+          targetId: target.id,
+          abilityId: action.abilityId,
+          abilityName: ability.name,
+          powerRoll,
+          effects,
+          summary: this.summarizeAction(action.kind, target, effects),
+          timestamp,
+        };
+        this.finishTokenAction(
+          result,
+          powerRoll ? this.toAbilityResult(action.abilityId, source, target, ability.name, powerRoll, effects, timestamp) : undefined,
+        );
+        return;
+      }
+    }
+  }
+
+  private getEntity(entityId: string | undefined): (SessionEntity & Record<string, unknown>) | null {
+    if (!entityId || !this.sessionState) return null;
+    return (this.sessionState.entities.find((entity) => entity.id === entityId) as (SessionEntity & Record<string, unknown>) | undefined) ?? null;
+  }
+
+  private getRequiredSource(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    sourceId: string | undefined,
+  ): (SessionEntity & Record<string, unknown>) | null {
+    const source = this.getEntity(sourceId);
+    if (!source) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source entity not found' });
+      return null;
+    }
+    if (meta.role === 'player' && (source.type !== 'hero' || source.id !== meta.heroId)) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only control your own hero' });
+      return null;
+    }
+    return source;
+  }
+
+  private getPositiveAmount(amount: unknown): number | null {
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
+    const value = Math.floor(amount);
+    return value > 0 ? value : null;
+  }
+
+  private createActionResultId(kind: string): string {
+    return `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private entityDisplayName(entityId: string | undefined): string | undefined {
+    if (!entityId || !this.sessionState) return undefined;
+    return this.sessionState.entities.find((entity) => entity.id === entityId)?.name ?? entityId;
+  }
+
+  private describeActionEffect(effect: TokenActionEffect): string | null {
+    const entityName = this.entityDisplayName(effect.entityId);
+    switch (effect.kind) {
+      case 'damage':
+        return `${entityName ?? 'Target'} took ${effect.amount ?? 0} damage`;
+      case 'healing':
+        return `${entityName ?? 'Target'} healed ${effect.amount ?? 0}`;
+      case 'condition-applied':
+        return `${entityName ?? 'Target'} gained ${effect.condition ?? 'condition'}`;
+      case 'condition-removed':
+        return `${entityName ?? 'Target'} lost ${effect.condition ?? 'condition'}`;
+      case 'resource':
+        return effect.message ?? `${entityName ?? 'Token'} resource changed`;
+      case 'action-slot':
+        return effect.message ?? 'Action slot spent';
+      case 'movement':
+        return effect.message ?? `${entityName ?? 'Token'} moved`;
+      case 'note':
+        return effect.message ?? null;
+      default:
+        return null;
+    }
+  }
+
+  private logTokenAction(result: TokenActionResult): void {
+    const sourceName = this.entityDisplayName(result.sourceId);
+    const targetName = this.entityDisplayName(result.targetId);
+    const detail = result.effects
+      .map((effect) => this.describeActionEffect(effect))
+      .filter((message): message is string => Boolean(message))
+      .join('; ');
+
+    const title = result.abilityName && sourceName
+      ? `${sourceName} used ${result.abilityName}${targetName && targetName !== sourceName ? ` on ${targetName}` : ''}`
+      : result.summary;
+
+    this.appendActionLog({
+      id: `log-${result.id}`,
+      actorId: result.sourceId,
+      actorName: sourceName,
+      title,
+      detail: detail || undefined,
+      dice: result.powerRoll ? this.toPowerDice(result.powerRoll.dice) : undefined,
+      total: result.powerRoll?.total,
+      tier: result.powerRoll?.tier,
+      timestamp: result.timestamp,
+    });
+  }
+
+  private finishTokenAction(result: TokenActionResult, legacyAbilityResult?: AbilityResult): void {
+    this.broadcast({ type: 'token_action_resolved', result });
+    this.logTokenAction(result);
+    if (legacyAbilityResult) this.broadcast({ type: 'ability_resolved', result: legacyAbilityResult });
+    if (this.sessionState) this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });
+  }
+
+  private toAbilityResult(
+    abilityId: string,
+    source: Record<string, unknown>,
+    target: Record<string, unknown>,
+    abilityName: string,
+    powerRoll: TokenActionPowerRoll,
+    effects: TokenActionEffect[],
+    timestamp: number,
+  ): AbilityResult {
+    const damage = effects
+      .filter((effect) => effect.kind === 'damage')
+      .reduce((sum, effect) => sum + (effect.amount ?? 0), 0);
+    return {
+      sourceId: String(source['id']),
+      targetId: String(target['id']),
+      abilityId,
+      abilityName,
+      dice: powerRoll.dice,
+      modifier: powerRoll.modifier,
+      total: powerRoll.total,
+      tier: powerRoll.tier,
+      damage,
+      effects: effects
+        .map((effect) => effect.message ?? effect.condition ?? '')
+        .filter((message) => message.length > 0),
+      timestamp,
+    };
+  }
+
+  private getActiveTurnActions(
+    ws: WebSocket,
+    source: Record<string, unknown>,
+    _actionType: string,
+  ): TurnActionState | null {
+    const combat = this.sessionState?.combat;
+    const sourceId = String(source['id']);
+    if (!combat || combat.activeEntityId !== sourceId) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'It is not that entity\'s turn' });
+      return null;
+    }
+    const turnActions = combat.turnActions[sourceId] ?? this.createTurnActions(
+      typeof source['speed'] === 'number' ? source['speed'] : 5,
+    );
+    combat.turnActions[sourceId] = turnActions;
+    return turnActions;
+  }
+
+  private consumeActionForSource(
+    ws: WebSocket,
+    source: Record<string, unknown>,
+    turnActions: TurnActionState,
+    actionType: string,
+    effects: TokenActionEffect[],
+  ): boolean {
+    if (this.hasCondition(source, 'dazed') && actionType === 'triggered') {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Dazed creatures cannot take triggered actions' });
+      return false;
+    }
+    if (!this.consumeActionSlot(ws, turnActions, actionType)) return false;
+    effects.push({
+      kind: 'action-slot',
+      entityId: String(source['id']),
+      message: `Spent ${this.formatActionSlot(actionType)}.`,
+    });
+    if (this.hasCondition(source, 'dazed') && !['free', 'none'].includes(actionType)) {
+      turnActions.mainActionUsed = true;
+      turnActions.maneuverUsed = true;
+      turnActions.triggeredUsedThisRound = true;
+      turnActions.moveRemaining = 0;
+      effects.push({ kind: 'note', entityId: String(source['id']), message: 'Dazed limits the turn to this one action.' });
+    }
+    return true;
+  }
+
+  private getEntityConditions(entity: Record<string, unknown>): ConditionName[] {
+    if (!Array.isArray(entity['conditions'])) return [];
+    return (entity['conditions'] as unknown[])
+      .map((condition) => String(condition).toLowerCase())
+      .filter((condition): condition is ConditionName => VALID_CONDITIONS.has(condition));
+  }
+
+  private hasCondition(entity: Record<string, unknown>, condition: ConditionName): boolean {
+    return this.getEntityConditions(entity).includes(condition);
+  }
+
+  private normalizeCondition(condition: string): ConditionName | null {
+    const normalized = condition.trim().toLowerCase();
+    return VALID_CONDITIONS.has(normalized) ? normalized as ConditionName : null;
+  }
+
+  private applyDamageToEntity(
+    entity: Record<string, unknown>,
+    amount: number,
+    effects: TokenActionEffect[],
+    options: { ignoreResistance?: boolean } = {},
+  ): void {
+    if (typeof entity['currentStamina'] !== 'number') return;
+    const before = entity['currentStamina'];
+    let finalAmount = Math.max(0, Math.floor(amount));
+    if (!options.ignoreResistance && entity['defending'] === true) {
+      const resistance = typeof entity['defendResistance'] === 'number' ? entity['defendResistance'] : 0;
+      if (resistance > 0) {
+        finalAmount = Math.max(0, finalAmount - resistance);
+        effects.push({
+          kind: 'note',
+          entityId: String(entity['id']),
+          message: `Defend reduced damage by ${resistance}.`,
+        });
+      }
+    }
+    const after = Math.max(0, before - finalAmount);
+    entity['currentStamina'] = after;
+    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { currentStamina: after } });
+    effects.push({
+      kind: 'damage',
+      entityId: String(entity['id']),
+      amount: before - after,
+      before,
+      after,
+      message: `${before - after} damage.`,
+    });
+  }
+
+  private applyHealingToEntity(
+    entity: Record<string, unknown>,
+    amount: number,
+    effects: TokenActionEffect[],
+  ): void {
+    if (typeof entity['currentStamina'] !== 'number' || typeof entity['maxStamina'] !== 'number') return;
+    const before = entity['currentStamina'];
+    const after = Math.min(entity['maxStamina'], before + Math.max(0, Math.floor(amount)));
+    entity['currentStamina'] = after;
+    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { currentStamina: after } });
+    effects.push({
+      kind: 'healing',
+      entityId: String(entity['id']),
+      amount: after - before,
+      before,
+      after,
+      message: `${after - before} healing.`,
+    });
+  }
+
+  private applyConditionToEntity(
+    ws: WebSocket,
+    entity: Record<string, unknown>,
+    rawCondition: string,
+    effects: TokenActionEffect[],
+  ): boolean {
+    const condition = this.normalizeCondition(rawCondition);
+    if (!condition) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Unknown condition' });
+      return false;
+    }
+
+    const current = this.getEntityConditions(entity);
+    if (current.includes(condition)) return true;
+
+    let next = [...current];
+    for (const existing of current) {
+      if (ConditionLogic.canConditionsStack(existing, condition)) continue;
+      const severe = ConditionLogic.getMoreSevereCondition(existing, condition);
+      next = next.filter((candidate) => candidate !== existing && candidate !== condition);
+      next.push(severe);
+    }
+    if (!next.includes(condition) && current.every((existing) => ConditionLogic.canConditionsStack(existing, condition))) {
+      next.push(condition);
+    }
+
+    entity['conditions'] = next;
+    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
+    effects.push({
+      kind: 'condition-applied',
+      entityId: String(entity['id']),
+      condition,
+      message: `${this.formatCondition(condition)} applied.`,
+    });
+    return true;
+  }
+
+  private removeConditionFromEntity(
+    entity: Record<string, unknown>,
+    rawCondition: string,
+    effects: TokenActionEffect[],
+  ): void {
+    const condition = this.normalizeCondition(rawCondition);
+    if (!condition) return;
+    const next = this.getEntityConditions(entity).filter((candidate) => candidate !== condition);
+    entity['conditions'] = next;
+    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
+    effects.push({
+      kind: 'condition-removed',
+      entityId: String(entity['id']),
+      condition,
+      message: `${this.formatCondition(condition)} removed.`,
+    });
+  }
+
+  private canCatchBreath(ws: WebSocket, source: Record<string, unknown>): boolean {
+    if (typeof source['currentStamina'] !== 'number' || typeof source['maxStamina'] !== 'number') {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Catch Breath requires stamina tracking' });
+      return false;
+    }
+    if (typeof source['recoveriesCurrent'] === 'number' && source['recoveriesCurrent'] <= 0) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'No recoveries remaining' });
+      return false;
+    }
+    return true;
+  }
+
+  private resolveCatchBreath(ws: WebSocket, source: Record<string, unknown>, effects: TokenActionEffect[]): void {
+    if (!this.canCatchBreath(ws, source)) return;
+    const current = source['currentStamina'] as number;
+    const max = source['maxStamina'] as number;
+    const recoveries = typeof source['recoveriesCurrent'] === 'number' ? source['recoveriesCurrent'] : 1;
+    const result = UniversalActions.resolveCatchBreath(current, max, recoveries);
+    if (!result.recoverySpent) return;
+
+    source['recoveriesCurrent'] = result.recoveriesRemaining;
+    source['currentStamina'] = Math.min(max, current + result.healAmount);
+    this.broadcast({
+      type: 'entity_updated',
+      entityId: String(source['id']),
+      changes: {
+        currentStamina: source['currentStamina'],
+        recoveriesCurrent: source['recoveriesCurrent'],
+      },
+    });
+    effects.push({
+      kind: 'resource',
+      entityId: String(source['id']),
+      amount: -1,
+      after: result.recoveriesRemaining,
+      message: 'Spent 1 recovery.',
+    });
+    effects.push({
+      kind: 'healing',
+      entityId: String(source['id']),
+      amount: result.healAmount,
+      before: current,
+      after: source['currentStamina'] as number,
+      message: `${result.healAmount} healing.`,
+    });
+  }
+
+  private applyDefend(source: Record<string, unknown>, effects: TokenActionEffect[]): void {
+    const level = typeof source['level'] === 'number' ? source['level'] : 1;
+    const resistance = UniversalActions.getDefendResistance(level);
+    source['defending'] = true;
+    source['defendResistance'] = resistance;
+    this.broadcast({
+      type: 'entity_updated',
+      entityId: String(source['id']),
+      changes: { defending: true, defendResistance: resistance },
+    });
+    effects.push({
+      kind: 'note',
+      entityId: String(source['id']),
+      message: `Defending: attacks against this token have a bane and damage resistance ${resistance}.`,
+    });
+  }
+
+  private clearDefending(entityId: string): void {
+    const entity = this.getEntity(entityId);
+    if (!entity || entity['defending'] !== true) return;
+    entity['defending'] = false;
+    entity['defendResistance'] = 0;
+    this.broadcast({
+      type: 'entity_updated',
+      entityId,
+      changes: { defending: false, defendResistance: 0 },
+    });
+  }
+
+  private applyEndOfTurnConditionEffects(entityId: string): void {
+    const entity = this.getEntity(entityId);
+    if (!entity) return;
+    const conditions = this.getEntityConditions(entity);
+    const effects: TokenActionEffect[] = [];
+    if (conditions.some((condition) => ConditionLogic.dealsOngoingDamage(condition))) {
+      const level = typeof entity['level'] === 'number' ? entity['level'] : 1;
+      const damage = Math.max(1, this.rollDie(6) + level);
+      this.applyDamageToEntity(entity, damage, effects, { ignoreResistance: true });
+    }
+
+    const remaining = conditions.filter((condition) => !ConditionLogic.endsAtEndOfTurn(condition));
+    if (remaining.length !== conditions.length) {
+      entity['conditions'] = remaining;
+      this.broadcast({ type: 'entity_updated', entityId, changes: { conditions: remaining } });
+    }
+  }
+
+  private resolvePowerRoll(
+    source: Record<string, unknown>,
+    target: Record<string, unknown> | undefined,
+    characteristic: CharacteristicId,
+    action: TokenActionRequest,
+    options: { isAttack: boolean; attackMode?: 'melee' | 'ranged' | 'magic' },
+  ): TokenActionPowerRoll {
+    let edges = this.sanitizeEdgeBane(action.edges);
+    let banes = this.sanitizeEdgeBane(action.banes);
+
+    if (options.isAttack) {
+      const sourceConditions = this.getEntityConditions(source);
+      if (sourceConditions.some((condition) => ['restrained', 'frightened', 'taunted'].includes(condition))) banes += 1;
+      if (
+        sourceConditions.includes('prone') &&
+        options.attackMode === 'melee' &&
+        target &&
+        !this.hasCondition(target, 'prone')
+      ) {
+        banes += 1;
+      }
+      if (target) {
+        const targetConditions = this.getEntityConditions(target);
+        if (targetConditions.includes('restrained')) edges += 1;
+        if (targetConditions.includes('prone') && options.attackMode === 'ranged') edges += 1;
+        if (targetConditions.includes('prone') && options.attackMode === 'melee') banes += 1;
+        if (target['defending'] === true) banes += 1;
+      }
+    }
+
+    const dice = this.rollD10(2);
+    const characteristicValue = this.getCharacteristicValue(source, characteristic);
+    const roll = RollLogic.calculatePowerRoll(dice, edges, banes, characteristicValue);
+    const diceTotal = (dice[0] ?? 0) + (dice[1] ?? 0);
+    return {
+      sourceId: String(source['id']),
+      targetId: target ? String(target['id']) : undefined,
+      dice,
+      characteristic,
+      characteristicValue,
+      modifier: roll.total - diceTotal,
+      bonuses: 0,
+      edges,
+      banes,
+      rollState: roll.rollState,
+      total: roll.total,
+      tier: roll.tier,
+      tierShifted: roll.tierShifted,
+      isNatural19Or20: roll.isNatural19Or20,
+    };
+  }
+
+  private sanitizeEdgeBane(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+
+  private getAbilityRollCharacteristic(
+    ability: AbilityLike | undefined,
+    source: Record<string, unknown>,
+  ): CharacteristicId {
+    const text = [
+      ...(ability?.effects ?? []).map((effect) => effect.roll ?? ''),
+      ...(ability?.effects ?? []).flatMap((effect) => [effect.tier1 ?? '', effect.tier2 ?? '', effect.tier3 ?? '']),
+    ].join(' ');
+    const nameMatch = /\b(Might|Agility|Reason|Intuition|Presence)\b/i.exec(text);
+    if (nameMatch?.[1]) return nameMatch[1].toLowerCase() as CharacteristicId;
+    const shorthandMatch = /(?:\+|\s)([MARIP])(?:\s|$)/i.exec(text);
+    const characteristic = shorthandMatch?.[1] ? AbilityLogic.getCharacteristicFromShorthand(shorthandMatch[1]) : null;
+    if (characteristic) return characteristic;
+    return this.bestCharacteristic(source, [...CHARACTERISTIC_IDS]).characteristic;
+  }
+
+  private bestCharacteristic(
+    source: Record<string, unknown>,
+    choices: CharacteristicId[],
+  ): { characteristic: CharacteristicId; value: number } {
+    let best = choices[0] ?? 'might';
+    let value = this.getCharacteristicValue(source, best);
+    for (const characteristic of choices) {
+      const candidate = this.getCharacteristicValue(source, characteristic);
+      if (candidate > value) {
+        best = characteristic;
+        value = candidate;
+      }
+    }
+    return { characteristic: best, value };
+  }
+
+  private getCharacteristicValue(source: Record<string, unknown>, characteristic: CharacteristicId): number {
+    return typeof source[characteristic] === 'number' ? source[characteristic] : 0;
+  }
+
+  private validateAbilityCost(
+    ws: WebSocket,
+    source: Record<string, unknown>,
+    ability: AbilityLike | undefined,
+    runtimeCost: string,
+  ): boolean {
+    const amount = this.getAbilityCostAmount(ability, runtimeCost);
+    if (amount <= 0) return true;
+    const resource = this.getAbilityCostResource(ability, runtimeCost);
+    if (resource === 'malice') {
+      const combat = this.sessionState?.combat;
+      if (!combat || combat.malice < amount) {
+        this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Not enough Malice' });
+        return false;
+      }
+      return true;
+    }
+    if (typeof source['heroicResource'] === 'number' && source['heroicResource'] >= amount) return true;
+    this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Not enough heroic resource' });
+    return false;
+  }
+
+  private spendAbilityCost(
+    source: Record<string, unknown>,
+    ability: AbilityLike | undefined,
+    runtimeCost: string,
+    effects: TokenActionEffect[],
+  ): void {
+    const amount = this.getAbilityCostAmount(ability, runtimeCost);
+    if (amount <= 0) return;
+    const resource = this.getAbilityCostResource(ability, runtimeCost);
+    if (resource === 'malice' && this.sessionState?.combat) {
+      this.sessionState.combat.malice = Math.max(0, this.sessionState.combat.malice - amount);
+      effects.push({ kind: 'resource', amount: -amount, message: `Spent ${amount} Malice.` });
+      return;
+    }
+    if (typeof source['heroicResource'] === 'number') {
+      const before = source['heroicResource'];
+      source['heroicResource'] = Math.max(0, before - amount);
+      this.broadcast({
+        type: 'entity_updated',
+        entityId: String(source['id']),
+        changes: { heroicResource: source['heroicResource'] },
+      });
+      effects.push({
+        kind: 'resource',
+        entityId: String(source['id']),
+        amount: -amount,
+        before,
+        after: source['heroicResource'] as number,
+        message: `Spent ${amount} heroic resource.`,
+      });
+    }
+  }
+
+  private getAbilityCostAmount(ability: AbilityLike | undefined, runtimeCost: string): number {
+    if (typeof ability?.cost_amount === 'number') return ability.cost_amount;
+    if (typeof ability?.metadata?.cost_amount === 'number') return ability.metadata.cost_amount;
+    const text = `${ability?.cost ?? ''} ${runtimeCost}`.toLowerCase();
+    if (!text || text.includes('signature') || text.includes('no cost')) return 0;
+    const match = /(?:cost|spend)?\s*(\d+)\+?/.exec(text);
+    return match?.[1] ? Number.parseInt(match[1], 10) : 0;
+  }
+
+  private getAbilityCostResource(ability: AbilityLike | undefined, runtimeCost: string): string | null {
+    const explicit = ability?.cost_resource ?? ability?.metadata?.cost_resource;
+    if (explicit) return explicit.toLowerCase();
+    const text = `${ability?.cost ?? ''} ${runtimeCost}`.toLowerCase();
+    if (text.includes('malice')) return 'malice';
+    return null;
+  }
+
+  private isWithinDistance(
+    source: Record<string, unknown>,
+    target: Record<string, unknown>,
+    distance: string,
+  ): boolean {
+    if (!distance.trim()) return true;
+    if (isTargetInRange(source, target, distance)) return true;
+    const parts = distance.split(/\s+or\s+/i);
+    if (parts.length > 1) return parts.some((part) => this.isWithinDistance(source, target, part));
+    const parsed = AbilityLogic.parseDistance(distance);
+    const gridDistance = this.getGridDistance(source, target);
+    const kitId = typeof source['kit'] === 'string' ? source['kit'] : null;
+    const distanceBonus = kitId && parsed.type === 'melee'
+      ? KitLogic.getMeleeDistanceBonus(kitId)
+      : kitId && parsed.type === 'ranged'
+        ? KitLogic.getRangedDistanceBonus(kitId)
+        : 0;
+    if (parsed.type === 'special') return true;
+    return AbilityLogic.isInRange(parsed, gridDistance, distanceBonus);
+  }
+
+  private getGridDistance(source: Record<string, unknown>, target: Record<string, unknown>): number {
+    const sourceX = typeof source['x'] === 'number' ? source['x'] : 0;
+    const sourceY = typeof source['y'] === 'number' ? source['y'] : 0;
+    const targetX = typeof target['x'] === 'number' ? target['x'] : 0;
+    const targetY = typeof target['y'] === 'number' ? target['y'] : 0;
+    return Math.max(Math.abs(sourceX - targetX), Math.abs(sourceY - targetY));
+  }
+
+  private getFreeStrikeDamage(
+    source: Record<string, unknown>,
+    tier: 1 | 2 | 3,
+    characteristic: CharacteristicId,
+    mode: 'melee' | 'ranged',
+  ): number {
+    const freeStrike = source['freeStrike'];
+    if (freeStrike && typeof freeStrike === 'object') {
+      const strike = freeStrike as Record<string, unknown>;
+      const tierText = strike[`tier${tier}`];
+      if (typeof tierText === 'string') {
+        const damage = this.calculateDamageFormula(source, tierText, tier, mode);
+        if (damage > 0) return this.applyWeakening(source, damage);
+      }
+    }
+    const baseByTier = mode === 'ranged'
+      ? ({ 1: 2, 2: 4, 3: 6 } as const)
+      : ({ 1: 2, 2: 5, 3: 7 } as const);
+    const kitId = typeof source['kit'] === 'string' ? source['kit'] : null;
+    const kitBonus = kitId
+      ? mode === 'ranged'
+        ? KitLogic.getRangedDamageBonus(kitId, tier)
+        : KitLogic.getMeleeDamageBonus(kitId, tier)
+      : 0;
+    return this.applyWeakening(source, baseByTier[tier] + this.getCharacteristicValue(source, characteristic) + kitBonus);
+  }
+
+  private calculateDamageFromEffect(
+    source: Record<string, unknown>,
+    _target: Record<string, unknown>,
+    rawAbility: AbilityLike | undefined,
+    ability: RuntimeAbility,
+    effectText: string,
+    tier: 1 | 2 | 3,
+  ): number {
+    if (!/\bdamage\b/i.test(effectText)) return 0;
+    const category = AbilityLogic.getAbilityCategory(ability.keywords);
+    const formulaCharacteristic = this.getDamageFormulaCharacteristic(effectText) ?? this.getAbilityRollCharacteristic(rawAbility, source);
+    const kitId = typeof source['kit'] === 'string' ? source['kit'] : null;
+    const kitBonus = kitId && (AbilityLogic.isStrike(ability.keywords) || category === 'melee' || category === 'ranged')
+      ? {
+          tier1: category === 'ranged' ? KitLogic.getRangedDamageBonus(kitId, 1) : KitLogic.getMeleeDamageBonus(kitId, 1),
+          tier2: category === 'ranged' ? KitLogic.getRangedDamageBonus(kitId, 2) : KitLogic.getMeleeDamageBonus(kitId, 2),
+          tier3: category === 'ranged' ? KitLogic.getRangedDamageBonus(kitId, 3) : KitLogic.getMeleeDamageBonus(kitId, 3),
+        }
+      : undefined;
+    const result = AbilityLogic.calculateTierDamage(
+      effectText,
+      this.getCharacteristicValue(source, formulaCharacteristic),
+      kitBonus,
+      tier,
+    );
+    return this.applyWeakening(source, Math.max(0, result.total || extractDamage(effectText)));
+  }
+
+  private calculateDamageFormula(
+    source: Record<string, unknown>,
+    formula: string,
+    tier: 1 | 2 | 3,
+    mode: 'melee' | 'ranged',
+  ): number {
+    const characteristic = this.getDamageFormulaCharacteristic(formula) ?? (mode === 'ranged' ? 'agility' : 'might');
+    const kitId = typeof source['kit'] === 'string' ? source['kit'] : null;
+    const kitBonus = kitId
+      ? {
+          tier1: mode === 'ranged' ? KitLogic.getRangedDamageBonus(kitId, 1) : KitLogic.getMeleeDamageBonus(kitId, 1),
+          tier2: mode === 'ranged' ? KitLogic.getRangedDamageBonus(kitId, 2) : KitLogic.getMeleeDamageBonus(kitId, 2),
+          tier3: mode === 'ranged' ? KitLogic.getRangedDamageBonus(kitId, 3) : KitLogic.getMeleeDamageBonus(kitId, 3),
+        }
+      : undefined;
+    return AbilityLogic.calculateTierDamage(formula, this.getCharacteristicValue(source, characteristic), kitBonus, tier).total;
+  }
+
+  private getDamageFormulaCharacteristic(text: string): CharacteristicId | null {
+    const shorthand = /(?:\+|\s)([MARIP])(?:\s|$)/i.exec(text)?.[1];
+    return shorthand ? AbilityLogic.getCharacteristicFromShorthand(shorthand) : null;
+  }
+
+  private applyWeakening(source: Record<string, unknown>, damage: number): number {
+    return this.hasCondition(source, 'weakened') ? Math.floor(damage / 2) : damage;
+  }
+
+  private extractHealingAmount(
+    effectText: string,
+    source: Record<string, unknown>,
+    _target: Record<string, unknown>,
+  ): number {
+    const text = effectText.toLowerCase();
+    if (text.includes('can spend a recovery')) return 0;
+    if (text.includes('recovery value')) {
+      const max = typeof source['maxStamina'] === 'number' ? source['maxStamina'] : 0;
+      return max > 0 ? UniversalActions.calculateRecoveryValue(max) : 0;
+    }
+    const regain = /\bregains?\s+(\d+)\s+stamina\b/i.exec(effectText)?.[1];
+    if (regain) return Number.parseInt(regain, 10);
+    const healing = /\b(\d+)\s+healing\b/i.exec(effectText)?.[1];
+    return healing ? Number.parseInt(healing, 10) : 0;
+  }
+
+  private extractAutomaticConditions(effectText: string): ConditionName[] {
+    const text = effectText.toLowerCase();
+    const found: ConditionName[] = [];
+    for (const condition of ConditionLogic.getAllConditionNames()) {
+      if (!new RegExp(`\\b${condition}\\b`).test(text)) continue;
+      if (new RegExp(`[marip]\\s*<[^.;]*\\b${condition}\\b`).test(text)) continue;
+      const direct = new RegExp(`\\b(?:target|creature|enemy|foe|they|it)\\s+(?:is|are|becomes?|become)\\s+${condition}\\b`).test(text);
+      const shorthand = new RegExp(`(?:^|[;,.])\\s*${condition}\\s*(?:\\(|$|[;,.])`).test(text);
+      if (direct || shorthand) found.push(condition);
+    }
+    return found;
+  }
+
+  private summarizeAction(kind: string, target: Record<string, unknown>, effects: TokenActionEffect[]): string {
+    const targetName = typeof target['name'] === 'string' ? target['name'] : 'target';
+    const damage = effects.filter((effect) => effect.kind === 'damage').reduce((sum, effect) => sum + (effect.amount ?? 0), 0);
+    const healing = effects.filter((effect) => effect.kind === 'healing').reduce((sum, effect) => sum + (effect.amount ?? 0), 0);
+    const conditions = effects
+      .filter((effect) => effect.kind === 'condition-applied' && effect.condition)
+      .map((effect) => this.formatCondition(effect.condition!));
+    if (damage > 0) return `${this.formatActionName(kind)} dealt ${damage} damage to ${targetName}.`;
+    if (healing > 0) return `${this.formatActionName(kind)} healed ${targetName} for ${healing}.`;
+    if (conditions.length > 0) return `${this.formatActionName(kind)} applied ${conditions.join(', ')} to ${targetName}.`;
+    return `${this.formatActionName(kind)} resolved.`;
+  }
+
+  private formatActionName(kind: string): string {
+    return kind
+      .split('-')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private formatCondition(condition: string): string {
+    return condition.charAt(0).toUpperCase() + condition.slice(1);
+  }
+
+  private formatActionSlot(actionType: string): string {
+    if (actionType === 'action') return 'main action';
+    return actionType.replace('-', ' ');
+  }
+
+  private consumeActionSlot(ws: WebSocket, turnActions: TurnActionState, actionType: string): boolean {
+    switch (actionType) {
+      case 'action':
+      case 'main':
+        if (turnActions.mainActionUsed || turnActions.mainConvertedTo !== null) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Main action already used' });
+          return false;
+        }
+        turnActions.mainActionUsed = true;
+        return true;
+      case 'maneuver':
+        if (turnActions.maneuverUsed) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Maneuver already used' });
+          return false;
+        }
+        turnActions.maneuverUsed = true;
+        return true;
+      case 'triggered':
+        if (turnActions.triggeredUsedThisRound) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Triggered action already used this round' });
+          return false;
+        }
+        turnActions.triggeredUsedThisRound = true;
+        return true;
+      case 'move':
+      case 'free':
+      default:
+        return true;
+    }
   }
 
   /** Get the active scene's data object (create if missing). */
@@ -603,6 +2743,20 @@ export class SessionRoom extends DurableObject<Env> {
     if (!scene) return null;
     if (!scene.data) scene.data = {};
     return scene.data;
+  }
+
+  private clampToActiveBattleGrid(x: number, y: number): { x: number; y: number } {
+    const data = this.getActiveSceneData();
+    const cols = typeof data?.['gridCols'] === 'number'
+      ? data['gridCols'] as number
+      : typeof data?.['gridSize'] === 'number'
+        ? data['gridSize'] as number
+        : 30;
+    const rows = typeof data?.['gridRows'] === 'number' ? data['gridRows'] as number : 20;
+    return {
+      x: Math.max(0, Math.min(cols - 1, Math.round(x))),
+      y: Math.max(0, Math.min(rows - 1, Math.round(y))),
+    };
   }
 
   private storeSceneDrawing(drawing: DrawingSync): void {
@@ -631,6 +2785,581 @@ export class SessionRoom extends DurableObject<Env> {
     data['fog'] = (data['fog'] as FogSync[]).filter((f) => f.id !== fogId);
   }
 
+  private storeSceneTerrain(terrain: TerrainSync): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    if (!Array.isArray(data['terrain'])) data['terrain'] = [];
+    const zones = data['terrain'] as TerrainSync[];
+    if (!zones.some((zone) => zone.id === terrain.id)) zones.push(terrain);
+  }
+
+  private removeSceneTerrain(terrainId: string): void {
+    const data = this.getActiveSceneData();
+    if (!data || !Array.isArray(data['terrain'])) return;
+    data['terrain'] = (data['terrain'] as TerrainSync[]).filter((zone) => zone.id !== terrainId);
+  }
+
+
+  private storeStoryReadAloud(readAloudText: string): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    data['readAloud'] = readAloudText;
+  }
+
+  private createNegotiationState(data: Record<string, unknown>): NegotiationLiveState {
+    const template = data['template'] as Record<string, unknown> | undefined;
+    const rawMotivations = Array.isArray(template?.['motivations'])
+      ? template['motivations']
+      : Array.isArray(data['motivations'])
+        ? data['motivations']
+        : [];
+    const rawPitfalls = Array.isArray(template?.['pitfalls'])
+      ? template['pitfalls']
+      : Array.isArray(data['pitfalls'])
+        ? data['pitfalls']
+        : [];
+    const startingInterest = this.getNumericSceneValue(template?.['startingInterest'], data['interest'], 2);
+    const startingPatience = this.getNumericSceneValue(template?.['startingPatience'], data['patience'], 4);
+    return {
+      interest: startingInterest,
+      patience: startingPatience,
+      maxPatience: this.getNumericSceneValue(data['maxPatience'], undefined, Math.max(5, startingPatience)),
+      phase: this.getNegotiationPhase(data['phase']),
+      motivations: this.parseNegotiationSecrets(rawMotivations),
+      pitfalls: this.parseNegotiationSecrets(rawPitfalls),
+      argumentLog: [],
+    };
+  }
+
+  private createMontageState(data: Record<string, unknown>): MontageLiveState {
+    const outcome = typeof data['outcome'] === 'string' ? data['outcome'] : null;
+    return {
+      successes: this.getNumericSceneValue(data['successes'], undefined, 0),
+      failures: this.getNumericSceneValue(data['failures'], undefined, 0),
+      successLimit: this.getNumericSceneValue(data['successesNeeded'], undefined, 3),
+      failureLimit: this.getNumericSceneValue(data['failureLimit'], undefined, 3),
+      testLog: Array.isArray(data['testLog']) ? data['testLog'] as TestLogEntry[] : [],
+      outcome,
+    };
+  }
+
+  private createRespiteState(data: Record<string, unknown>): RespiteLiveState {
+    return {
+      activities: Array.isArray(data['liveActivities'])
+        ? data['liveActivities'] as RespiteActivityState[]
+        : this.parseRespiteActivities(data),
+      completedBy: data['completedBy'] && typeof data['completedBy'] === 'object'
+        ? data['completedBy'] as Record<string, string[]>
+        : {},
+    };
+  }
+
+  private getNumericSceneValue(primary: unknown, secondary: unknown, fallback: number): number {
+    if (typeof primary === 'number' && Number.isFinite(primary)) return primary;
+    if (typeof secondary === 'number' && Number.isFinite(secondary)) return secondary;
+    return fallback;
+  }
+
+  private getNegotiationPhase(value: unknown): 'active' | 'success' | 'failure' {
+    return value === 'success' || value === 'failure' ? value : 'active';
+  }
+
+  private parseNegotiationSecrets(rawSecrets: unknown[]): NegotiationLiveState['motivations'] {
+    return rawSecrets.map((secret, index) => {
+      const item = secret && typeof secret === 'object' ? secret as Record<string, unknown> : {};
+      return {
+        id: typeof item['id'] === 'string' ? item['id'] : `secret-${index}`,
+        type: typeof item['type'] === 'string' ? item['type'] : 'discovery',
+        description: typeof item['description'] === 'string' ? item['description'] : '',
+        revealed: item['revealed'] === true,
+      };
+    });
+  }
+
+  private parseRespiteActivities(data: Record<string, unknown>): RespiteActivityState[] {
+    const rawActivities = data['activities'];
+    if (Array.isArray(rawActivities)) {
+      return rawActivities.map((activity, index) => {
+        const item = activity && typeof activity === 'object' ? activity as Record<string, unknown> : {};
+        const activityType = typeof item['activityType'] === 'string' ? item['activityType'] : undefined;
+        const name = typeof item['name'] === 'string'
+          ? item['name']
+          : activityType
+            ? this.formatActivityName(activityType)
+            : 'Activity';
+        return {
+          activityId: typeof item['id'] === 'string' ? item['id'] : activityType ?? `activity-${index}`,
+          name,
+          description: typeof item['description'] === 'string' ? item['description'] : '',
+          claimedBy: null,
+          claimedByName: null,
+          completed: item['completed'] === true,
+        };
+      });
+    }
+
+    const availableActivities = data['availableActivities'];
+    if (Array.isArray(availableActivities)) {
+      return availableActivities.map((activityId, index) => {
+        const id = String(activityId);
+        return {
+          activityId: id || `activity-${index}`,
+          name: this.formatActivityName(id),
+          description: '',
+          claimedBy: null,
+          claimedByName: null,
+          completed: false,
+        };
+      });
+    }
+
+    if (typeof rawActivities === 'string' && rawActivities.trim()) {
+      return rawActivities.split('\n').filter(Boolean).map((line, index) => {
+        const name = line.trim();
+        return {
+          activityId: name.toLowerCase().replace(/\s+/g, '_') || `activity-${index}`,
+          name,
+          description: '',
+          claimedBy: null,
+          claimedByName: null,
+          completed: false,
+        };
+      });
+    }
+
+    return [];
+  }
+
+  private formatActivityName(activityId: string): string {
+    return activityId
+      .split('_')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ') || 'Activity';
+  }
+
+  private ensureNegotiationState(): NegotiationLiveState | null {
+    if (!this.sessionState) return null;
+    if (!this.sessionState.negotiation) {
+      this.sessionState.negotiation = this.createNegotiationState(this.getActiveSceneData() ?? {});
+    }
+    return this.sessionState.negotiation;
+  }
+
+  private ensureMontageState(): MontageLiveState | null {
+    if (!this.sessionState) return null;
+    if (!this.sessionState.montage) {
+      this.sessionState.montage = this.createMontageState(this.getActiveSceneData() ?? {});
+    }
+    return this.sessionState.montage;
+  }
+
+  private ensureRespiteState(): RespiteLiveState | null {
+    if (!this.sessionState) return null;
+    if (!this.sessionState.respite) {
+      this.sessionState.respite = this.createRespiteState(this.getActiveSceneData() ?? {});
+    }
+    return this.sessionState.respite;
+  }
+
+  private broadcastNegotiationUpdate(): void {
+    const neg = this.sessionState?.negotiation;
+    if (!neg) return;
+    this.syncNegotiationData(neg);
+    this.broadcast({
+      type: 'negotiation_updated',
+      interest: neg.interest,
+      patience: neg.patience,
+      maxPatience: neg.maxPatience,
+      phase: neg.phase,
+      motivations: neg.motivations,
+      pitfalls: neg.pitfalls,
+      argumentLog: neg.argumentLog,
+    });
+  }
+
+  private broadcastMontageUpdate(): void {
+    const mont = this.sessionState?.montage;
+    if (!mont) return;
+    this.syncMontageData(mont);
+    this.broadcast({
+      type: 'montage_updated',
+      successes: mont.successes,
+      failures: mont.failures,
+      successLimit: mont.successLimit,
+      failureLimit: mont.failureLimit,
+      testLog: mont.testLog,
+      outcome: mont.outcome,
+    });
+  }
+
+  private broadcastRespiteUpdate(): void {
+    const respite = this.sessionState?.respite;
+    if (!respite) return;
+    this.syncRespiteData(respite);
+    this.broadcast({
+      type: 'respite_updated',
+      activities: respite.activities,
+      completedBy: respite.completedBy,
+    });
+  }
+
+  private syncNegotiationData(neg: NegotiationLiveState): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    data['interest'] = neg.interest;
+    data['patience'] = neg.patience;
+    data['maxPatience'] = neg.maxPatience;
+    data['phase'] = neg.phase;
+  }
+
+  private syncMontageData(mont: MontageLiveState): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    data['successes'] = mont.successes;
+    data['failures'] = mont.failures;
+    data['successesNeeded'] = mont.successLimit;
+    data['failureLimit'] = mont.failureLimit;
+    data['testLog'] = mont.testLog;
+    data['outcome'] = mont.outcome;
+  }
+
+  private syncRespiteData(respite: RespiteLiveState): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    data['liveActivities'] = respite.activities;
+    data['completedBy'] = respite.completedBy;
+  }
+
+  private syncNegotiationSecretReveal(kind: 'motivations' | 'pitfalls', id: string): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    const template = data['template'] as Record<string, unknown> | undefined;
+    const rawSecrets = Array.isArray(template?.[kind])
+      ? template?.[kind]
+      : Array.isArray(data[kind])
+        ? data[kind]
+        : null;
+    if (!Array.isArray(rawSecrets)) return;
+    for (const secret of rawSecrets) {
+      if (secret && typeof secret === 'object' && (secret as Record<string, unknown>)['id'] === id) {
+        (secret as Record<string, unknown>)['revealed'] = true;
+      }
+    }
+  }
+
+  private syncNegotiationPhase(phase: 'success' | 'failure'): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    data['phase'] = phase;
+  }
+
+  // ── Negotiation Handlers ──
+
+  private handleNegotiationArgument(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    skillId: string,
+    approachText: string
+  ): void {
+    const neg = this.ensureNegotiationState();
+    if (!neg || neg.phase !== 'active') return;
+
+    const dice = this.rollD10(2);
+    const modifier = 0;
+    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
+    const tier = this.getTier(total);
+    const interestDelta = tier === 3 ? 2 : tier === 2 ? 1 : -1;
+
+    neg.interest = Math.max(0, Math.min(5, neg.interest + interestDelta));
+    neg.patience = Math.max(0, neg.patience - 1);
+    if (neg.patience === 0) neg.phase = neg.interest >= 3 ? 'success' : 'failure';
+
+    const entry: ArgumentLogEntry = {
+      id: `arg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      playerId: meta.userId,
+      playerName: meta.username,
+      skillId,
+      approachText,
+      roll: total,
+      tier,
+      interestDelta,
+      timestamp: Date.now(),
+    };
+    neg.argumentLog.push(entry);
+
+    this.appendActionLog({
+      id: `log-${entry.id}`,
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} made a ${skillId} argument`,
+      detail: `${approachText} - interest ${interestDelta >= 0 ? '+' : ''}${interestDelta}, patience -1`,
+      dice: this.toPowerDice(dice),
+      total,
+      tier,
+      timestamp: entry.timestamp,
+    });
+    this.broadcastNegotiationUpdate();
+  }
+
+  private handleNegotiationAdjustPatience(meta: ConnectionMeta, delta: number): void {
+    const neg = this.ensureNegotiationState();
+    if (!neg) return;
+    neg.patience = Math.max(0, Math.min(neg.maxPatience, neg.patience + delta));
+    if (neg.phase !== 'active' && neg.patience > 0) neg.phase = 'active';
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} adjusted patience`,
+      detail: `${delta >= 0 ? '+' : ''}${delta} patience`,
+    });
+    this.broadcastNegotiationUpdate();
+  }
+
+  private handleNegotiationAdjustInterest(meta: ConnectionMeta, delta: number): void {
+    const neg = this.ensureNegotiationState();
+    if (!neg) return;
+    neg.interest = Math.max(0, Math.min(5, neg.interest + delta));
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} adjusted interest`,
+      detail: `${delta >= 0 ? '+' : ''}${delta} interest`,
+    });
+    this.broadcastNegotiationUpdate();
+  }
+
+  private handleNegotiationReveal(meta: ConnectionMeta, kind: 'motivations' | 'pitfalls', id: string): void {
+    const neg = this.ensureNegotiationState();
+    if (!neg) return;
+    const secret = neg[kind].find((candidate) => candidate.id === id);
+    if (!secret) return;
+    secret.revealed = true;
+    this.syncNegotiationSecretReveal(kind, id);
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} revealed a ${kind === 'motivations' ? 'motivation' : 'pitfall'}`,
+    });
+    this.broadcastNegotiationUpdate();
+  }
+
+  private handleNegotiationEnd(meta: ConnectionMeta, phase: 'success' | 'failure'): void {
+    const neg = this.ensureNegotiationState();
+    if (!neg) return;
+    neg.phase = phase;
+    this.syncNegotiationPhase(phase);
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} ended the negotiation`,
+      detail: phase,
+    });
+    this.broadcastNegotiationUpdate();
+  }
+
+  // ── Montage Handlers ──
+
+  private handleMontageRoll(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    skillId: string,
+    characteristicId: string
+  ): void {
+    const mont = this.ensureMontageState();
+    if (!mont) return;
+    if (mont.outcome) return; // Already resolved
+
+    // Server-side power roll
+    const dice = this.rollD10(2);
+    const modifier = 0;
+    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
+    const tier = this.getTier(total);
+    const outcome: 'success' | 'failure' = tier >= 2 ? 'success' : 'failure';
+
+    if (outcome === 'success') mont.successes++;
+    else mont.failures++;
+
+    const entry: TestLogEntry = {
+      id: `test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      playerId: meta.userId,
+      playerName: meta.username,
+      skillId,
+      characteristicId,
+      roll: total,
+      tier,
+      outcome,
+      timestamp: Date.now(),
+    };
+    mont.testLog.push(entry);
+
+    // Check for montage completion
+    this.updateMontageOutcome(mont);
+    this.appendActionLog({
+      id: `log-${entry.id}`,
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} rolled ${skillId}`,
+      detail: `${characteristicId} - ${outcome}`,
+      dice: this.toPowerDice(dice),
+      total,
+      tier,
+      timestamp: entry.timestamp,
+    });
+    this.broadcastMontageUpdate();
+  }
+
+  private handleMontageAdjust(meta: ConnectionMeta, track: 'successes' | 'failures', delta: number): void {
+    const mont = this.ensureMontageState();
+    if (!mont) return;
+    const limit = track === 'successes' ? mont.successLimit : mont.failureLimit;
+    mont[track] = Math.max(0, Math.min(limit, mont[track] + delta));
+    this.updateMontageOutcome(mont);
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} adjusted montage ${track}`,
+      detail: `${delta >= 0 ? '+' : ''}${delta} ${track}`,
+    });
+    this.broadcastMontageUpdate();
+  }
+
+  private handleMontageReset(meta: ConnectionMeta): void {
+    const mont = this.ensureMontageState();
+    if (!mont) return;
+    mont.successes = 0;
+    mont.failures = 0;
+    mont.outcome = null;
+    mont.testLog = [];
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} reset the montage`,
+    });
+    this.broadcastMontageUpdate();
+  }
+
+  private updateMontageOutcome(mont: MontageLiveState): void {
+    if (mont.successes >= mont.successLimit) mont.outcome = 'total_success';
+    else if (mont.failures >= mont.failureLimit) mont.outcome = 'total_failure';
+    else if (mont.successes >= mont.successLimit - 1 && mont.failures >= mont.failureLimit - 1) mont.outcome = 'mixed';
+    else mont.outcome = null;
+  }
+
+  // ── Respite Handlers ──
+
+  private handleRespiteChooseActivity(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    activityId: string
+  ): void {
+    const respite = this.ensureRespiteState();
+    if (!respite) return;
+
+    const activity = respite.activities.find((a) => a.activityId === activityId);
+    if (!activity) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Activity not found' });
+      return;
+    }
+    if (activity.completed) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Activity already completed' });
+      return;
+    }
+    if (activity.claimedBy && activity.claimedBy !== meta.userId && meta.role !== 'director') {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Activity already claimed' });
+      return;
+    }
+
+    activity.claimedBy = meta.userId;
+    activity.claimedByName = meta.username;
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} claimed ${activity.name}`,
+      detail: activity.description,
+    });
+    this.broadcastRespiteUpdate();
+  }
+
+  private handleRespiteCompleteActivity(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    activityId: string
+  ): void {
+    const respite = this.ensureRespiteState();
+    if (!respite) return;
+
+    const activity = respite.activities.find((a) => a.activityId === activityId);
+    if (!activity) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Activity not found' });
+      return;
+    }
+    if (meta.role !== 'director' && activity.claimedBy !== meta.userId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only complete your claimed activity' });
+      return;
+    }
+
+    activity.completed = true;
+    const completedFor = activity.claimedBy ?? meta.userId;
+    const completedActivities = respite.completedBy[completedFor] ?? [];
+    if (!completedActivities.includes(activityId)) completedActivities.push(activityId);
+    respite.completedBy[completedFor] = completedActivities;
+
+    this.appendActionLog({
+      actorId: meta.userId,
+      actorName: meta.username,
+      title: `${meta.username} completed ${activity.name}`,
+    });
+    this.broadcastRespiteUpdate();
+  }
+
+  // ── Audio Handlers ──
+
+  private async handleAudioPlay(ws: WebSocket, audioAssetId: string, loop: boolean): Promise<void> {
+    if (!this.sessionState) return;
+
+    const audio = await this.env.DB.prepare(
+      `SELECT aa.name, aa.asset_id
+       FROM audio_assets aa
+       WHERE aa.id = ? AND aa.campaign_id = ?`,
+    )
+      .bind(audioAssetId, this.sessionState.campaignId)
+      .first<{ name: string; asset_id: string }>();
+    if (!audio) {
+      this.sendTo(ws, { type: 'error', code: 'AUDIO_NOT_FOUND', message: 'Audio asset not found' });
+      return;
+    }
+
+    const audioUrl = `/api/assets/${audio.asset_id}/data`;
+    this.sessionState.audio = {
+      playing: true,
+      audioUrl,
+      assetName: audio.name,
+      loop,
+    };
+    this.broadcast({
+      type: 'audio_command',
+      action: 'play',
+      audioUrl,
+      assetName: audio.name,
+      loop,
+    });
+  }
+
+  private handleAudioPause(): void {
+    if (!this.sessionState) return;
+    if (this.sessionState.audio) {
+      this.sessionState.audio.playing = false;
+    }
+    this.broadcast({ type: 'audio_command', action: 'pause' });
+  }
+
+  private handleAudioStop(): void {
+    if (!this.sessionState) return;
+    this.sessionState.audio = null;
+    this.broadcast({ type: 'audio_command', action: 'stop' });
+  }
+
   private sendTo(ws: WebSocket, msg: ServerMessage): void {
     try {
       ws.send(JSON.stringify(msg));
@@ -648,6 +3377,9 @@ export class SessionRoom extends DurableObject<Env> {
       } catch {
         // connection may be closed
       }
+    }
+    if (this.shouldSnapshotAfterBroadcast(msg)) {
+      this.scheduleActiveSceneSnapshot();
     }
   }
 }

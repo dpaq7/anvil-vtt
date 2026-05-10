@@ -654,8 +654,10 @@ export interface CultureBenefit {
   type: 'environment' | 'organization' | 'upbringing';
   /** Full effect description */
   effect: string;
-  /** Skill granted, if any */
+  /** Primary skill granted, kept for compatibility */
   skill?: string;
+  /** Skills or skill groups available for this culture benefit */
+  skills?: string[];
   /** Language granted, if any */
   language?: string;
   /** Raw markdown source for reference */

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -6,13 +7,75 @@ export const sessionRoutes = new Hono<AppEnv>();
 
 sessionRoutes.use('/*', authMiddleware);
 
-// Lookup session by room code (public — no auth needed for the lookup itself)
+const LIVE_STATUSES = ['lobby', 'active'] as const;
+const VALID_STATUSES = ['draft', 'lobby', 'active', 'paused', 'completed'] as const;
+
+interface SessionAccessRow {
+  id: string;
+  campaign_id: string;
+  status: string;
+  director_id: string;
+  room_code: string | null;
+  active_scene_id: string | null;
+}
+
+interface MembershipRow {
+  role: 'director' | 'player';
+  hero_id: string | null;
+}
+
+function normalizeRoomCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+function isLiveStatus(status: string): boolean {
+  return LIVE_STATUSES.includes(status as (typeof LIVE_STATUSES)[number]);
+}
+
+function isValidStatus(status: string): boolean {
+  return VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number]);
+}
+
+async function getSessionAccess(c: Context<AppEnv>, sessionId: string): Promise<SessionAccessRow | null> {
+  return c.env.DB.prepare(
+    `SELECT gs.id, gs.campaign_id, gs.status, gs.room_code, gs.active_scene_id, c.director_id
+     FROM game_sessions gs
+     JOIN campaigns c ON gs.campaign_id = c.id
+     WHERE gs.id = ? AND c.deleted_at IS NULL`,
+  )
+    .bind(sessionId)
+    .first<SessionAccessRow>();
+}
+
+async function getCampaignMembership(c: Context<AppEnv>, campaignId: string, userId: string): Promise<MembershipRow | null> {
+  return c.env.DB.prepare(
+    'SELECT role, hero_id FROM campaign_members WHERE campaign_id = ? AND user_id = ?',
+  )
+    .bind(campaignId, userId)
+    .first<MembershipRow>();
+}
+
+async function hasSessionAccess(c: Context<AppEnv>, session: SessionAccessRow, user: AuthUser): Promise<boolean> {
+  if (session.director_id === user.id) return true;
+  return (await getCampaignMembership(c, session.campaign_id, user.id)) !== null;
+}
+
+async function assertHeroOwnership(c: Context<AppEnv>, heroId: string | null | undefined, userId: string): Promise<boolean> {
+  if (!heroId) return true;
+  const hero = await c.env.DB.prepare('SELECT id FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+    .bind(heroId, userId)
+    .first<{ id: string }>();
+  return hero !== null;
+}
+
+// Lookup session by room code. Auth is required by the router middleware, but campaign membership is not:
+// a valid live room code is the session-level invitation for players to join.
 sessionRoutes.get('/sessions/by-code/:code', async (c) => {
-  const code = c.req.param('code').toUpperCase();
+  const code = normalizeRoomCode(c.req.param('code'));
   const session = await c.env.DB.prepare(
     `SELECT gs.id, gs.name, gs.campaign_id, gs.status, c.name as campaign_name
      FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id
-     WHERE gs.room_code = ? AND gs.status IN ('lobby', 'active')`,
+     WHERE gs.room_code = ? AND gs.status IN ('lobby', 'active') AND c.deleted_at IS NULL`,
   )
     .bind(code)
     .first<{ id: string; name: string; campaign_id: string; status: string; campaign_name: string }>();
@@ -25,21 +88,16 @@ sessionRoutes.post('/sessions/:id/ws-token', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  // Verify session exists and user has access
-  const session = await c.env.DB.prepare(
-    `SELECT gs.id, gs.campaign_id, gs.status, c.director_id
-     FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ id: string; campaign_id: string; status: string; director_id: string }>();
+  const session = await getSessionAccess(c, sessionId);
   if (!session) return c.json({ error: 'Not found' }, 404);
-  if (session.status !== 'lobby' && session.status !== 'active') {
-    return c.json({ error: 'Session not active' }, 400);
-  }
+  if (!isLiveStatus(session.status)) return c.json({ error: 'Session not active' }, 400);
 
   const role = session.director_id === user.id ? 'director' : 'player';
+  const membership = role === 'director'
+    ? null
+    : await getCampaignMembership(c, session.campaign_id, user.id);
+  if (role !== 'director' && !membership) return c.json({ error: 'Forbidden' }, 403);
 
-  // Get participant's hero ID if they have one
   const participant = await c.env.DB.prepare(
     'SELECT hero_id FROM session_participants WHERE game_session_id = ? AND user_id = ?',
   )
@@ -52,7 +110,7 @@ sessionRoutes.post('/sessions/:id/ws-token', async (c) => {
   await c.env.DB.prepare(
     'INSERT INTO ws_tokens (id, user_id, session_id, campaign_id, role, hero_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(token, user.id, sessionId, session.campaign_id, role, participant?.hero_id ?? null, expiresAt)
+    .bind(token, user.id, sessionId, session.campaign_id, role, participant?.hero_id ?? membership?.hero_id ?? null, expiresAt)
     .run();
 
   return c.json({ token });
@@ -63,7 +121,11 @@ sessionRoutes.post('/sessions/:id/ws-token', async (c) => {
 
 // List sessions for a campaign
 sessionRoutes.get('/campaigns/:campaignId/sessions', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const membership = await getCampaignMembership(c, campaignId, user.id);
+  if (!membership) return c.json({ error: 'Forbidden' }, 403);
+
   const results = await c.env.DB.prepare(
     'SELECT * FROM game_sessions WHERE campaign_id = ? ORDER BY order_index',
   )
@@ -85,6 +147,13 @@ sessionRoutes.post('/campaigns/:campaignId/sessions', async (c) => {
   const body = await c.req.json<{ name: string; description?: string; module_id?: string }>();
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
 
+  if (body.module_id) {
+    const module = await c.env.DB.prepare('SELECT id FROM modules WHERE id = ? AND campaign_id = ?')
+      .bind(body.module_id, campaignId)
+      .first<{ id: string }>();
+    if (!module) return c.json({ error: 'Module not found' }, 404);
+  }
+
   const last = await c.env.DB.prepare(
     'SELECT MAX(order_index) as max_idx FROM game_sessions WHERE campaign_id = ?',
   )
@@ -103,38 +172,49 @@ sessionRoutes.post('/campaigns/:campaignId/sessions', async (c) => {
 
 // Get session (includes director_id from campaigns for role detection)
 sessionRoutes.get('/sessions/:id', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
   const session = await c.env.DB.prepare(
     `SELECT gs.*, c.director_id
      FROM game_sessions gs
      JOIN campaigns c ON gs.campaign_id = c.id
-     WHERE gs.id = ?`,
+     WHERE gs.id = ? AND c.deleted_at IS NULL`,
   )
     .bind(sessionId)
-    .first();
+    .first<SessionAccessRow & Record<string, unknown>>();
   if (!session) return c.json({ error: 'Not found' }, 404);
+  if (!(await hasSessionAccess(c, session, user))) return c.json({ error: 'Forbidden' }, 403);
   return c.json({ session });
 });
 
-// Update session
+// Update session metadata. Lifecycle status changes should use go-live/start/end endpoints.
 sessionRoutes.put('/sessions/:id', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  const session = await c.env.DB.prepare(
-    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ director_id: string }>();
+  const session = await getSessionAccess(c, sessionId);
   if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  if (isLiveStatus(session.status)) return c.json({ error: 'Cannot edit a live session' }, 400);
 
   const body = await c.req.json<{ name?: string; description?: string; status?: string; order_index?: number }>();
   const sets: string[] = [];
   const vals: unknown[] = [];
 
-  if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name.trim()); }
+  if (body.name !== undefined) {
+    const name = body.name.trim();
+    if (!name) return c.json({ error: 'Name is required' }, 400);
+    sets.push('name = ?');
+    vals.push(name);
+  }
   if (body.description !== undefined) { sets.push('description = ?'); vals.push(body.description.trim()); }
-  if (body.status !== undefined) { sets.push('status = ?'); vals.push(body.status); }
+  if (body.status !== undefined) {
+    if (!isValidStatus(body.status)) return c.json({ error: 'Invalid status' }, 400);
+    if (body.status === 'lobby' || body.status === 'active') {
+      return c.json({ error: 'Use lifecycle endpoints to start live sessions' }, 400);
+    }
+    sets.push('status = ?');
+    vals.push(body.status);
+  }
   if (body.order_index !== undefined) { sets.push('order_index = ?'); vals.push(body.order_index); }
 
   if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
@@ -152,12 +232,9 @@ sessionRoutes.delete('/sessions/:id', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  const session = await c.env.DB.prepare(
-    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ director_id: string }>();
+  const session = await getSessionAccess(c, sessionId);
   if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  if (isLiveStatus(session.status)) return c.json({ error: 'End the live session before deleting it' }, 400);
 
   await c.env.DB.prepare('DELETE FROM game_sessions WHERE id = ?').bind(sessionId).run();
   return c.json({ ok: true });
@@ -168,20 +245,55 @@ sessionRoutes.put('/sessions/:id/go-live', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  const session = await c.env.DB.prepare(
-    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ director_id: string; status: string }>();
+  const session = await getSessionAccess(c, sessionId);
   if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  if (isLiveStatus(session.status)) return c.json({ error: 'Session is already live' }, 400);
 
-  const body = await c.req.json<{ roomCode: string }>();
-  if (!body.roomCode?.trim()) return c.json({ error: 'Room code is required' }, 400);
+  const body = await c.req.json<{ roomCode: string; sceneId?: string | null }>();
+  const roomCode = normalizeRoomCode(body.roomCode ?? '');
+  if (!/^[A-Z0-9]{6}$/.test(roomCode)) return c.json({ error: 'Room code must be 6 letters or numbers' }, 400);
+
+  const otherLive = await c.env.DB.prepare(
+    `SELECT id FROM game_sessions
+     WHERE campaign_id = ? AND id <> ? AND status IN ('lobby', 'active')
+     LIMIT 1`,
+  )
+    .bind(session.campaign_id, sessionId)
+    .first<{ id: string }>();
+  if (otherLive) return c.json({ error: 'Campaign already has a live session' }, 409);
+
+  const duplicateCode = await c.env.DB.prepare(
+    `SELECT id FROM game_sessions
+     WHERE room_code = ? AND id <> ? AND status IN ('lobby', 'active')
+     LIMIT 1`,
+  )
+    .bind(roomCode, sessionId)
+    .first<{ id: string }>();
+  if (duplicateCode) return c.json({ error: 'Room code is already in use' }, 409);
+
+  let activeSceneId = body.sceneId?.trim() || null;
+  if (activeSceneId) {
+    const scene = await c.env.DB.prepare(
+      'SELECT id FROM scenes WHERE id = ? AND game_session_id = ? AND deleted_at IS NULL',
+    )
+      .bind(activeSceneId, sessionId)
+      .first<{ id: string }>();
+    if (!scene) return c.json({ error: 'Scene not found' }, 404);
+  } else {
+    const firstScene = await c.env.DB.prepare(
+      'SELECT id FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index LIMIT 1',
+    )
+      .bind(sessionId)
+      .first<{ id: string }>();
+    activeSceneId = firstScene?.id ?? null;
+  }
 
   await c.env.DB.prepare(
-    "UPDATE game_sessions SET room_code = ?, status = 'lobby', started_at = datetime('now') WHERE id = ?",
+    `UPDATE game_sessions
+     SET room_code = ?, status = 'lobby', started_at = datetime('now'), ended_at = NULL, active_scene_id = ?
+     WHERE id = ?`,
   )
-    .bind(body.roomCode.trim(), sessionId)
+    .bind(roomCode, activeSceneId, sessionId)
     .run();
 
   return c.json({ ok: true });
@@ -192,24 +304,29 @@ sessionRoutes.post('/sessions/:id/start', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  const session = await c.env.DB.prepare(
-    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ director_id: string; status: string }>();
+  const session = await getSessionAccess(c, sessionId);
   if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
   if (session.status !== 'lobby') return c.json({ error: 'Session must be in lobby state' }, 400);
 
-  await c.env.DB.prepare("UPDATE game_sessions SET status = 'active' WHERE id = ?")
+  await c.env.DB.prepare("UPDATE game_sessions SET status = 'active', started_at = COALESCE(started_at, datetime('now')) WHERE id = ?")
     .bind(sessionId)
     .run();
+
+  const doId = c.env.SESSION_ROOM.idFromName(sessionId);
+  const stub = c.env.SESSION_ROOM.get(doId);
+  await stub.fetch(new Request('https://do/start', { method: 'POST' }));
 
   return c.json({ ok: true });
 });
 
 // Get participants
 sessionRoutes.get('/sessions/:id/participants', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
+  const session = await getSessionAccess(c, sessionId);
+  if (!session) return c.json({ error: 'Not found' }, 404);
+  if (!(await hasSessionAccess(c, session, user))) return c.json({ error: 'Forbidden' }, 403);
+
   const results = await c.env.DB.prepare(
     `SELECT sp.*, u.username, u.avatar_url
      FROM session_participants sp JOIN users u ON sp.user_id = u.id
@@ -225,14 +342,11 @@ sessionRoutes.post('/sessions/:id/end', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
 
-  const session = await c.env.DB.prepare(
-    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ director_id: string; status: string }>();
+  const session = await getSessionAccess(c, sessionId);
   if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  if (session.status === 'completed') return c.json({ ok: true });
+  if (!isLiveStatus(session.status)) return c.json({ error: 'Session is not live' }, 400);
 
-  // Forward to Durable Object so it can save snapshots and clean up
   const doId = c.env.SESSION_ROOM.idFromName(sessionId);
   const stub = c.env.SESSION_ROOM.get(doId);
   const endUrl = new URL('/end', 'https://do');
@@ -247,7 +361,21 @@ sessionRoutes.post('/sessions/:id/end', async (c) => {
 sessionRoutes.post('/sessions/:id/join', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('id');
-  const body = await c.req.json<{ hero_id?: string }>();
+  const body = await c.req.json<{ hero_id?: string | null }>();
+
+  const session = await getSessionAccess(c, sessionId);
+  if (!session) return c.json({ error: 'Not found' }, 404);
+  if (!isLiveStatus(session.status)) return c.json({ error: 'Session not active' }, 400);
+  if (!(await assertHeroOwnership(c, body.hero_id, user.id))) return c.json({ error: 'Hero not found' }, 404);
+
+  const role = session.director_id === user.id ? 'director' : 'player';
+  await c.env.DB.prepare(
+    `INSERT INTO campaign_members (campaign_id, user_id, hero_id, role)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(campaign_id, user_id) DO UPDATE SET hero_id = excluded.hero_id`,
+  )
+    .bind(session.campaign_id, user.id, body.hero_id ?? null, role)
+    .run();
 
   await c.env.DB.prepare(
     `INSERT INTO session_participants (game_session_id, user_id, hero_id, status)

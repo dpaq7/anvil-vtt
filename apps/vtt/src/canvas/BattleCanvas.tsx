@@ -15,6 +15,12 @@ import type { DrawingData } from './layers/DrawingLayer.js';
 import type { TerrainZoneData } from './layers/TerrainLayer.js';
 import type { FogZoneData } from './layers/FogLayer.js';
 
+const getEntityTokenSize = (entity: EntityData): number => {
+  const rawSize = entity['size'];
+  const size = typeof rawSize === 'number' ? rawSize : typeof rawSize === 'string' ? Number(rawSize) : 1;
+  return Number.isFinite(size) ? Math.max(1, size) : 1;
+};
+
 export interface BattleCanvasProps {
   cols: number;
   rows: number;
@@ -45,6 +51,8 @@ export interface BattleCanvasProps {
   fogZones?: FogZoneData[];
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
+  fogBrushMode?: 'draw' | 'reveal';
+  fogBrushSize?: number;
   gridVisible?: boolean;
   gridOpacity?: number;
   gridColor?: string;
@@ -68,9 +76,9 @@ export function BattleCanvas({
   selectedEntityId,
   selectedEntityIds = [],
   backgroundUrl,
-  walls = [],
+  walls: _walls = [],
   isDirector,
-  heroPosition,
+  heroPosition: _heroPosition,
   onSelectEntity,
   onMoveEntity,
   onMultiSelectEntities,
@@ -88,6 +96,8 @@ export function BattleCanvas({
   fogZones = [],
   onFogAdd,
   onFogRemove,
+  fogBrushMode = 'draw',
+  fogBrushSize = 1,
   gridVisible = true,
   gridOpacity = 0.4,
   gridColor = '#444444',
@@ -206,11 +216,12 @@ export function BattleCanvas({
           onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
           onTokenRightClick: (...args) => onTokenRightClickRef.current?.(...args),
         },
+        { cols, rows },
         isDirector,
       );
 
-      // Wire builder layers for hit-testing and previews
-      if (builderMode) {
+      // Wire editable overlay layers for hit-testing and previews.
+      if (builderMode || isDirector) {
         interaction.setBuilderLayers(drawingLayer, terrainLayer, fog);
       }
 
@@ -251,6 +262,34 @@ export function BattleCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep Pixi's renderer synchronized with flex layout changes such as pane collapse and focus mode.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    let frame = 0;
+    const resize = () => {
+      const app = appRef.current;
+      if (!app) return;
+      const width = Math.max(1, Math.floor(el.clientWidth));
+      const height = Math.max(1, Math.floor(el.clientHeight));
+      app.renderer.resize(width, height);
+    };
+
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(resize);
+    });
+
+    observer.observe(el);
+    frame = requestAnimationFrame(resize);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [pixiReady]);
+
   // Callback for when background image loads at native dimensions
   const handleImageLoaded = useCallback(
     (info: { naturalWidth: number; naturalHeight: number }) => {
@@ -259,6 +298,17 @@ export function BattleCanvas({
     },
     [],
   );
+
+  // Keep layer scale and interaction bounds in sync with map settings.
+  useEffect(() => {
+    const layers = layersRef.current;
+    if (!layers) return;
+    layers.tokens.setCellSize(cellSize);
+    layers.terrain.setCellSize(cellSize);
+    layers.fog.setCellSize(cellSize);
+    layers.interaction.setCellSize(cellSize);
+    layers.interaction.setGridBounds({ cols, rows });
+  }, [cellSize, cols, rows, pixiReady]);
 
   // Update background — renders at native image dimensions, independent of grid.
   // Only re-runs when the URL actually changes (not on grid resize).
@@ -304,17 +354,18 @@ export function BattleCanvas({
     // Add new tokens or update changed ones
     for (const entity of entities) {
       const color = entity.type === 'hero' ? 0x3b82f6 : entity.type === 'monster' ? 0xef4444 : 0x8b5cf6;
+      const size = getEntityTokenSize(entity);
       if (!prevIds.has(entity.id)) {
         // New entity — add token
         layers.tokens.addToken(entity, {
-          size: 1,
+          size,
           color,
           selected: selectedSet.has(entity.id),
         });
       } else {
         // Existing entity — update in place (position, selection, stamina, conditions)
         layers.tokens.updateToken(entity, {
-          size: 1,
+          size,
           color,
           selected: selectedSet.has(entity.id),
         });
@@ -342,6 +393,11 @@ export function BattleCanvas({
   useEffect(() => {
     layersRef.current?.interaction.setDrawConfig(drawColor, drawWidth);
   }, [drawColor, drawWidth, pixiReady]);
+
+  // Sync fog brush config to InteractionManager
+  useEffect(() => {
+    layersRef.current?.interaction.setFogConfig(fogBrushMode, fogBrushSize);
+  }, [fogBrushMode, fogBrushSize, pixiReady]);
 
   // Sync drawings layer
   useEffect(() => {

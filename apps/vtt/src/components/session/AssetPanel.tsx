@@ -56,6 +56,8 @@ export interface AssetPanelProps {
   monsters?: CompendiumMonster[];
   /** Live-session override: create entities via WebSocket instead of HTTP store. */
   onAddMonsterToScene?: (monsterName: string, quantity: number) => void;
+  /** Live-session override: place terrain directly on the current battle map. */
+  onAddTerrainToScene?: (terrain: { id: string; name: string; category?: string; gridWidth?: number; gridHeight?: number }) => void;
 }
 
 export function AssetPanel({
@@ -66,6 +68,7 @@ export function AssetPanel({
   heroes = [],
   monsters: monstersProp,
   onAddMonsterToScene,
+  onAddTerrainToScene,
 }: AssetPanelProps) {
   const tabs = SCENE_TABS[sceneType] ?? ['heroes', 'maps'];
 
@@ -194,6 +197,30 @@ export function AssetPanel({
             builtInTerrains={ALL_TERRAINS}
             customTerrains={customTerrain}
             compact
+            onSelectBuiltIn={(terrainId) => {
+              const terrain = ALL_TERRAINS.find((item) => item.id === terrainId);
+              if (terrain) {
+                onAddTerrainToScene?.({
+                  id: terrain.id,
+                  name: terrain.name,
+                  category: terrain.category,
+                  gridWidth: 1,
+                  gridHeight: 1,
+                });
+              }
+            }}
+            onSelectCustom={(terrainId) => {
+              const terrain = customTerrain.find((item) => item.id === terrainId);
+              if (terrain) {
+                onAddTerrainToScene?.({
+                  id: terrain.id,
+                  name: terrain.name,
+                  category: terrain.category,
+                  gridWidth: terrain.gridWidth,
+                  gridHeight: terrain.gridHeight,
+                });
+              }
+            }}
           />
         );
 

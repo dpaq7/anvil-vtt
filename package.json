@@ -12,8 +12,15 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "test:run": "turbo test:run",
+    "smoke:live": "node scripts/smoke-live-session.mjs --start-server",
+    "smoke:live:api": "node scripts/smoke-live-session.mjs",
     "clean": "turbo clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "build:server": "pnpm --filter @anvil/server build",
+    "build:vtt": "pnpm --filter @anvil/vtt build",
+    "deploy:check": "pnpm --filter @anvil/server build && pnpm --filter @anvil/vtt build",
+    "deploy:server": "pnpm --filter @anvil/server deploy",
+    "db:migrate:remote": "pnpm --filter @anvil/server db:migrate:remote"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

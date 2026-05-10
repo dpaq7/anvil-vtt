@@ -122,10 +122,11 @@ export async function uploadFile(file: File, assetType: string): Promise<string>
   const { id } = await api.post<{ id: string; storageKey: string }>('/api/assets/upload', {
     name: file.name,
     type: assetType,
-    contentType: file.type,
+    contentType: file.type || 'application/octet-stream',
+    size: file.size,
   });
   const buffer = await file.arrayBuffer();
-  await api.putRaw(`/api/assets/${id}/data`, buffer, file.type);
+  await api.putRaw(`/api/assets/${id}/data`, buffer, file.type || 'application/octet-stream');
   return id;
 }
 
@@ -296,7 +297,7 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
   createAudio: async (campaignId, input, file) => {
     set({ loading: true, error: null });
     try {
-      const assetId = await uploadFile(file, 'other');
+      const assetId = await uploadFile(file, 'audio');
       const { audio } = await api.post<{ audio: AudioAsset }>(`/api/campaigns/${campaignId}/audio`, {
         ...input,
         assetId,

@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import {
+  requireSceneDirector,
+  requireSceneMember,
+  requireSessionDirector,
+  requireSessionMember,
+} from '../lib/access.js';
 
 export const sceneRoutes = new Hono<AppEnv>();
 
@@ -8,7 +14,11 @@ sceneRoutes.use('/*', authMiddleware);
 
 // List scenes for a session
 sceneRoutes.get('/sessions/:sessionId/scenes', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('sessionId');
+  const accessError = await requireSessionMember(c, sessionId, user);
+  if (accessError) return accessError;
+
   const results = await c.env.DB.prepare(
     'SELECT * FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL ORDER BY order_index',
   )
@@ -22,13 +32,8 @@ sceneRoutes.post('/sessions/:sessionId/scenes', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('sessionId');
 
-  // Verify director
-  const session = await c.env.DB.prepare(
-    `SELECT gs.*, c.director_id FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id WHERE gs.id = ?`,
-  )
-    .bind(sessionId)
-    .first<{ director_id: string }>();
-  if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const accessError = await requireSessionDirector(c, sessionId, user);
+  if (accessError) return accessError;
 
   const body = await c.req.json<{ title: string; type: string; data?: string }>();
   if (!body.title?.trim()) return c.json({ error: 'Title is required' }, 400);
@@ -54,7 +59,11 @@ sceneRoutes.post('/sessions/:sessionId/scenes', async (c) => {
 
 // Get scene
 sceneRoutes.get('/scenes/:id', async (c) => {
+  const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('id');
+  const accessError = await requireSceneMember(c, sceneId, user);
+  if (accessError) return accessError;
+
   const scene = await c.env.DB.prepare('SELECT * FROM scenes WHERE id = ? AND deleted_at IS NULL')
     .bind(sceneId)
     .first();
@@ -67,15 +76,8 @@ sceneRoutes.put('/scenes/:id', async (c) => {
   const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('id');
 
-  const scene = await c.env.DB.prepare(
-    `SELECT s.*, c.director_id FROM scenes s
-     JOIN game_sessions gs ON s.game_session_id = gs.id
-     JOIN campaigns c ON gs.campaign_id = c.id
-     WHERE s.id = ? AND s.deleted_at IS NULL`,
-  )
-    .bind(sceneId)
-    .first<{ director_id: string }>();
-  if (!scene || scene.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
 
   const body = await c.req.json<{ title?: string; data?: string; order_index?: number }>();
   const sets: string[] = [];
@@ -100,15 +102,8 @@ sceneRoutes.delete('/scenes/:id', async (c) => {
   const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('id');
 
-  const scene = await c.env.DB.prepare(
-    `SELECT s.*, c.director_id FROM scenes s
-     JOIN game_sessions gs ON s.game_session_id = gs.id
-     JOIN campaigns c ON gs.campaign_id = c.id
-     WHERE s.id = ? AND s.deleted_at IS NULL`,
-  )
-    .bind(sceneId)
-    .first<{ director_id: string }>();
-  if (!scene || scene.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  const accessError = await requireSceneDirector(c, sceneId, user);
+  if (accessError) return accessError;
 
   await c.env.DB.prepare("UPDATE scenes SET deleted_at = datetime('now') WHERE id = ?")
     .bind(sceneId)

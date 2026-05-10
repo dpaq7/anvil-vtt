@@ -1,9 +1,13 @@
 name = "anvil-server"
 main = "src/index.ts"
-compatibility_date = "2024-12-01"
+compatibility_date = "2026-05-10"
+preview_urls = false
 
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
+FRONTEND_URL = "https://anvil-vtt.pages.dev"
+DISCORD_REDIRECT_URI = "https://anvil-server.paquin-dan.workers.dev/api/auth/callback"
+GOOGLE_REDIRECT_URI = "https://anvil-server.paquin-dan.workers.dev/api/auth/google/callback"
 
 # D1 Database
 [[d1_databases]]
@@ -25,7 +29,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["SessionRoom"]
+new_sqlite_classes = ["SessionRoom"]
 
 [dev]
 port = 8787

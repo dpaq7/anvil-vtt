@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignMember } from '../lib/access.js';
 import type {
   NoteFolder,
   Note,
@@ -14,6 +15,12 @@ import type {
 export const noteRoutes = new Hono<AppEnv>();
 
 noteRoutes.use('/*', authMiddleware);
+noteRoutes.use('/:campaignId/*', async (c, next) => {
+  const user = c.get('user') as AuthUser;
+  const accessError = await requireCampaignMember(c, c.req.param('campaignId'), user);
+  if (accessError) return accessError;
+  await next();
+});
 
 // ── Row Types & Mappers ──
 

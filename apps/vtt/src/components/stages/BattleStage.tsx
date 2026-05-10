@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import { BattleToolbar } from '../builder/BattleToolbar.js';
 import { ViewportControls } from '../builder/ViewportControls.js';
-import type { BattleTool } from '../builder/BattleToolbar.js';
+import type { BattleTool, FogBrushMode } from '../builder/BattleToolbar.js';
 import type { ViewportSystem } from '../../canvas/systems/ViewportSystem.js';
 import type { EntityData, CombatState, ClientMessage, AbilityResult } from '../../types/protocol.js';
 import type { DrawingData } from '../../canvas/layers/DrawingLayer.js';
@@ -60,6 +60,8 @@ export function BattleStage({
   const [activeTool, setActiveTool] = useState<BattleTool>('select');
   const [drawColor, setDrawColor] = useState('#ef4444');
   const [drawWidth, setDrawWidth] = useState(2);
+  const [fogBrushMode, setFogBrushMode] = useState<FogBrushMode>('draw');
+  const [fogBrushSize, setFogBrushSize] = useState(1);
   const [gridVisible, setGridVisible] = useState(true);
 
   // Viewport
@@ -123,9 +125,13 @@ export function BattleStage({
 
   const handleMoveEntity = useCallback(
     (entityId: string, x: number, y: number) => {
+      if (!entityMap.has(entityId)) {
+        onSelectEntity(null);
+        return;
+      }
       send({ type: 'move_token', entityId, x, y });
     },
-    [send],
+    [entityMap, onSelectEntity, send],
   );
 
   const handleMultiSelectEntities = useCallback(
@@ -138,10 +144,12 @@ export function BattleStage({
   const handleMultiMoveEntities = useCallback(
     (moves: Array<{ entityId: string; gridX: number; gridY: number }>) => {
       for (const { entityId, gridX, gridY } of moves) {
-        send({ type: 'move_token', entityId, x: gridX, y: gridY });
+        if (entityMap.has(entityId)) {
+          send({ type: 'move_token', entityId, x: gridX, y: gridY });
+        }
       }
     },
-    [send],
+    [entityMap, send],
   );
 
   // Drawing handlers — sync via WebSocket
@@ -177,19 +185,34 @@ export function BattleStage({
     [send],
   );
 
-  // Terrain handlers — local only for now (no sync protocol yet)
+  const handleClearFog = useCallback(() => {
+    for (const zone of fogZones) {
+      send({ type: 'scene_fog_remove', fogId: zone.id });
+    }
+  }, [fogZones, send]);
+
+  // Terrain handlers — sync via WebSocket
   const handleTerrainAdd = useCallback(
-    (_gridX: number, _gridY: number, _w: number, _h: number) => {
-      // TODO: terrain sync via WS when terrain protocol is added
+    (gridX: number, gridY: number, w: number, h: number) => {
+      const terrainZone = {
+        id: generateId(),
+        terrainId: 'difficult',
+        name: 'Difficult Terrain',
+        x: gridX,
+        y: gridY,
+        w,
+        h,
+      };
+      send({ type: 'scene_terrain_add', terrain: terrainZone });
     },
-    [],
+    [send],
   );
 
   const handleTerrainRemove = useCallback(
-    (_terrainId: string) => {
-      // TODO: terrain sync via WS
+    (terrainId: string) => {
+      send({ type: 'scene_terrain_remove', terrainId });
     },
-    [],
+    [send],
   );
 
   // Keyboard shortcuts (director only)
@@ -281,6 +304,8 @@ export function BattleStage({
         onTerrainRemove={handleTerrainRemove}
         onFogAdd={handleFogAdd}
         onFogRemove={handleFogRemove}
+        fogBrushMode={fogBrushMode}
+        fogBrushSize={fogBrushSize}
         gridVisible={gridVisible}
         gridOpacity={gridOpacity}
         gridColor={gridColor}
@@ -304,6 +329,12 @@ export function BattleStage({
           onDrawWidthChange={setDrawWidth}
           gridVisible={gridVisible}
           onToggleGrid={() => setGridVisible((v) => !v)}
+          fogZoneCount={fogZones.length}
+          fogBrushMode={fogBrushMode}
+          onFogBrushModeChange={setFogBrushMode}
+          fogBrushSize={fogBrushSize}
+          onFogBrushSizeChange={setFogBrushSize}
+          onClearFog={handleClearFog}
         />
       )}
 
@@ -336,8 +367,11 @@ export function BattleStage({
       {contextMenu && entityMap.get(contextMenu.entityId) && (
         <TokenContextMenu
           entity={entityMap.get(contextMenu.entityId)!}
+          entities={entities}
+          selectedTargetId={selectedEntityId}
           x={contextMenu.x}
           y={contextMenu.y}
+          isDirector={isDirector}
           send={send}
           onClose={handleCloseContextMenu}
         />

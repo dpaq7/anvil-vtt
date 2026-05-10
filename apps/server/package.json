@@ -10,12 +10,15 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "db:migrate:local": "wrangler d1 migrations apply anvil-db --local"
+    "db:migrate:local": "wrangler d1 migrations apply anvil-db --local",
+    "deploy:dry": "wrangler deploy --dry-run --outdir=dist",
+    "db:migrate:remote": "wrangler d1 migrations apply anvil-db --remote",
+    "db:migrate:list": "wrangler d1 migrations list anvil-db"
   },
   "dependencies": {
     "@anvil/data": "workspace:*",
     "@anvil/types": "workspace:*",
-    "hono": "^4.11.7"
+    "hono": "^4.12.18"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260131.0",

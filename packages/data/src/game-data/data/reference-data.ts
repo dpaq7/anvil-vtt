@@ -336,7 +336,7 @@ export const upbringingOptions: CultureOption[] = [
   { type: 'creative', name: 'Creative', skills: ['Music/Perform', 'Crafting'] },
   { type: 'labor', name: 'Labor', skills: ['Blacksmithing', 'Handle Animals', 'Exploration'] },
   { type: 'lawless', name: 'Lawless', skills: ['Intrigue'] },
-  { type: 'martial', name: 'Martial', skills: ['Strategy', 'Intimidate', 'Alertness'] },
+  { type: 'martial', name: 'Martial', skills: ['Strategy', 'Intimidate', 'Alertness', 'Blacksmithing', 'Fletching', 'Climb', 'Endurance', 'Ride', 'Track', 'Monsters'] },
   { type: 'noble', name: 'Noble', skills: ['Interpersonal'] },
 ];
 

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { ensureMcdmDemoCampaignForUser } from '../lib/demo-campaigns.js';
 
 export const gameSessionRoutes = new Hono<AppEnv>();
 
@@ -73,6 +74,8 @@ interface SceneRow {
  */
 gameSessionRoutes.get('/game-sessions', async (c) => {
   const user = c.get('user') as AuthUser;
+
+  await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
 
   // 1. Get all campaigns the user belongs to (as director or player)
   const campaignResults = await c.env.DB.prepare(

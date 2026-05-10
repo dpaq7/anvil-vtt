@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
-import type { AppEnv } from '../types.js';
+import type { Context } from 'hono';
+import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignDirector, requireCampaignMember } from '../lib/access.js';
 import type { CreateNpcInput, Npc, UpdateNpcInput } from '@anvil/types';
 
 export const npcRoutes = new Hono<AppEnv>();
@@ -26,6 +28,7 @@ function rowToNpc(row: NpcRow): Npc {
     campaignId: row.campaign_id,
     name: row.name,
     portraitAssetId: row.portrait_asset_id,
+    portraitUrl: row.portrait_asset_id ? `/api/assets/${row.portrait_asset_id}/data` : undefined,
     location: row.location,
     notes: row.notes,
     createdAt: row.created_at,
@@ -33,12 +36,33 @@ function rowToNpc(row: NpcRow): Npc {
   };
 }
 
+async function validateOwnedPortraitAsset(
+  c: Context<AppEnv>,
+  assetId: string | null | undefined,
+  user: AuthUser,
+): Promise<Response | null> {
+  if (assetId == null) return null;
+
+  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<{ type: string; content_type: string | null }>();
+  if (!asset) return c.json({ error: 'Asset not found' }, 404);
+  if (asset.type !== 'portrait') return c.json({ error: 'Asset must be a portrait' }, 400);
+  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('image/')) {
+    return c.json({ error: 'Asset must be an image' }, 400);
+  }
+  return null;
+}
+
 // ── Routes ──
 
 // List NPCs with optional search
 npcRoutes.get('/:campaignId/npcs', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const q = c.req.query('q');
+  const accessError = await requireCampaignMember(c, campaignId, user);
+  if (accessError) return accessError;
 
   let query = 'SELECT * FROM npcs WHERE campaign_id = ?';
   const binds: unknown[] = [campaignId];
@@ -56,17 +80,25 @@ npcRoutes.get('/:campaignId/npcs', async (c) => {
 
 // Create NPC
 npcRoutes.post('/:campaignId/npcs', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<CreateNpcInput>();
 
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
 
+  const portraitAssetId = body.portraitAssetId ?? null;
+  const portraitError = await validateOwnedPortraitAsset(c, portraitAssetId, user);
+  if (portraitError) return portraitError;
+
   const id = crypto.randomUUID();
 
   await c.env.DB.prepare(
-    'INSERT INTO npcs (id, campaign_id, name, location, notes) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO npcs (id, campaign_id, name, portrait_asset_id, location, notes) VALUES (?, ?, ?, ?, ?, ?)',
   )
-    .bind(id, campaignId, body.name.trim(), body.location ?? null, body.notes ?? null)
+    .bind(id, campaignId, body.name.trim(), portraitAssetId, body.location ?? null, body.notes ?? null)
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM npcs WHERE id = ?').bind(id).first<NpcRow>();
@@ -79,7 +111,16 @@ npcRoutes.post('/:campaignId/npcs', async (c) => {
 npcRoutes.patch('/:campaignId/npcs/:npcId', async (c) => {
   const campaignId = c.req.param('campaignId');
   const npcId = c.req.param('npcId');
+  const user = c.get('user') as AuthUser;
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
+
   const body = await c.req.json<UpdateNpcInput>();
+
+  if (body.portraitAssetId !== undefined) {
+    const portraitError = await validateOwnedPortraitAsset(c, body.portraitAssetId, user);
+    if (portraitError) return portraitError;
+  }
 
   const existing = await c.env.DB.prepare('SELECT id FROM npcs WHERE id = ? AND campaign_id = ?')
     .bind(npcId, campaignId)
@@ -90,6 +131,7 @@ npcRoutes.patch('/:campaignId/npcs/:npcId', async (c) => {
   const vals: unknown[] = [];
 
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name.trim()); }
+  if (body.portraitAssetId !== undefined) { sets.push('portrait_asset_id = ?'); vals.push(body.portraitAssetId); }
   if (body.location !== undefined) { sets.push('location = ?'); vals.push(body.location); }
   if (body.notes !== undefined) { sets.push('notes = ?'); vals.push(body.notes); }
 
@@ -110,8 +152,11 @@ npcRoutes.patch('/:campaignId/npcs/:npcId', async (c) => {
 
 // Delete NPC
 npcRoutes.delete('/:campaignId/npcs/:npcId', async (c) => {
+  const user = c.get('user') as AuthUser;
   const campaignId = c.req.param('campaignId');
   const npcId = c.req.param('npcId');
+  const accessError = await requireCampaignDirector(c, campaignId, user);
+  if (accessError) return accessError;
 
   const existing = await c.env.DB.prepare('SELECT id FROM npcs WHERE id = ? AND campaign_id = ?')
     .bind(npcId, campaignId)
