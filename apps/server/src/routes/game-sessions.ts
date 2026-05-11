@@ -75,15 +75,21 @@ interface SceneRow {
 gameSessionRoutes.get('/game-sessions', async (c) => {
   const user = c.get('user') as AuthUser;
 
-  await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
+  if (user.role === 'director') {
+    await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
+  }
 
-  // 1. Get all campaigns the user belongs to (as director or player)
+  // 1. Get the campaigns for the active app role. The local dev player can
+  // have stale director memberships from earlier iterations, so keep this
+  // endpoint aligned with the selected flow instead of every membership row.
+  const roleFilter = user.role === 'player' ? " AND cm.role = 'player'" : '';
   const campaignResults = await c.env.DB.prepare(
     `SELECT c.id, c.name, c.description, c.cover_image_url, c.director_id,
             c.created_at, c.updated_at, cm.role as member_role
      FROM campaign_members cm
      JOIN campaigns c ON cm.campaign_id = c.id
      WHERE cm.user_id = ? AND c.deleted_at IS NULL
+       ${roleFilter}
      ORDER BY c.updated_at DESC`,
   )
     .bind(user.id)

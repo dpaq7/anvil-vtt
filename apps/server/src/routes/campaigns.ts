@@ -168,14 +168,19 @@ async function copyExistingModulesAndScenes(
 campaignRoutes.get('/', async (c) => {
   const user = c.get('user') as AuthUser;
 
-  await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
+  if (user.role === 'director') {
+    await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
+  }
 
-  const directed = await c.env.DB.prepare(
-    `SELECT id, name, description, cover_image_url, settings, created_at, updated_at
-     FROM campaigns WHERE director_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`,
-  )
-    .bind(user.id)
-    .all();
+  const directed =
+    user.role === 'director'
+      ? await c.env.DB.prepare(
+          `SELECT id, name, description, cover_image_url, settings, created_at, updated_at
+           FROM campaigns WHERE director_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`,
+        )
+          .bind(user.id)
+          .all()
+      : { results: [] };
 
   const joined = await c.env.DB.prepare(
     `SELECT c.id, c.name, c.description, c.cover_image_url, c.settings, c.created_at, c.updated_at, cm.role
@@ -228,7 +233,9 @@ campaignRoutes.post('/', async (c) => {
 campaignRoutes.get('/library', async (c) => {
   const user = c.get('user') as AuthUser;
 
-  await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
+  if (user.role === 'director') {
+    await ensureMcdmDemoCampaignForUser(c.env.DB, user.id);
+  }
 
   const modules = await c.env.DB.prepare(
     `SELECT m.id, m.name, c.name as campaign_name,

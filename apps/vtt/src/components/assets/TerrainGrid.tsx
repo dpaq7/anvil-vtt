@@ -14,6 +14,7 @@ import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
+  cn,
 } from '@anvil/ui';
 import { TERRAIN_CATEGORY_NAMES, getTerrainDescription, getTerrainStaminaDescription } from '@anvil/data';
 import type { CompendiumTerrain, TerrainCategory, CustomTerrain } from '@anvil/types';
@@ -34,6 +35,57 @@ const CATEGORIES: TerrainCategory[] = [
   'power-fixture',
   'supernatural',
 ];
+
+const CATEGORY_ACCENTS: Record<TerrainCategory, {
+  border: string;
+  background: string;
+  iconBackground: string;
+  icon: string;
+  label: string;
+}> = {
+  environmental: {
+    border: 'border-l-red-500',
+    background: 'bg-red-950/15',
+    iconBackground: 'bg-red-500/10',
+    icon: 'text-red-300',
+    label: 'text-red-300',
+  },
+  fieldwork: {
+    border: 'border-l-emerald-500',
+    background: 'bg-emerald-950/15',
+    iconBackground: 'bg-emerald-500/10',
+    icon: 'text-emerald-300',
+    label: 'text-emerald-300',
+  },
+  mechanism: {
+    border: 'border-l-amber-500',
+    background: 'bg-amber-950/15',
+    iconBackground: 'bg-amber-500/10',
+    icon: 'text-amber-300',
+    label: 'text-amber-300',
+  },
+  'siege-engine': {
+    border: 'border-l-sky-500',
+    background: 'bg-sky-950/15',
+    iconBackground: 'bg-sky-500/10',
+    icon: 'text-sky-300',
+    label: 'text-sky-300',
+  },
+  'power-fixture': {
+    border: 'border-l-violet-500',
+    background: 'bg-violet-950/15',
+    iconBackground: 'bg-violet-500/10',
+    icon: 'text-violet-300',
+    label: 'text-violet-300',
+  },
+  supernatural: {
+    border: 'border-l-fuchsia-500',
+    background: 'bg-fuchsia-950/15',
+    iconBackground: 'bg-fuchsia-500/10',
+    icon: 'text-fuchsia-300',
+    label: 'text-fuchsia-300',
+  },
+};
 
 export function TerrainGrid({
   builtInTerrains,
@@ -89,72 +141,86 @@ export function TerrainGrid({
         }
       >
         {/* Custom terrain cards */}
-        {filteredCustom.map((terrain) => (
-          <Card
-            key={`custom-${terrain.id}`}
-            className="cursor-pointer transition hover:border-zinc-600"
-            onClick={() => onSelectCustom?.(terrain.id)}
-          >
-            {compact ? (
-              <div className="flex items-center gap-2 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-zinc-200">{terrain.name}</span>
-                  <span className="text-[10px] text-zinc-500">Custom</span>
-                </div>
-                <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0 text-amber-400">
-                  Custom
-                </Badge>
-              </div>
-            ) : (
-              <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-                  {terrain.imageUrl ? (
-                    <img
-                      src={terrain.imageUrl}
-                      alt={terrain.name}
-                      className="size-10 rounded-md object-cover"
-                    />
-                  ) : (
-                    <Mountain className="size-5 text-zinc-500" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <CardTitle className="truncate text-sm font-bold">{terrain.name}</CardTitle>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    <Badge variant="secondary" className="text-[9px] px-1 py-0">
-                      {TERRAIN_CATEGORY_NAMES[terrain.category]}
-                    </Badge>
-                    <Badge variant="outline" className="text-[9px] px-1 py-0">
-                      {terrain.gridWidth}&times;{terrain.gridHeight}
-                    </Badge>
-                    {terrain.material && (
-                      <Badge variant="outline" className="text-[9px] px-1 py-0">
-                        {terrain.material}
-                      </Badge>
-                    )}
-                    <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-400">
-                      Custom
-                    </Badge>
+        {filteredCustom.map((terrain) => {
+          const accent = CATEGORY_ACCENTS[terrain.category];
+
+          return (
+            <Card
+              key={`custom-${terrain.id}`}
+              className={cn(
+                'cursor-pointer border-l-4 transition hover:border-zinc-600',
+                accent.border,
+                accent.background,
+              )}
+              onClick={() => onSelectCustom?.(terrain.id)}
+            >
+              {compact ? (
+                <div className="flex items-center gap-2 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-zinc-200">{terrain.name}</span>
+                    <span className={cn('text-[10px]', accent.label)}>{TERRAIN_CATEGORY_NAMES[terrain.category]}</span>
                   </div>
+                  <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0 text-amber-400">
+                    Custom
+                  </Badge>
                 </div>
-              </CardHeader>
-            )}
-          </Card>
-        ))}
+              ) : (
+                <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
+                  <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-md', accent.iconBackground)}>
+                    {terrain.imageUrl ? (
+                      <img
+                        src={terrain.imageUrl}
+                        alt={terrain.name}
+                        className="size-10 rounded-md object-cover"
+                      />
+                    ) : (
+                      <Mountain className={cn('size-5', accent.icon)} />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate text-sm font-bold">{terrain.name}</CardTitle>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <Badge variant="secondary" className={cn('text-[9px] px-1 py-0', accent.label)}>
+                        {TERRAIN_CATEGORY_NAMES[terrain.category]}
+                      </Badge>
+                      <Badge variant="outline" className="text-[9px] px-1 py-0">
+                        {terrain.gridWidth}&times;{terrain.gridHeight}
+                      </Badge>
+                      {terrain.material && (
+                        <Badge variant="outline" className="text-[9px] px-1 py-0">
+                          {terrain.material}
+                        </Badge>
+                      )}
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-400">
+                        Custom
+                      </Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+              )}
+            </Card>
+          );
+        })}
 
         {/* Built-in terrain cards */}
         {filteredBuiltIn.map((terrain) => {
+          const accent = CATEGORY_ACCENTS[terrain.category];
+
           if (compact) {
             return (
               <Card
                 key={`builtin-${terrain.id}`}
-                className="cursor-pointer transition hover:border-zinc-600"
+                className={cn(
+                  'cursor-pointer border-l-4 transition hover:border-zinc-600',
+                  accent.border,
+                  accent.background,
+                )}
                 onClick={() => onSelectBuiltIn?.(terrain.id)}
               >
                 <div className="flex items-center gap-2 px-3 py-2.5">
                   <div className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-zinc-200">{terrain.name}</span>
-                    <span className="text-[10px] text-zinc-500">{TERRAIN_CATEGORY_NAMES[terrain.category]}</span>
+                    <span className={cn('text-[10px]', accent.label)}>{TERRAIN_CATEGORY_NAMES[terrain.category]}</span>
                   </div>
                   <Badge variant="secondary" className="shrink-0 text-[9px] px-1 py-0">
                     Lv {terrain.level}
@@ -168,12 +234,16 @@ export function TerrainGrid({
           return (
             <Collapsible key={`builtin-${terrain.id}`} open={isExpanded}>
               <Card
-                className="cursor-pointer transition hover:border-zinc-600"
+                className={cn(
+                  'cursor-pointer border-l-4 transition hover:border-zinc-600',
+                  accent.border,
+                  accent.background,
+                )}
                 onClick={() => onSelectBuiltIn?.(terrain.id)}
               >
                 <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-                    <Mountain className="size-5 text-zinc-500" />
+                  <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-md', accent.iconBackground)}>
+                    <Mountain className={cn('size-5', accent.icon)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-1">
@@ -194,7 +264,7 @@ export function TerrainGrid({
                         </button>
                       </CollapsibleTrigger>
                     </div>
-                    <p className="text-[10px] text-zinc-500">{getTerrainDescription(terrain)}</p>
+                    <p className={cn('text-[10px]', accent.label)}>{getTerrainDescription(terrain)}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       <Badge variant="secondary" className="text-[9px] px-1 py-0">
                         Lv {terrain.level}

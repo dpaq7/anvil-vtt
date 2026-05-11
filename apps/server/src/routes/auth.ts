@@ -10,6 +10,7 @@ import {
   setSessionCookie,
   clearSessionCookie,
 } from '../middleware/auth.js';
+import { ensureMcdmDemoCampaignForUser } from '../lib/demo-campaigns.js';
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -149,7 +150,7 @@ async function upsertOAuthUser(c: Context<AppEnv>, profile: OAuthProfile): Promi
   return userId;
 }
 
-async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redirectPath = '/app') {
+async function createSession(c: Context<AppEnv>, userId: string) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString();
 
@@ -158,9 +159,90 @@ async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redi
     .run();
 
   setSessionCookie(c, sessionId, SESSION_MAX_AGE);
+  return sessionId;
+}
+
+async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redirectPath = '/app') {
+  await createSession(c, userId);
 
   const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
   return c.redirect(`${frontendUrl}${redirectPath}`);
+}
+
+async function tableExists(c: Context<AppEnv>, tableName: string) {
+  const row = await c.env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .bind(tableName)
+    .first<{ name: string }>();
+  return Boolean(row);
+}
+
+async function tableHasColumn(c: Context<AppEnv>, tableName: string, columnName: string) {
+  const columns = await c.env.DB.prepare(`PRAGMA table_info(${tableName})`).all<{ name: string }>();
+  return columns.results.some((column) => column.name === columnName);
+}
+
+function devUserForRole(role: UserRole) {
+  return role === 'director'
+    ? { userId: 'dev-director', username: 'Dev Director' }
+    : { userId: 'dev-player', username: 'Dev Player' };
+}
+
+async function upsertDevUser(c: Context<AppEnv>, role: UserRole) {
+  const { userId, username } = devUserForRole(role);
+  const hasLegacyDiscordId = await tableHasColumn(c, 'users', 'discord_id');
+
+  if (hasLegacyDiscordId) {
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, discord_id, username, avatar_url, role)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         discord_id = excluded.discord_id,
+         username = excluded.username,
+         avatar_url = excluded.avatar_url,
+         role = excluded.role,
+         updated_at = datetime('now')`,
+    )
+      .bind(userId, userId, username, null, role)
+      .run();
+  } else {
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, username, avatar_url, role)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         username = excluded.username,
+         avatar_url = excluded.avatar_url,
+         role = excluded.role,
+         updated_at = datetime('now')`,
+    )
+      .bind(userId, username, null, role)
+      .run();
+  }
+
+  if (await tableExists(c, 'user_identities')) {
+    await c.env.DB.prepare(
+      `INSERT INTO user_identities (user_id, provider, provider_user_id, email)
+       VALUES (?, 'dev', ?, NULL)
+       ON CONFLICT(provider, provider_user_id) DO UPDATE SET
+         user_id = excluded.user_id,
+         updated_at = datetime('now')`,
+    )
+      .bind(userId, role)
+      .run();
+  }
+
+  return userId;
+}
+
+async function ensureDevPlayerAccess(c: Context<AppEnv>, playerUserId: string) {
+  const directorUserId = await upsertDevUser(c, 'director');
+  const demoCampaignId = await ensureMcdmDemoCampaignForUser(c.env.DB, directorUserId);
+  if (!demoCampaignId) return;
+
+  await c.env.DB.prepare(
+    'INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role) VALUES (?, ?, ?)',
+  )
+    .bind(demoCampaignId, playerUserId, 'player')
+    .run();
 }
 
 // Redirect to Discord OAuth.
@@ -326,33 +408,18 @@ authRoutes.get('/dev-login', async (c) => {
   }
 
   const role: UserRole = c.req.query('role') === 'player' ? 'player' : 'director';
-  const userId = role === 'director' ? 'dev-director' : 'dev-player';
-  const username = role === 'director' ? 'Dev Director' : 'Dev Player';
-
-  await c.env.DB.prepare(
-    `INSERT INTO users (id, username, avatar_url, role)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       username = excluded.username,
-       avatar_url = excluded.avatar_url,
-       role = excluded.role,
-       updated_at = datetime('now')`,
-  )
-    .bind(userId, username, null, role)
-    .run();
-
-  await c.env.DB.prepare(
-    `INSERT INTO user_identities (user_id, provider, provider_user_id, email)
-     VALUES (?, 'dev', ?, NULL)
-     ON CONFLICT(provider, provider_user_id) DO UPDATE SET
-       user_id = excluded.user_id,
-       updated_at = datetime('now')`,
-  )
-    .bind(userId, role)
-    .run();
+  const userId = await upsertDevUser(c, role);
+  if (role === 'player') {
+    await ensureDevPlayerAccess(c, userId);
+  }
 
   const next = c.req.query('next');
   const redirectPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app';
+  if (c.req.query('format') === 'json') {
+    await createSession(c, userId);
+    return c.json({ ok: true, role, redirectPath });
+  }
+
   return createSessionAndRedirect(c, userId, redirectPath);
 });
 

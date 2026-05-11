@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { StickyNote, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@anvil/ui';
 import { api } from '../lib/api.js';
+import { useAuthStore } from '../stores/authStore.js';
 import { useNotesStore } from '../stores/notesStore.js';
 import { NoteTreeSidebar } from '../components/notes/NoteTreeSidebar.js';
 import { NoteEditor } from '../components/notes/NoteEditor.js';
@@ -12,6 +13,7 @@ interface Campaign {
 }
 
 export function Notes() {
+  const userRole = useAuthStore((s) => s.user?.role ?? 'director');
   // ── Campaign selection ──
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignId, setCampaignId] = useState<string | null>(null);
@@ -20,22 +22,27 @@ export function Notes() {
     api
       .get<{ directed: Campaign[]; joined: Campaign[] }>('/api/campaigns')
       .then((data) => {
-        // Combine directed + joined campaigns (deduplicated)
+        const sourceCampaigns =
+          userRole === 'player' ? data.joined : [...data.directed, ...data.joined];
+
+        // Combine available campaigns (deduplicated)
         const seen = new Set<string>();
         const all: Campaign[] = [];
-        for (const c of [...data.directed, ...data.joined]) {
+        for (const c of sourceCampaigns) {
           if (!seen.has(c.id)) {
             seen.add(c.id);
             all.push(c);
           }
         }
         setCampaigns(all);
-        if (all.length > 0 && !campaignId) {
-          setCampaignId(all[0]!.id);
-        }
+        setCampaignId((current) =>
+          current && all.some((campaign) => campaign.id === current)
+            ? current
+            : (all[0]?.id ?? null),
+        );
       })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userRole]);
 
   // ── Notes store ──
   const { notes, loading, error, selectedNoteId, clearError, loadAll, reset } = useNotesStore();

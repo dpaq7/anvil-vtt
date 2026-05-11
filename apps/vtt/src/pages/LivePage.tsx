@@ -108,6 +108,7 @@ export function LivePage() {
   // Split campaigns by role for directors who may also be players in other campaigns
   const directedCampaigns = campaigns.filter((c) => c.role === 'director');
   const joinedCampaigns = campaigns.filter((c) => c.role === 'player');
+  const visibleCampaigns = isDirector ? campaigns : joinedCampaigns;
 
   if (loading) {
     return (
@@ -135,7 +136,7 @@ export function LivePage() {
         </div>
       )}
 
-      {campaigns.length === 0 && (
+      {visibleCampaigns.length === 0 && (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <p className="text-zinc-500">No campaigns yet.</p>
           {isDirector ? (
@@ -151,7 +152,7 @@ export function LivePage() {
       )}
 
       {/* Director's campaigns */}
-      {directedCampaigns.length > 0 && (
+      {isDirector && directedCampaigns.length > 0 && (
         <section className="mb-8">
           {joinedCampaigns.length > 0 && (
             <h2 className="mb-4 text-lg font-semibold text-zinc-300">

@@ -567,7 +567,7 @@ export function Assets() {
         {/* Top bar */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold capitalize text-zinc-200">{selectedFolder}</h2>
+            <h2 className="text-sm font-semibold text-zinc-200">Select Campaign</h2>
             {campaigns.length > 1 && (
               <Select value={campaignId} onValueChange={(v: string) => setCampaignId(v)}>
                 <SelectTrigger className="h-7 w-[160px] text-xs">

@@ -39,6 +39,8 @@ const ROLE_OPTIONS = [
   { role: 'player', label: 'Player', icon: User },
 ] as const;
 
+const API_BASE = import.meta.env['VITE_API_BASE'] || '';
+
 // Collect all labels from both nav configs for width calculation
 const ALL_LABELS = [...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
 
@@ -101,6 +103,7 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
 
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
+  const checkAuth = useAuthStore((s) => s.checkAuth);
   const setRole = useAuthStore((s) => s.setRole);
   const location = useLocation();
   const navigate = useNavigate();
@@ -115,10 +118,33 @@ export function AppLayout() {
   const handleRoleChange = async (role: UserRole) => {
     if (role === user?.role || pendingRole) return;
 
+    const nextPath = isRoleExclusiveRoute(role, location.pathname)
+      ? '/app'
+      : `${location.pathname}${location.search}${location.hash}`;
+
+    if (import.meta.env.DEV) {
+      setPendingRole(role);
+      try {
+        const params = new URLSearchParams({ role, next: nextPath, format: 'json' });
+        const res = await fetch(`${API_BASE}/api/auth/dev-login?${params.toString()}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) throw new Error('Failed to switch development role');
+        await checkAuth();
+        if (nextPath !== `${location.pathname}${location.search}${location.hash}`) {
+          navigate(nextPath, { replace: true });
+        }
+      } finally {
+        setPendingRole(null);
+      }
+      return;
+    }
+
     setPendingRole(role);
     try {
       await setRole(role);
-      if (isRoleExclusiveRoute(role, location.pathname)) {
+      if (nextPath === '/app') {
         navigate('/app', { replace: true });
       }
     } finally {
@@ -130,7 +156,7 @@ export function AppLayout() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider labels={ALL_LABELS}>
         <div className="flex h-screen overflow-hidden">
-          <Sidebar variant={isPlayer ? 'player' : 'director'}>
+          <Sidebar className="relative z-30 shrink-0" variant={isPlayer ? 'player' : 'director'}>
             <SidebarRoleToggle
               value={user?.role ?? 'director'}
               pendingRole={pendingRole}
@@ -154,8 +180,8 @@ export function AppLayout() {
             </SidebarNav>
             <SidebarToggle />
           </Sidebar>
-          <main className="flex-1 overflow-y-auto">
-            <Outlet key={location.pathname} />
+          <main className="relative z-0 flex-1 overflow-y-auto">
+            <Outlet key={`${user?.id ?? 'anonymous'}:${user?.role ?? 'unknown'}:${location.pathname}`} />
           </main>
         </div>
       </SidebarProvider>

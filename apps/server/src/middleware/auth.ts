@@ -60,7 +60,7 @@ export async function csrfMiddleware(c: Context<AppEnv>, next: Next) {
 }
 
 export async function createCsrfToken(sessionId: string, env: AppEnv['Bindings']): Promise<string> {
-  const secret = env.SESSION_SECRET;
+  const secret = env.SESSION_SECRET || (env.ENVIRONMENT === 'development' ? 'anvil-local-dev-secret' : '');
   if (!secret || secret === 'undefined') return '';
 
   const key = await crypto.subtle.importKey(
