@@ -64,8 +64,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       credentials: 'include',
       body: JSON.stringify({ role }),
     });
-    if (res.ok) {
-      set((state) => ({ user: state.user ? { ...state.user, role } : null }));
+    if (!res.ok) {
+      set({ error: 'Failed to update role' });
+      throw new Error('Failed to update role');
     }
+
+    set((state) => ({ user: state.user ? { ...state.user, role } : null, error: null }));
   },
 }));

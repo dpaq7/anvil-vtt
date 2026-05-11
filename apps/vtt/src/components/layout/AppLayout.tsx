@@ -1,15 +1,23 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Swords, Image, StickyNote, User, Clapperboard } from 'lucide-react';
+import { useState } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Swords, Image, StickyNote, User, Clapperboard, Crown } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
   SidebarNav,
   SidebarNavItem,
   SidebarToggle,
+  useSidebar,
   TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
   AnvilIcon,
+  cn,
 } from '@anvil/ui';
 import { useAuthStore } from '../../stores/authStore';
+
+type UserRole = 'director' | 'player';
 
 const DIRECTOR_NAV = [
   { label: 'Anvil', icon: AnvilIcon, to: '/app', end: true },
@@ -26,12 +34,77 @@ const PLAYER_NAV = [
   { label: 'Notes', icon: StickyNote, to: '/app/notes' },
 ] as const;
 
+const ROLE_OPTIONS = [
+  { role: 'director', label: 'Director', icon: Crown },
+  { role: 'player', label: 'Player', icon: User },
+] as const;
+
 // Collect all labels from both nav configs for width calculation
 const ALL_LABELS = [...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
 
+function isRoleExclusiveRoute(role: UserRole, pathname: string) {
+  const exclusivePaths = role === 'director' ? ['/app/heroes'] : ['/app/campaigns', '/app/assets'];
+  return exclusivePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+interface SidebarRoleToggleProps {
+  value: UserRole;
+  pendingRole: UserRole | null;
+  onValueChange: (role: UserRole) => void;
+}
+
+function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleToggleProps) {
+  const { collapsed } = useSidebar();
+
+  return (
+    <div
+      role="group"
+      aria-label="Role"
+      className="mx-1 mt-2 flex flex-col gap-1 rounded-lg border border-black/10 bg-white/20 p-1 shadow-inner shadow-black/10"
+    >
+      {ROLE_OPTIONS.map(({ role, label, icon: Icon }) => {
+        const active = value === role;
+        const disabled = pendingRole !== null;
+        const button = (
+          <button
+            key={role}
+            type="button"
+            aria-label={label}
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={() => onValueChange(role)}
+            className={cn(
+              'flex h-9 w-full items-center gap-2 rounded-md px-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60',
+              collapsed ? 'justify-center px-0' : 'justify-start',
+              active
+                ? 'bg-zinc-950 text-zinc-50 shadow-sm shadow-black/20'
+                : 'text-zinc-800 hover:bg-black/10 hover:text-zinc-950',
+            )}
+          >
+            <Icon size={15} className="shrink-0" />
+            {!collapsed && <span className="truncate">{label}</span>}
+          </button>
+        );
+
+        if (!collapsed) return button;
+
+        return (
+          <Tooltip key={role}>
+            <TooltipTrigger asChild>{button}</TooltipTrigger>
+            <TooltipContent side="right">{label}</TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
+  const setRole = useAuthStore((s) => s.setRole);
   const location = useLocation();
+  const navigate = useNavigate();
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
   const isPlayer = user?.role === 'player';
   const navItems = isPlayer ? PLAYER_NAV : DIRECTOR_NAV;
 
@@ -39,11 +112,30 @@ export function AppLayout() {
     return exact ? location.pathname === to : location.pathname === to || location.pathname.startsWith(`${to}/`);
   };
 
+  const handleRoleChange = async (role: UserRole) => {
+    if (role === user?.role || pendingRole) return;
+
+    setPendingRole(role);
+    try {
+      await setRole(role);
+      if (isRoleExclusiveRoute(role, location.pathname)) {
+        navigate('/app', { replace: true });
+      }
+    } finally {
+      setPendingRole(null);
+    }
+  };
+
   return (
     <TooltipProvider delayDuration={0}>
       <SidebarProvider labels={ALL_LABELS}>
         <div className="flex h-screen overflow-hidden">
           <Sidebar variant={isPlayer ? 'player' : 'director'}>
+            <SidebarRoleToggle
+              value={user?.role ?? 'director'}
+              pendingRole={pendingRole}
+              onValueChange={handleRoleChange}
+            />
             <SidebarNav>
               {navItems.map(({ label, icon: Icon, to, ...rest }) => {
                 const exact = 'end' in rest && rest.end === true;
