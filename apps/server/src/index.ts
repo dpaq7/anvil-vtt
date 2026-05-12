@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AppEnv } from './types.js';
 import { authRoutes } from './routes/auth.js';
+import { accountRoutes } from './routes/account.js';
 import { assetRoutes } from './routes/assets.js';
 import { campaignRoutes } from './routes/campaigns.js';
 import { moduleRoutes } from './routes/modules.js';
@@ -94,6 +95,7 @@ app.get('/api/sessions/:id/ws', async (c) => {
 
 // Routes
 app.route('/api/auth', authRoutes);
+app.route('/api/account', accountRoutes);
 app.route('/api/campaigns', campaignRoutes);
 app.route('/api', moduleRoutes);
 app.route('/api', sessionRoutes);

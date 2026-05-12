@@ -24,7 +24,7 @@ export function NoteEditorTitle({ noteId, campaignId, initialTitle }: NoteEditor
   }, [title, initialTitle, campaignId, noteId, updateNote]);
 
   return (
-    <div className="border-b border-zinc-800 px-4 py-2">
+    <div className="flex h-[49px] shrink-0 items-center border-b border-zinc-800 px-4 py-2">
       <Input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -34,7 +34,7 @@ export function NoteEditorTitle({ noteId, campaignId, initialTitle }: NoteEditor
             e.currentTarget.blur();
           }
         }}
-        className="border-none bg-transparent px-0 text-xl font-semibold text-zinc-100 shadow-none focus-visible:ring-0"
+        className="h-8 border-none bg-transparent px-0 text-xl font-semibold text-zinc-100 shadow-none focus-visible:ring-0"
         placeholder="Untitled"
       />
     </div>

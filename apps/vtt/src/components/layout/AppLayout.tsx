@@ -1,6 +1,16 @@
 import { useState } from 'react';
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Swords, Image, StickyNote, User, Clapperboard, Crown } from 'lucide-react';
+import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  CircleUserRound,
+  Download,
+  Settings,
+  Swords,
+  Image,
+  StickyNote,
+  User,
+  Clapperboard,
+  Crown,
+} from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -8,6 +18,12 @@ import {
   SidebarNavItem,
   SidebarToggle,
   useSidebar,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   TooltipProvider,
   Tooltip,
   TooltipTrigger,
@@ -42,7 +58,7 @@ const ROLE_OPTIONS = [
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 
 // Collect all labels from both nav configs for width calculation
-const ALL_LABELS = [...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
+const ALL_LABELS = ['Account', ...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
 
 function isRoleExclusiveRoute(role: UserRole, pathname: string) {
   const exclusivePaths = role === 'director' ? ['/app/heroes'] : ['/app/campaigns', '/app/assets'];
@@ -98,6 +114,78 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
         );
       })}
     </div>
+  );
+}
+
+function AccountMenu() {
+  const { collapsed } = useSidebar();
+  const location = useLocation();
+  const user = useAuthStore((s) => s.user);
+  const active = location.pathname === '/app/account';
+  const initials = (user?.username ?? 'Account')
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Account"
+              className={cn(
+                'mx-1 mt-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
+                collapsed ? 'w-10 justify-center px-0' : 'w-[calc(100%-0.5rem)] justify-start',
+                active
+                  ? 'bg-zinc-950 text-zinc-50 shadow-sm shadow-black/20'
+                  : 'text-zinc-800 hover:bg-black/10 hover:text-zinc-950',
+              )}
+            >
+              <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/15">
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-[11px] font-bold">{initials}</span>
+                )}
+              </span>
+              {!collapsed && <span className="truncate">{user?.username ?? 'Account'}</span>}
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        {collapsed && <TooltipContent side="right">Account</TooltipContent>}
+      </Tooltip>
+      <DropdownMenuContent side="right" align="start" className="w-56">
+        <DropdownMenuLabel>
+          <span className="block text-zinc-100">{user?.username ?? 'Account'}</span>
+          <span className="mt-0.5 block text-xs font-normal capitalize text-zinc-500">
+            {user?.role ?? 'user'} flow
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/app/account?section=profile" className="gap-2">
+            <CircleUserRound className="size-4" />
+            Profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/app/account?section=settings" className="gap-2">
+            <Settings className="size-4" />
+            Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/app/account?section=data" className="gap-2">
+            <Download className="size-4" />
+            Data
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -157,6 +245,7 @@ export function AppLayout() {
       <SidebarProvider labels={ALL_LABELS}>
         <div className="flex h-screen overflow-hidden">
           <Sidebar className="relative z-30 shrink-0" variant={isPlayer ? 'player' : 'director'}>
+            <AccountMenu />
             <SidebarRoleToggle
               value={user?.role ?? 'director'}
               pendingRole={pendingRole}

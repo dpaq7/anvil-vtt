@@ -17,6 +17,7 @@ const Lobby = lazy(() => import('./pages/Lobby.js').then((module) => ({ default:
 const Home = lazy(() => import('./pages/Home.js').then((module) => ({ default: module.Home })));
 const Assets = lazy(() => import('./pages/Assets.js').then((module) => ({ default: module.Assets })));
 const Notes = lazy(() => import('./pages/Notes.js').then((module) => ({ default: module.Notes })));
+const Account = lazy(() => import('./pages/Account.js').then((module) => ({ default: module.Account })));
 const SessionPage = lazy(() => import('./pages/session/SessionPage.js').then((module) => ({ default: module.SessionPage })));
 const LivePage = lazy(() => import('./pages/LivePage.js').then((module) => ({ default: module.LivePage })));
 
@@ -76,6 +77,10 @@ export const router = createBrowserRouter([
       {
         path: 'notes',
         element: routeChunk(<Notes />),
+      },
+      {
+        path: 'account',
+        element: routeChunk(<Account />),
       },
       {
         path: 'campaigns/:id',

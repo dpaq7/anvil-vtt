@@ -176,7 +176,7 @@ export function NoteToolbar({ editor, mode, onModeChange, saveStatus, onSourceFo
   const isSource = mode === 'source';
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 bg-zinc-950/95 px-3 py-1.5">
+    <div className="flex h-[49px] shrink-0 flex-wrap items-center gap-1 border-b border-zinc-800 bg-zinc-950/95 px-3 py-2">
       {/* Formatting buttons */}
       {editor && (
         <>

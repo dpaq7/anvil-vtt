@@ -155,23 +155,62 @@ export function Landing() {
         </div>
       </section>
 
-      <footer className="border-t border-zinc-700/60 bg-[#1f2528] px-6 py-5 sm:px-10 lg:px-16 xl:px-24">
-        <div className="flex max-w-5xl flex-col gap-3 text-sm text-zinc-300 sm:flex-row sm:items-center">
-          <img
-            src={LOGO_IMAGE}
-            alt="Anvil VTT logo"
-            className="h-9 w-9 shrink-0 object-contain"
-          />
-          <p className="leading-6">
-            Draw Steel is a product of{' '}
-            <a
-              href="https://www.mcdmproductions.com/"
-              className="font-medium text-zinc-100 underline decoration-zinc-500 underline-offset-4 transition hover:text-white hover:decoration-zinc-100"
-            >
-              MCDM
-            </a>
-            .
-          </p>
+      <footer className="border-t border-zinc-700/60 bg-[#1f2528] px-6 py-10 sm:px-10 lg:px-16 xl:px-24">
+        <div className="grid max-w-5xl gap-8 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <div>
+            <div className="flex items-center gap-3">
+              <img
+                src={LOGO_IMAGE}
+                alt="Anvil VTT logo"
+                className="h-9 w-9 shrink-0 object-contain"
+              />
+              <span className="text-base font-semibold text-zinc-100">Anvil</span>
+            </div>
+            <p className="mt-3 leading-6">
+              Draw Steel is a product of{' '}
+              <a
+                href="https://www.mcdmproductions.com/"
+                className="font-medium text-zinc-100 underline decoration-zinc-500 underline-offset-4 transition hover:text-white hover:decoration-zinc-100"
+              >
+                MCDM
+              </a>
+              .
+            </p>
+          </div>
+
+          <div>
+            <h2 className="font-semibold uppercase tracking-[0.16em] text-zinc-100">About</h2>
+            <p className="mt-3 leading-6">
+              A browser-based virtual tabletop built around fast campaign prep and live Draw Steel
+              sessions.
+            </p>
+          </div>
+
+          <div>
+            <h2 className="font-semibold uppercase tracking-[0.16em] text-zinc-100">Contact</h2>
+            <p className="mt-3 leading-6">
+              Questions, feedback, and playtest notes can be shared with the Anvil team during
+              testing.
+            </p>
+          </div>
+
+          <div>
+            <h2 className="font-semibold uppercase tracking-[0.16em] text-zinc-100">Links</h2>
+            <nav className="mt-3 flex flex-col gap-2" aria-label="Footer links">
+              <a
+                href="https://www.mcdmproductions.com/"
+                className="text-zinc-300 transition hover:text-white"
+              >
+                MCDM Productions
+              </a>
+              <a href={`${API_BASE}/api/auth/google`} className="text-zinc-300 transition hover:text-white">
+                Sign in with Google
+              </a>
+              <a href={`${API_BASE}/api/auth/discord`} className="text-zinc-300 transition hover:text-white">
+                Sign in with Discord
+              </a>
+            </nav>
+          </div>
         </div>
       </footer>
     </main>
