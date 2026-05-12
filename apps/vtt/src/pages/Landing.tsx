@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 const HERO_IMAGE = '/landing/anvil-hero.png';
 const LOGO_IMAGE = '/landing/anvil-vtt-logo.png';
@@ -184,6 +186,9 @@ export function Landing() {
               A browser-based virtual tabletop built around fast campaign prep and live Draw Steel
               sessions.
             </p>
+            <Link to="/about" className="mt-3 inline-block font-medium text-zinc-100 transition hover:text-white">
+              About Anvil
+            </Link>
           </div>
 
           <div>
@@ -197,6 +202,9 @@ export function Landing() {
           <div>
             <h2 className="font-semibold uppercase tracking-[0.16em] text-zinc-100">Links</h2>
             <nav className="mt-3 flex flex-col gap-2" aria-label="Footer links">
+              <Link to="/about" className="text-zinc-300 transition hover:text-white">
+                About Anvil
+              </Link>
               <a
                 href="https://www.mcdmproductions.com/"
                 className="text-zinc-300 transition hover:text-white"

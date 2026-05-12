@@ -4,6 +4,7 @@ import { ProtectedRoute } from './pages/ProtectedRoute.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 const Landing = lazy(() => import('./pages/Landing.js').then((module) => ({ default: module.Landing })));
+const About = lazy(() => import('./pages/About.js').then((module) => ({ default: module.About })));
 const Auth = lazy(() => import('./pages/Auth.js').then((module) => ({ default: module.Auth })));
 const JoinCampaign = lazy(() => import('./pages/JoinCampaign.js').then((module) => ({ default: module.JoinCampaign })));
 const AppLayout = lazy(() => import('./components/layout/AppLayout.js').then((module) => ({ default: module.AppLayout })));
@@ -35,6 +36,10 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: routeChunk(<Landing />),
+  },
+  {
+    path: '/about',
+    element: routeChunk(<About />),
   },
   {
     path: '/auth',
