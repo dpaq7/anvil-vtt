@@ -11,6 +11,7 @@ export interface Env {
   SESSION_SECRET: string;
   FRONTEND_URL: string;
   ENVIRONMENT: string;
+  BUG_REPORT_WEBHOOK_URL?: string;
 }
 
 export type UserRole = 'director' | 'player';

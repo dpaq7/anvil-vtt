@@ -73,7 +73,7 @@ export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: Sc
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/json,.json"
+            accept="application/json,application/vnd.anvil.scene-import+json,.json,.anv"
             className="hidden"
             onChange={(event) => void handleFileSelected(event.target.files?.[0])}
           />
@@ -85,7 +85,7 @@ export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: Sc
             className="justify-start"
           >
             <FileJson className="size-4" />
-            Import JSON File
+            Import .anv or JSON File
           </Button>
 
           {fileName ? <p className="text-xs text-zinc-500">{fileName}</p> : null}

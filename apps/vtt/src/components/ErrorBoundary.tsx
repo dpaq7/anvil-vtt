@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
+import { reportBug } from '../lib/bug-reporting.js';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -10,20 +11,35 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  reportStatus: 'idle' | 'sending' | 'sent' | 'failed';
+  reportId: string | null;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, reportStatus: 'idle', reportId: null };
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
+    return { hasError: true, error, reportStatus: 'sending', reportId: null };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error(`[ErrorBoundary${this.props.label ? `: ${this.props.label}` : ''}]`, error, info.componentStack);
+    void reportBug({
+      kind: 'react-render',
+      message: error.message || 'React render crash',
+      stack: error.stack ?? null,
+      componentStack: info.componentStack,
+      source: this.props.label ?? 'react',
+    })
+      .then((result) => {
+        this.setState({ reportStatus: 'sent', reportId: result?.id ?? null });
+      })
+      .catch(() => {
+        this.setState({ reportStatus: 'failed', reportId: null });
+      });
   }
 
   override render(): ReactNode {
@@ -39,8 +55,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <p className="max-w-sm text-center text-xs text-zinc-500">
             {this.state.error?.message ?? 'An unexpected error occurred.'}
           </p>
+          <p className="text-center text-xs text-zinc-500">
+            {this.state.reportStatus === 'sending' ? 'Sending crash report...' : null}
+            {this.state.reportStatus === 'sent' ? (
+              this.state.reportId ? `Crash report sent: ${this.state.reportId}` : 'Crash report sent.'
+            ) : null}
+            {this.state.reportStatus === 'failed' ? 'Crash report could not be sent.' : null}
+          </p>
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() => this.setState({ hasError: false, error: null, reportStatus: 'idle', reportId: null })}
             className="mt-1 rounded bg-zinc-700 px-4 py-1.5 text-xs text-zinc-200 transition hover:bg-zinc-600"
           >
             Try Again

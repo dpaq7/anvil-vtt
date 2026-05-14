@@ -15,6 +15,9 @@ export interface ParsedChallenge {
   id: string;
   name: string;
   completed: boolean;
+  description?: string;
+  suggestedSkills?: string[];
+  suggestedCharacteristics?: string[];
 }
 
 export interface MontageStageData {
@@ -28,11 +31,28 @@ export function parseMontageData(sceneData: Record<string, unknown>): MontageSta
   let challenges: ParsedChallenge[] = [];
   const rawChallenges = sceneData['challenges'];
   if (Array.isArray(rawChallenges)) {
-    challenges = rawChallenges.map((c: { id: string; name: string; completed?: boolean }) => ({
-      id: c.id,
-      name: c.name,
-      completed: c.completed ?? false,
-    }));
+    challenges = rawChallenges.map((c: unknown, idx) => {
+      if (typeof c === 'string') {
+        return {
+          id: `challenge-${idx + 1}`,
+          name: c.trim() || `Challenge ${idx + 1}`,
+          completed: false,
+        };
+      }
+
+      const challenge = c && typeof c === 'object' ? c as Record<string, unknown> : {};
+      const stringList = (value: unknown): string[] | undefined =>
+        Array.isArray(value) ? value.map(String).filter(Boolean) : undefined;
+
+      return {
+        id: typeof challenge['id'] === 'string' && challenge['id'] ? challenge['id'] : `challenge-${idx + 1}`,
+        name: typeof challenge['name'] === 'string' && challenge['name'] ? challenge['name'] : `Challenge ${idx + 1}`,
+        completed: typeof challenge['completed'] === 'boolean' ? challenge['completed'] : false,
+        description: typeof challenge['description'] === 'string' ? challenge['description'] : undefined,
+        suggestedSkills: stringList(challenge['suggestedSkills']),
+        suggestedCharacteristics: stringList(challenge['suggestedCharacteristics']),
+      };
+    });
   } else if (typeof rawChallenges === 'string' && rawChallenges.trim()) {
     challenges = rawChallenges
       .split('\n')

@@ -21,6 +21,7 @@ import { noteRoutes } from './routes/notes.js';
 import { gameSessionRoutes } from './routes/game-sessions.js';
 import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 import { sceneImportRoutes } from './routes/scene-imports.js';
+import { bugReportRoutes } from './routes/bug-reports.js';
 import { csrfMiddleware } from './middleware/auth.js';
 
 const app = new Hono<AppEnv>();
@@ -43,6 +44,7 @@ app.use('/api/*', csrfMiddleware);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.route('/api/bug-reports', bugReportRoutes);
 
 // WebSocket upgrade — token-based auth, must be registered before sub-router auth middlewares
 app.get('/api/sessions/:id/ws', async (c) => {

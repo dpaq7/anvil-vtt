@@ -1,11 +1,7 @@
-import { ArrowLeft, ExternalLink, Github, Linkedin } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const LOGO_IMAGE = '/landing/anvil-vtt-logo.png';
-const GITHUB_URL = 'https://github.com/dpaq7';
-const LINKEDIN_URL = 'https://www.linkedin.com/in/danpaquin/';
-const PATREON_PLACEHOLDER_URL = 'https://www.patreon.com/anvilvtt';
-const PATREON_WORDMARK_IMAGE = 'https://c14.patreon.com/thumbnail_Patreon_Wordmark_fb38c295a1.png';
 
 const acknowledgements = [
   {
@@ -106,10 +102,10 @@ export function About() {
                 and appreciate the tireless work of talented people on whom the frontier modles I
                 used were trained.  You are stars, champions, and some of the most hard working and
                 passionate people this world has to offer. My one request -  if you are willing to
-                try Anvil - and do find fault or would like to make suggestions, to please send a
-                respectful note to anvil-vtt-feedback@gmail.com.  My comittment is that I will try
-                to keep improving Anvil and my own skills as long as I have the ability and time to
-                do so.  Thank you, Dan Paquin
+                try Anvil - and do find fault or would like to make suggestions, please use the
+                contact page to send a respectful note through the right channel. My comittment is
+                that I will try to keep improving Anvil and my own skills as long as I have the
+                ability and time to do so. Thank you, Dan Paquin
               </p>
             </section>
           </div>
@@ -134,62 +130,6 @@ export function About() {
               </article>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-14 sm:px-10 sm:py-16 lg:px-16 xl:px-24">
-        <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-200">
-              Creator
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold text-white">Dan Paquin</h2>
-            <p className="mt-5 text-base leading-7 text-zinc-300">
-              I am an independent developer, Draw Steel Director, and TTRPG fan building practical
-              tools for tables that want less overhead between prep and play. Anvil started from a
-              desire to run smoother sessions for friends and has grown into a broader VTT
-              experiment for the Draw Steel community.
-            </p>
-          </div>
-
-          <aside className="rounded border border-zinc-700/70 bg-zinc-900/45 p-5">
-            <h3 className="text-base font-semibold text-white">Project links</h3>
-            <div className="mt-4 flex flex-col gap-3">
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-3 rounded border border-zinc-700 bg-zinc-950/60 px-4 py-3 text-sm font-medium text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-900"
-              >
-                <Github aria-hidden="true" className="h-4 w-4" />
-                GitHub
-                <ExternalLink aria-hidden="true" className="ml-auto h-3.5 w-3.5 text-zinc-500" />
-              </a>
-              <a
-                href={LINKEDIN_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-3 rounded border border-zinc-700 bg-zinc-950/60 px-4 py-3 text-sm font-medium text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-900"
-              >
-                <Linkedin aria-hidden="true" className="h-4 w-4" />
-                LinkedIn
-                <ExternalLink aria-hidden="true" className="ml-auto h-3.5 w-3.5 text-zinc-500" />
-              </a>
-              <a
-                href={PATREON_PLACEHOLDER_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-3 rounded border border-orange-300/30 bg-orange-500/10 px-4 py-3 text-sm font-medium text-orange-100 transition hover:border-orange-200/60 hover:bg-orange-500/15"
-              >
-                <span className="flex h-8 w-24 items-center justify-center rounded bg-white px-2">
-                  <img src={PATREON_WORDMARK_IMAGE} alt="Patreon" className="h-auto max-h-5 w-full object-contain" />
-                </span>
-                Support Anvil on Patreon
-                <span className="ml-auto text-xs text-orange-200/80">Coming soon</span>
-                <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 text-orange-200/80" />
-              </a>
-            </div>
-          </aside>
         </div>
       </section>
     </main>

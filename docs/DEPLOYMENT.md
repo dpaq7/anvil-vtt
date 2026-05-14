@@ -25,6 +25,7 @@ pnpm --filter @anvil/server wrangler secret put DISCORD_CLIENT_SECRET
 pnpm --filter @anvil/server wrangler secret put GOOGLE_CLIENT_ID
 pnpm --filter @anvil/server wrangler secret put GOOGLE_CLIENT_SECRET
 pnpm --filter @anvil/server wrangler secret put SESSION_SECRET
+pnpm --filter @anvil/server wrangler secret put BUG_REPORT_WEBHOOK_URL
 ```
 
 Set non-secret vars in `apps/server/wrangler.toml` or the Cloudflare dashboard:
@@ -38,6 +39,7 @@ GOOGLE_REDIRECT_URI=https://<your-worker-origin>/api/auth/google/callback
 
 The Discord application must include the exact `DISCORD_REDIRECT_URI` in its OAuth2 redirect list.
 The Google OAuth client must include the exact `GOOGLE_REDIRECT_URI` in its authorized redirect URIs.
+`BUG_REPORT_WEBHOOK_URL` is optional; when present, client crash and server-error reports are stored in D1 and forwarded to that webhook.
 
 ## Required VTT Build Env
 

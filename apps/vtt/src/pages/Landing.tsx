@@ -194,9 +194,11 @@ export function Landing() {
           <div>
             <h2 className="font-semibold uppercase tracking-[0.16em] text-zinc-100">Contact</h2>
             <p className="mt-3 leading-6">
-              Questions, feedback, and playtest notes can be shared with the Anvil team during
-              testing.
+              Bug reports, feature suggestions, and contribution notes each have a dedicated inbox.
             </p>
+            <a href="/contact" className="mt-3 inline-block font-medium text-zinc-100 transition hover:text-white">
+              Contact Anvil
+            </a>
           </div>
 
           <div>
@@ -205,6 +207,9 @@ export function Landing() {
               <Link to="/about" className="text-zinc-300 transition hover:text-white">
                 About Anvil
               </Link>
+              <a href="/contact" className="text-zinc-300 transition hover:text-white">
+                Contact
+              </a>
               <a
                 href="https://www.mcdmproductions.com/"
                 className="text-zinc-300 transition hover:text-white"

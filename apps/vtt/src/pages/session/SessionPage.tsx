@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { TooltipProvider } from '@anvil/ui';
 import { useSessionSocket } from '../../hooks/useSessionSocket.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { ErrorBoundary } from '../../components/ErrorBoundary.js';
@@ -37,16 +38,18 @@ export function SessionPage() {
   const isDirector = me?.role === 'director';
 
   return (
-    <ErrorBoundary label="session">
-      {/* Reconnect overlay shown over the active session */}
-      {status !== 'connected' && (
-        <ReconnectOverlay status={status} error={error} />
-      )}
-      {isDirector ? (
-        <DirectorView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
-      ) : (
-        <PlayerView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
-      )}
-    </ErrorBoundary>
+    <TooltipProvider delayDuration={0}>
+      <ErrorBoundary label="session">
+        {/* Reconnect overlay shown over the active session */}
+        {status !== 'connected' && (
+          <ReconnectOverlay status={status} error={error} />
+        )}
+        {isDirector ? (
+          <DirectorView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
+        ) : (
+          <PlayerView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
+        )}
+      </ErrorBoundary>
+    </TooltipProvider>
   );
 }
