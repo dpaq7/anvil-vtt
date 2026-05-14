@@ -9,3 +9,8 @@ coverage/
 .dev.vars
 .wrangler/
 docs/forgesteel-ref/
+
+# Large local rules reference PDFs
+docs/Draw Steel v101/Draw_Steel_Heroes*.pdf
+docs/Draw Steel v101/Draw_Steel_Monsters*.pdf
+docs/rules_references/Summoner*.pdf
