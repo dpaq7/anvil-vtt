@@ -141,6 +141,18 @@ export class ViewportSystem {
     this.onZoomChange?.(this.zoom);
   }
 
+  /** Center the viewport on a grid coordinate, optionally forcing a zoom level. */
+  centerOnGrid(gridX: number, gridY: number, cellSize: number, zoom = this.zoom): void {
+    const rect = this.canvas.getBoundingClientRect();
+    this.zoom = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, zoom));
+    const worldX = gridX * cellSize;
+    const worldY = gridY * cellSize;
+    this.panX = rect.width / 2 - worldX * this.zoom;
+    this.panY = rect.height / 2 - worldY * this.zoom;
+    this.apply();
+    this.onZoomChange?.(this.zoom);
+  }
+
   /** Zoom in by one step (0.25). */
   zoomIn(): void {
     this.setZoom(this.zoom + 0.25);

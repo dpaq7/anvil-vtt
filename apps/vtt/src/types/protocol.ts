@@ -24,6 +24,7 @@ export type ClientMessage =
   | { type: 'scene_fog_add'; fog: FogSync }
   | { type: 'scene_fog_remove'; fogId: string }
   | { type: 'scene_terrain_add'; terrain: TerrainSync }
+  | { type: 'scene_terrain_update'; terrain: TerrainSync }
   | { type: 'scene_terrain_remove'; terrainId: string }
   // Negotiation
   | { type: 'negotiation_argument'; skillId: string; approachText: string }
@@ -71,6 +72,7 @@ export type ServerMessage =
   | { type: 'scene_fog_added'; fog: FogSync }
   | { type: 'scene_fog_removed'; fogId: string }
   | { type: 'scene_terrain_added'; terrain: TerrainSync }
+  | { type: 'scene_terrain_updated'; terrain: TerrainSync }
   | { type: 'scene_terrain_removed'; terrainId: string }
   // Negotiation
   | {
@@ -359,6 +361,7 @@ export interface TerrainSync {
   w: number;
   h: number;
   color?: number;
+  hidden?: boolean;
 }
 
 // ── Negotiation ──

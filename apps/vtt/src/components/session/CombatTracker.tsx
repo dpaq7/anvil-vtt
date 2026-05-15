@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import { Clapperboard, Dices, Shield, Swords } from 'lucide-react';
 import { Button, cn } from '@anvil/ui';
 import type { CombatState, EntityData } from '../../types/protocol.js';
@@ -5,35 +6,71 @@ import type { CombatState, EntityData } from '../../types/protocol.js';
 interface CombatTrackerProps {
   combat: CombatState;
   entities: EntityData[];
+  selectedEntityIds?: string[];
   isDirector: boolean;
   currentHeroEntityId: string | null;
   onClaimTurn: (entityId: string) => void;
+  onSelectEntities?: (entityIds: string[]) => void;
   onSelectTurn: (entityId: string) => void;
+  onFocusEntity?: (entityId: string) => void;
   onEndTurn: () => void;
   onEndCombat: () => void;
   onAdjustMalice: (delta: number) => void;
   onRollInitiative?: () => void;
 }
 
+type CombatSide = 'heroes' | 'villains';
+
+const SIDE_CONFIG: Record<CombatSide, {
+  label: string;
+  Icon: typeof Swords;
+  accent: string;
+  border: string;
+  active: string;
+}> = {
+  heroes: {
+    label: 'Heroes',
+    Icon: Swords,
+    accent: 'text-blue-300',
+    border: 'border-blue-500/40',
+    active: 'bg-blue-500/15 text-blue-100',
+  },
+  villains: {
+    label: 'Director',
+    Icon: Clapperboard,
+    accent: 'text-red-300',
+    border: 'border-red-500/40',
+    active: 'bg-red-500/15 text-red-100',
+  },
+};
+
 export function CombatTracker({
   combat,
   entities,
+  selectedEntityIds = [],
   isDirector,
   currentHeroEntityId,
   onClaimTurn,
+  onSelectEntities,
   onSelectTurn,
+  onFocusEntity,
   onEndTurn,
   onEndCombat,
   onAdjustMalice,
   onRollInitiative,
 }: CombatTrackerProps) {
   const entityMap = new Map(entities.map((e) => [e.id, e]));
+  const selectedSet = new Set(selectedEntityIds);
   const initiativePending = combat.initiativeRoll === null || combat.firstSide === null || combat.activeSide === null;
   const heroPosition = combat.firstSide === null
     ? 'pending'
     : combat.firstSide === 'heroes'
       ? 'first'
       : 'second';
+
+  const sideOrder: CombatSide[] = combat.firstSide
+    ? [combat.firstSide, combat.firstSide === 'heroes' ? 'villains' : 'heroes']
+    : ['heroes', 'villains'];
 
   const canClaimTurn =
     !initiativePending &&
@@ -44,12 +81,32 @@ export function CombatTracker({
 
   const isMyTurn = combat.activeEntityId === currentHeroEntityId;
 
+  const selectEntity = (event: MouseEvent, entityId: string) => {
+    const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+    const next = additive
+      ? toggleSelection(selectedSet, entityId)
+      : [entityId];
+    onSelectEntities?.(next);
+  };
+
+  const maybeSelectVillainTurn = (entityId: string) => {
+    if (
+      isDirector &&
+      combat.activeSide === 'villains' &&
+      !combat.activeEntityId &&
+      !combat.actedThisRound.includes(entityId)
+    ) {
+      onSelectTurn(entityId);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Round & Initiative */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase text-zinc-500">Combat</span>
-        <span className="text-xs text-zinc-400">Round {combat.round}</span>
+        <span className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
+          Round {combat.round}
+        </span>
       </div>
 
       {initiativePending ? (
@@ -80,9 +137,17 @@ export function CombatTracker({
         </div>
       )}
 
-      <InitiativeOrder combat={combat} />
+      <div className="grid grid-cols-2 gap-1.5">
+        {sideOrder.map((side, index) => (
+          <SidePill
+            key={side}
+            side={side}
+            order={index + 1}
+            combat={combat}
+          />
+        ))}
+      </div>
 
-      {/* Active side indicator */}
       <div className={cn(
         'rounded px-2 py-1.5 text-center text-xs font-medium',
         initiativePending
@@ -98,77 +163,28 @@ export function CombatTracker({
             : 'Director Turn'}
       </div>
 
-      {/* Two-column layout */}
-      <div className="grid grid-cols-2 gap-2">
-        {/* Heroes column */}
-        <div>
-          <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
-            <Swords className="size-3" />
-            Heroes
-          </div>
-          <div className="flex flex-col gap-0.5">
-            {combat.heroEntities.map((id) => {
-              const entity = entityMap.get(id);
-              const acted = combat.actedThisRound.includes(id);
-              const isActive = combat.activeEntityId === id;
-              return (
-                <div
-                  key={id}
-                  className={`flex items-center gap-1 rounded px-1.5 py-1 text-xs ${
-                    isActive
-                      ? 'bg-blue-500/20 text-blue-200 font-medium'
-                      : acted
-                        ? 'text-zinc-600 line-through'
-                        : 'text-zinc-300'
-                  }`}
-                >
-                  <span className="truncate">{entity?.name ?? id}</span>
-                  {isActive && <span className="ml-auto text-[9px] text-blue-400">ACTIVE</span>}
-                  {acted && !isActive && <span className="ml-auto text-[9px]">✓</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Villains column */}
-        <div>
-          <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-red-400">
-            <Shield className="size-3" />
-            Villains
-          </div>
-          <div className="flex flex-col gap-0.5">
-            {combat.villainEntities.map((id) => {
-              const entity = entityMap.get(id);
-              const acted = combat.actedThisRound.includes(id);
-              const isActive = combat.activeEntityId === id;
-              return (
-                <div
-                  key={id}
-                  className={`flex items-center gap-1 rounded px-1.5 py-1 text-xs cursor-pointer hover:bg-zinc-800/50 ${
-                    isActive
-                      ? 'bg-red-500/20 text-red-200 font-medium'
-                      : acted
-                        ? 'text-zinc-600 line-through'
-                        : 'text-zinc-300'
-                  }`}
-                  onClick={() => {
-                    if (isDirector && combat.activeSide === 'villains' && !combat.activeEntityId && !acted) {
-                      onSelectTurn(id);
-                    }
-                  }}
-                >
-                  <span className="truncate">{entity?.name ?? id}</span>
-                  {isActive && <span className="ml-auto text-[9px] text-red-400">ACTIVE</span>}
-                  {acted && !isActive && <span className="ml-auto text-[9px]">✓</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      <div className="flex flex-col gap-2">
+        <InitiativeGroup
+          side="heroes"
+          combat={combat}
+          entityMap={entityMap}
+          selectedSet={selectedSet}
+          onEntityClick={selectEntity}
+          onEntityDoubleClick={onFocusEntity}
+        />
+        <InitiativeGroup
+          side="villains"
+          combat={combat}
+          entityMap={entityMap}
+          selectedSet={selectedSet}
+          onEntityClick={(event, entityId) => {
+            selectEntity(event, entityId);
+            if (!(event.ctrlKey || event.metaKey || event.shiftKey)) maybeSelectVillainTurn(entityId);
+          }}
+          onEntityDoubleClick={onFocusEntity}
+        />
       </div>
 
-      {/* Malice */}
       <div className="flex items-center justify-between rounded bg-zinc-800/50 px-2 py-1.5">
         <span className="text-xs text-zinc-400">Malice</span>
         <div className="flex items-center gap-1">
@@ -179,7 +195,7 @@ export function CombatTracker({
               className="size-5"
               onClick={() => onAdjustMalice(-1)}
             >
-              <span className="text-xs">−</span>
+              <span className="text-xs">-</span>
             </Button>
           )}
           <span className="min-w-[20px] text-center text-sm font-bold text-purple-400">
@@ -198,12 +214,13 @@ export function CombatTracker({
         </div>
       </div>
 
-      {/* Turn controls */}
       {canClaimTurn && !isDirector && (
         <Button
           size="sm"
           className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => onClaimTurn(currentHeroEntityId)}
+          onClick={() => {
+            if (currentHeroEntityId) onClaimTurn(currentHeroEntityId);
+          }}
         >
           Take My Turn
         </Button>
@@ -230,38 +247,99 @@ export function CombatTracker({
   );
 }
 
-function InitiativeOrder({ combat }: { combat: CombatState }) {
-  const sides: Array<'heroes' | 'villains'> = combat.firstSide
-    ? [combat.firstSide, combat.firstSide === 'heroes' ? 'villains' : 'heroes']
-    : ['heroes', 'villains'];
+function toggleSelection(selectedSet: Set<string>, entityId: string): string[] {
+  const next = new Set(selectedSet);
+  if (next.has(entityId)) next.delete(entityId);
+  else next.add(entityId);
+  return [...next];
+}
+
+function SidePill({ side, order, combat }: { side: CombatSide; order: number; combat: CombatState }) {
+  const config = SIDE_CONFIG[side];
+  const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
+  const acted = ids.filter((id) => combat.actedThisRound.includes(id)).length;
+  const isActive = combat.activeSide === side;
+  const Icon = config.Icon;
 
   return (
-    <div className="grid grid-cols-2 gap-1.5">
-      {sides.map((side, index) => {
-        const isActive = combat.activeSide === side;
-        const Icon = side === 'heroes' ? Swords : Clapperboard;
-        return (
-          <div
-            key={side}
-            className={cn(
-              'rounded border px-2 py-1.5',
-              isActive
-                ? side === 'heroes'
-                  ? 'border-blue-500/60 bg-blue-500/10'
-                  : 'border-red-500/60 bg-red-500/10'
-                : 'border-zinc-800 bg-zinc-900/50',
-            )}
-          >
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-semibold tabular-nums text-zinc-500">{index + 1}</span>
-              <Icon className={cn('size-3.5', side === 'heroes' ? 'text-blue-300' : 'text-red-300')} />
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">
-                {side === 'heroes' ? 'Heroes' : 'Director'}
-              </span>
-            </div>
-          </div>
-        );
-      })}
+    <div
+      className={cn(
+        'rounded border px-2 py-1.5',
+        isActive ? cn(config.border, config.active) : 'border-zinc-800 bg-zinc-900/50 text-zinc-400',
+      )}
+      title={`${config.label}: ${acted}/${ids.length} acted`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold tabular-nums text-zinc-500">{order}</span>
+        <Icon className={cn('size-3.5', config.accent)} />
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{config.label}</span>
+        <span className="text-[10px] tabular-nums text-zinc-500">{acted}/{ids.length}</span>
+      </div>
     </div>
+  );
+}
+
+function InitiativeGroup({
+  side,
+  combat,
+  entityMap,
+  selectedSet,
+  onEntityClick,
+  onEntityDoubleClick,
+}: {
+  side: CombatSide;
+  combat: CombatState;
+  entityMap: Map<string, EntityData>;
+  selectedSet: Set<string>;
+  onEntityClick: (event: MouseEvent, entityId: string) => void;
+  onEntityDoubleClick?: (entityId: string) => void;
+}) {
+  const config = SIDE_CONFIG[side];
+  const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
+  const Icon = side === 'heroes' ? Swords : Shield;
+
+  return (
+    <section className={cn('rounded border bg-zinc-950/25', config.border)}>
+      <div className="flex items-center gap-1.5 border-b border-zinc-800/70 px-2 py-1.5">
+        <Icon className={cn('size-3.5', config.accent)} />
+        <span className={cn('text-[10px] font-semibold uppercase tracking-wider', config.accent)}>
+          {side === 'heroes' ? 'Heroes' : 'Villains'}
+        </span>
+      </div>
+      <div className="max-h-52 overflow-y-auto p-1">
+        {ids.length === 0 ? (
+          <p className="px-2 py-2 text-xs text-zinc-600">None</p>
+        ) : (
+          ids.map((id) => {
+            const entity = entityMap.get(id);
+            const acted = combat.actedThisRound.includes(id);
+            const isActive = combat.activeEntityId === id;
+            const isSelected = selectedSet.has(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                className={cn(
+                  'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition',
+                  isSelected && 'bg-sky-500/15 ring-1 ring-sky-400/60',
+                  isActive
+                    ? cn(config.active, 'font-medium')
+                    : acted
+                      ? 'text-zinc-600 line-through hover:bg-zinc-800/40'
+                      : 'text-zinc-300 hover:bg-zinc-800/60',
+                )}
+                onClick={(event) => onEntityClick(event, id)}
+                onDoubleClick={() => onEntityDoubleClick?.(id)}
+              >
+                <span className={cn('size-1.5 shrink-0 rounded-full', isActive ? 'bg-white' : acted ? 'bg-zinc-700' : 'bg-zinc-400')} />
+                <span className="min-w-0 flex-1 truncate">{entity?.name ?? id}</span>
+                {isActive && <span className="text-[9px] uppercase text-zinc-300">Active</span>}
+                {acted && !isActive && <span className="text-[10px] text-zinc-600">Done</span>}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }

@@ -12,10 +12,8 @@ import { useAudioSync } from '../../hooks/useAudioSync.js';
 import { VitalsBar } from '../../components/session/VitalsBar.js';
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
-import { BattleTurnTracker } from '../../components/session/BattleTurnTracker.js';
 import { TurnActionBar } from '../../components/session/TurnActionBar.js';
 import { AbilityPanel } from '../../components/session/AbilityPanel.js';
-import { CombatLog } from '../../components/session/CombatLog.js';
 import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
@@ -37,6 +35,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   useAudioSync(sessionState.audio);
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
@@ -62,6 +61,16 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   const resourceName = (heroEntity?.['heroicResourceName'] as string) ?? 'Resource';
   const initiativePending = sceneType === 'battle' && combat?.initiativeRoll === null;
 
+  const handleSelectEntity = useCallback((entityId: string | null) => {
+    setSelectedEntityId(entityId);
+    setSelectedEntityIds(entityId ? [entityId] : []);
+  }, []);
+
+  const handleSelectEntities = useCallback((entityIds: string[]) => {
+    setSelectedEntityIds(entityIds);
+    setSelectedEntityId(entityIds[0] ?? null);
+  }, []);
+
   useEffect(() => {
     if (initiativePending && !initiativePromptedRef.current) {
       initiativePromptedRef.current = true;
@@ -70,6 +79,10 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
       initiativePromptedRef.current = false;
     }
   }, [initiativePending]);
+
+  useEffect(() => {
+    handleSelectEntity(null);
+  }, [activeSceneId, handleSelectEntity]);
 
   // Determine which action types have been used (for ability panel greying out)
   const usedActionTypes = useMemo(() => {
@@ -183,11 +196,16 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
         return (
           <MontageStage
             goal={montage.goal}
+            roundLimit={montage.roundLimit}
+            heroCount={montage.heroCount}
             currentSuccesses={liveMontage?.successes ?? 0}
             successLimit={liveMontage?.successLimit ?? montage.successLimit}
             currentFailures={liveMontage?.failures ?? 0}
             failureLimit={liveMontage?.failureLimit ?? montage.failureLimit}
             outcome={liveMontage?.outcome ?? 'pending'}
+            totalSuccess={montage.totalSuccess}
+            partialSuccess={montage.partialSuccess}
+            totalFailure={montage.totalFailure}
             challenges={montage.challenges}
             isDirector={false}
             testLog={liveMontage?.testLog}
@@ -243,6 +261,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             entities={visibleEntities}
             combat={combat}
             selectedEntityId={selectedEntityId}
+            selectedEntityIds={selectedEntityIds}
             isDirector={false}
             cols={battle.cols}
             rows={battle.rows}
@@ -253,10 +272,14 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             terrain={battle.terrain}
             gridOpacity={battle.gridOpacity}
             gridColor={battle.gridColor}
+            gridOffsetX={battle.gridOffsetX}
+            gridOffsetY={battle.gridOffsetY}
             heroPosition={heroEntity ? { x: heroEntity.x, y: heroEntity.y } : null}
             combatLog={combatLog}
             entityNames={entityNames}
-            onSelectEntity={setSelectedEntityId}
+            onSelectEntity={handleSelectEntity}
+            onSelectEntities={handleSelectEntities}
+            onRollInitiative={handleRollInitiative}
             send={send}
           />
         );
@@ -296,14 +319,6 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               heroicResource={heroicResource}
             />
           </div>
-          {sceneType === 'battle' && combat && (
-            <BattleTurnTracker
-              combat={combat}
-              entities={entities}
-              onRollInitiative={handleRollInitiative}
-              className="max-w-[420px]"
-            />
-          )}
           {/* Audio now-playing indicator */}
           {sessionState.audio?.playing && sessionState.audio.assetName && (
             <span className="mr-1 flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
@@ -342,7 +357,9 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
           <ActionLogPanel
             entries={sessionState.actionLog ?? []}
             sceneType={sceneType}
+            activeSceneId={activeSceneId}
             send={send}
+            showDiceControls={sceneType !== 'battle'}
             className={sceneType === 'battle' && combat ? 'max-h-[45%] shrink-0 border-t' : 'h-full'}
           />
         </div>
@@ -367,20 +384,17 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             <CombatTracker
               combat={combat}
               entities={entities}
+              selectedEntityIds={selectedEntityIds}
               isDirector={false}
               currentHeroEntityId={heroEntityId}
               onClaimTurn={(entityId) => send({ type: 'combat_action', action: { type: 'CLAIM_TURN', entityId } })}
+              onSelectEntities={handleSelectEntities}
               onSelectTurn={() => {}}
               onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
               onEndCombat={() => {}}
               onAdjustMalice={() => {}}
               onRollInitiative={handleRollInitiative}
             />
-
-            {/* Combat log */}
-            <div className="h-40">
-              <CombatLog entries={combatLog} entityNames={entityNames} />
-            </div>
           </div>
         ) : undefined
       )}

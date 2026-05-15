@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { ChevronDown, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react';
 import { StaminaBar, Badge, Button } from '@anvil/ui';
 import type { EntityData, ClientMessage } from '../../types/protocol.js';
@@ -24,10 +24,12 @@ const MONSTER_RING = 'ring-red-500/70';
 export interface CreatureCardProps {
   entity: EntityData;
   isActive: boolean;
+  selected?: boolean;
+  onSelect?: (event: MouseEvent<HTMLButtonElement>) => void;
   send: (msg: ClientMessage) => void;
 }
 
-export function CreatureCard({ entity, isActive, send }: CreatureCardProps) {
+export function CreatureCard({ entity, isActive, selected = false, onSelect, send }: CreatureCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [damageInput, setDamageInput] = useState('');
 
@@ -86,11 +88,16 @@ export function CreatureCard({ entity, isActive, send }: CreatureCardProps) {
 
   return (
     <div
-      className={`border-b border-zinc-800/50 ${isActive ? 'bg-red-950/20' : ''}`}
+      className={`border-b border-zinc-800/50 ${isActive ? 'bg-red-950/20' : ''} ${selected ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-400/50' : ''}`}
     >
       {/* Header row */}
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={(event) => {
+          onSelect?.(event);
+          if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
+            setExpanded((v) => !v);
+          }
+        }}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition hover:bg-zinc-800/50"
       >
         {/* Color ring avatar */}

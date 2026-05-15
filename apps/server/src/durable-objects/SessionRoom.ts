@@ -650,8 +650,23 @@ export class SessionRoom extends DurableObject<Env> {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
           return;
         }
-        this.storeSceneTerrain(msg.terrain);
-        this.broadcast({ type: 'scene_terrain_added', terrain: msg.terrain });
+        {
+          const terrain = this.clampTerrainToActiveBattleGrid(msg.terrain);
+          this.storeSceneTerrain(terrain);
+          this.broadcast({ type: 'scene_terrain_added', terrain });
+        }
+        break;
+
+      case 'scene_terrain_update':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        {
+          const terrain = this.clampTerrainToActiveBattleGrid(msg.terrain);
+          this.updateSceneTerrain(terrain);
+          this.broadcast({ type: 'scene_terrain_updated', terrain });
+        }
         break;
 
       case 'scene_terrain_remove':
@@ -1160,6 +1175,7 @@ export class SessionRoom extends DurableObject<Env> {
       'scene_fog_added',
       'scene_fog_removed',
       'scene_terrain_added',
+      'scene_terrain_updated',
       'scene_terrain_removed',
     ].includes(msg.type);
   }
@@ -1279,6 +1295,10 @@ export class SessionRoom extends DurableObject<Env> {
       case 'ROLL_INITIATIVE': {
         const c = this.sessionState.combat;
         if (!c) return;
+        if (meta.role !== 'player') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Players roll initiative' });
+          return;
+        }
         if (c.initiativeRoll !== null) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Initiative has already been rolled' });
           return;
@@ -2759,6 +2779,21 @@ export class SessionRoom extends DurableObject<Env> {
     };
   }
 
+  private clampTerrainToActiveBattleGrid(terrain: TerrainSync): TerrainSync {
+    const data = this.getActiveSceneData();
+    const cols = typeof data?.['gridCols'] === 'number'
+      ? data['gridCols'] as number
+      : typeof data?.['gridSize'] === 'number'
+        ? data['gridSize'] as number
+        : 30;
+    const rows = typeof data?.['gridRows'] === 'number' ? data['gridRows'] as number : 20;
+    const w = Math.max(1, Math.min(cols, Math.round(terrain.w)));
+    const h = Math.max(1, Math.min(rows, Math.round(terrain.h)));
+    const x = Math.max(0, Math.min(cols - w, Math.round(terrain.x)));
+    const y = Math.max(0, Math.min(rows - h, Math.round(terrain.y)));
+    return { ...terrain, x, y, w, h };
+  }
+
   private storeSceneDrawing(drawing: DrawingSync): void {
     const data = this.getActiveSceneData();
     if (!data) return;
@@ -2791,6 +2826,16 @@ export class SessionRoom extends DurableObject<Env> {
     if (!Array.isArray(data['terrain'])) data['terrain'] = [];
     const zones = data['terrain'] as TerrainSync[];
     if (!zones.some((zone) => zone.id === terrain.id)) zones.push(terrain);
+  }
+
+  private updateSceneTerrain(terrain: TerrainSync): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    if (!Array.isArray(data['terrain'])) data['terrain'] = [];
+    const zones = data['terrain'] as TerrainSync[];
+    const index = zones.findIndex((zone) => zone.id === terrain.id);
+    if (index === -1) zones.push(terrain);
+    else zones[index] = terrain;
   }
 
   private removeSceneTerrain(terrainId: string): void {
@@ -3240,9 +3285,11 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private updateMontageOutcome(mont: MontageLiveState): void {
-    if (mont.successes >= mont.successLimit) mont.outcome = 'total_success';
-    else if (mont.failures >= mont.failureLimit) mont.outcome = 'total_failure';
-    else if (mont.successes >= mont.successLimit - 1 && mont.failures >= mont.failureLimit - 1) mont.outcome = 'mixed';
+    const hitSuccess = mont.successes >= mont.successLimit;
+    const hitFailure = mont.failures >= mont.failureLimit;
+    if (hitSuccess && hitFailure) mont.outcome = 'partial_success';
+    else if (hitSuccess) mont.outcome = 'total_success';
+    else if (hitFailure) mont.outcome = 'total_failure';
     else mont.outcome = null;
   }
 

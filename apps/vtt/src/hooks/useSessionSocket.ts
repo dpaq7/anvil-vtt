@@ -185,6 +185,25 @@ export function useSessionSocket(sessionId: string | null) {
           };
         });
         break;
+      case 'scene_terrain_updated':
+        setState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            scenes: prev.scenes.map((s) => {
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const terrain = Array.isArray(data['terrain'])
+                ? (data['terrain'] as { id: string }[]).map((zone) => zone.id === msg.terrain.id ? msg.terrain : zone)
+                : [];
+              if (!terrain.some((zone) => typeof zone === 'object' && zone !== null && 'id' in zone && zone.id === msg.terrain.id)) {
+                terrain.push(msg.terrain);
+              }
+              return { ...s, data: { ...data, terrain } };
+            }),
+          };
+        });
+        break;
       case 'scene_terrain_removed':
         setState((prev) => {
           if (!prev) return prev;

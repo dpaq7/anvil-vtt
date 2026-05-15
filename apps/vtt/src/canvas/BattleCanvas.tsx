@@ -47,7 +47,9 @@ export interface BattleCanvasProps {
   onDrawingAdd?: (points: number[], color: string, width: number) => void;
   onDrawingRemove?: (drawingId: string) => void;
   onTerrainAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
+  onTerrainUpdate?: (terrain: TerrainZoneData) => void;
   onTerrainRemove?: (terrainId: string) => void;
+  onTerrainRightClick?: (terrainId: string | null, screenX: number, screenY: number) => void;
   fogZones?: FogZoneData[];
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
@@ -56,6 +58,9 @@ export interface BattleCanvasProps {
   gridVisible?: boolean;
   gridOpacity?: number;
   gridColor?: string;
+  gridCellSize?: number;
+  gridOffsetX?: number;
+  gridOffsetY?: number;
 
   // Token interaction callbacks
   onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
@@ -92,7 +97,9 @@ export function BattleCanvas({
   onDrawingAdd,
   onDrawingRemove,
   onTerrainAdd,
+  onTerrainUpdate,
   onTerrainRemove,
+  onTerrainRightClick,
   fogZones = [],
   onFogAdd,
   onFogRemove,
@@ -101,6 +108,9 @@ export function BattleCanvas({
   gridVisible = true,
   gridOpacity = 0.4,
   gridColor = '#444444',
+  gridCellSize = cellSize,
+  gridOffsetX = 0,
+  gridOffsetY = 0,
   onTokenHover,
   onTokenRightClick,
   onZoomChange,
@@ -138,8 +148,12 @@ export function BattleCanvas({
   onDrawingRemoveRef.current = onDrawingRemove;
   const onTerrainAddRef = useRef(onTerrainAdd);
   onTerrainAddRef.current = onTerrainAdd;
+  const onTerrainUpdateRef = useRef(onTerrainUpdate);
+  onTerrainUpdateRef.current = onTerrainUpdate;
   const onTerrainRemoveRef = useRef(onTerrainRemove);
   onTerrainRemoveRef.current = onTerrainRemove;
+  const onTerrainRightClickRef = useRef(onTerrainRightClick);
+  onTerrainRightClickRef.current = onTerrainRightClick;
   const onFogAddRef = useRef(onFogAdd);
   onFogAddRef.current = onFogAdd;
   const onFogRemoveRef = useRef(onFogRemove);
@@ -210,7 +224,9 @@ export function BattleCanvas({
           onDrawingAdd: (...args) => onDrawingAddRef.current?.(...args),
           onDrawingRemove: (...args) => onDrawingRemoveRef.current?.(...args),
           onTerrainAdd: (...args) => onTerrainAddRef.current?.(...args),
+          onTerrainUpdate: (...args) => onTerrainUpdateRef.current?.(...args),
           onTerrainRemove: (...args) => onTerrainRemoveRef.current?.(...args),
+          onTerrainRightClick: (...args) => onTerrainRightClickRef.current?.(...args),
           onFogAdd: (...args) => onFogAddRef.current?.(...args),
           onFogRemove: (...args) => onFogRemoveRef.current?.(...args),
           onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
@@ -227,9 +243,19 @@ export function BattleCanvas({
 
       tokens.setCellSize(cellSize);
       terrainLayer.setCellSize(cellSize);
+      terrainLayer.setDirectorMode(isDirector);
       fog.setCellSize(cellSize);
       fog.setDirectorMode(isDirector);
-      grid.draw({ cellSize, cols, rows, lineAlpha: gridOpacity, lineColor: parseInt(gridColor.replace('#', ''), 16) });
+      grid.draw({
+        cellSize: gridCellSize,
+        stageCellSize: cellSize,
+        cols,
+        rows,
+        lineAlpha: gridOpacity,
+        lineColor: parseInt(gridColor.replace('#', ''), 16),
+        offsetX: gridOffsetX,
+        offsetY: gridOffsetY,
+      });
 
       layersRef.current = {
         background,
@@ -406,8 +432,11 @@ export function BattleCanvas({
 
   // Sync terrain layer
   useEffect(() => {
-    layersRef.current?.terrain.sync(terrain);
-  }, [terrain, pixiReady]);
+    const layers = layersRef.current;
+    if (!layers) return;
+    layers.terrain.setDirectorMode(isDirector);
+    layers.terrain.sync(terrain);
+  }, [isDirector, terrain, pixiReady]);
 
   // Toggle grid visibility
   useEffect(() => {
@@ -421,9 +450,18 @@ export function BattleCanvas({
   useEffect(() => {
     const layers = layersRef.current;
     if (layers) {
-      layers.grid.draw({ cellSize, cols, rows, lineAlpha: gridOpacity, lineColor: parseInt(gridColor.replace('#', ''), 16) });
+      layers.grid.draw({
+        cellSize: gridCellSize,
+        stageCellSize: cellSize,
+        cols,
+        rows,
+        lineAlpha: gridOpacity,
+        lineColor: parseInt(gridColor.replace('#', ''), 16),
+        offsetX: gridOffsetX,
+        offsetY: gridOffsetY,
+      });
     }
-  }, [gridOpacity, gridColor, cellSize, cols, rows, pixiReady]);
+  }, [gridOpacity, gridColor, gridCellSize, gridOffsetX, gridOffsetY, cellSize, cols, rows, pixiReady]);
 
   return (
     <div ref={containerRef} className="h-full w-full" />

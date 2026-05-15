@@ -22,8 +22,13 @@ export interface ParsedChallenge {
 
 export interface MontageStageData {
   goal: string;
+  roundLimit: number;
+  heroCount: number;
   successLimit: number;
   failureLimit: number;
+  totalSuccess: string;
+  partialSuccess: string;
+  totalFailure: string;
   challenges: ParsedChallenge[];
 }
 
@@ -66,8 +71,13 @@ export function parseMontageData(sceneData: Record<string, unknown>): MontageSta
 
   return {
     goal: (sceneData['goal'] as string) ?? '',
+    roundLimit: (sceneData['roundLimit'] as number) ?? 2,
+    heroCount: (sceneData['heroCount'] as number) ?? 5,
     successLimit: (sceneData['successesNeeded'] as number) ?? 5,
     failureLimit: (sceneData['failureLimit'] as number) ?? 3,
+    totalSuccess: (sceneData['totalSuccess'] as string) ?? '',
+    partialSuccess: (sceneData['partialSuccess'] as string) ?? '',
+    totalFailure: (sceneData['totalFailure'] as string) ?? '',
     challenges,
   };
 }
@@ -226,6 +236,7 @@ export interface TerrainEntry {
   y: number;
   w: number;
   h: number;
+  hidden?: boolean;
 }
 
 export interface BattleStageData {
@@ -235,6 +246,8 @@ export interface BattleStageData {
   cellSize: number;
   gridOpacity: number;
   gridColor: string;
+  gridOffsetX: number;
+  gridOffsetY: number;
   drawings: DrawingEntry[];
   fogZones: FogEntry[];
   terrain: TerrainEntry[];
@@ -253,6 +266,8 @@ export function parseBattleData(sceneData: Record<string, unknown>): BattleStage
     cellSize: (sceneData['gridCellSize'] as number) ?? 48,
     gridOpacity: (sceneData['gridOpacity'] as number) ?? 0.4,
     gridColor: (sceneData['gridColor'] as string) ?? '#444444',
+    gridOffsetX: (sceneData['gridOffsetX'] as number) ?? 0,
+    gridOffsetY: (sceneData['gridOffsetY'] as number) ?? 0,
     drawings: parseArray<DrawingEntry>('drawings'),
     fogZones: parseArray<FogEntry>('fog'),
     terrain: parseArray<TerrainEntry>('terrain'),

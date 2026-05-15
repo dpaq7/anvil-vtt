@@ -1,7 +1,7 @@
 import type { ViewportSystem } from './ViewportSystem.js';
 import type { TokenLayer } from '../layers/TokenLayer.js';
 import type { DrawingLayer } from '../layers/DrawingLayer.js';
-import type { TerrainLayer } from '../layers/TerrainLayer.js';
+import type { TerrainLayer, TerrainZoneData } from '../layers/TerrainLayer.js';
 import type { FogLayer } from '../layers/FogLayer.js';
 import { Quadtree } from './Quadtree.js';
 
@@ -15,7 +15,9 @@ export interface InteractionCallbacks {
   onDrawingAdd?: (points: number[], color: string, width: number) => void;
   onDrawingRemove?: (drawingId: string) => void;
   onTerrainAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
+  onTerrainUpdate?: (terrain: TerrainZoneData) => void;
   onTerrainRemove?: (terrainId: string) => void;
+  onTerrainRightClick?: (terrainId: string | null, screenX: number, screenY: number) => void;
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
   onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
@@ -51,6 +53,15 @@ export class InteractionManager {
 
   // Terrain placement state
   private terrainStart: { gridX: number; gridY: number } | null = null;
+  private terrainDragging: {
+    id: string;
+    startGrid: { gridX: number; gridY: number };
+    original: TerrainZoneData;
+  } | null = null;
+  private terrainResizing: {
+    id: string;
+    original: TerrainZoneData;
+  } | null = null;
 
   // Fog brush state
   private fogStart: { gridX: number; gridY: number } | null = null;
@@ -132,6 +143,7 @@ export class InteractionManager {
   /** Set selection from external state (e.g. React). */
   setSelectedIds(ids: Set<string>): void {
     this.selectedIds = ids;
+    this.selectedId = [...ids][0] ?? null;
   }
 
   private cancelCurrentInteraction(): void {
@@ -148,6 +160,8 @@ export class InteractionManager {
     this.isDrawing = false;
     this.drawPoints = [];
     this.terrainStart = null;
+    this.terrainDragging = null;
+    this.terrainResizing = null;
     this.fogStart = null;
     this.fogBrushLastKey = null;
     // Clean up any in-progress previews
@@ -178,6 +192,18 @@ export class InteractionManager {
     return {
       gridX: Math.max(0, Math.min(this.gridBounds.cols - 1, gridX)),
       gridY: Math.max(0, Math.min(this.gridBounds.rows - 1, gridY)),
+    };
+  }
+
+  private clampTerrain(zone: TerrainZoneData): TerrainZoneData {
+    const w = Math.max(1, Math.min(this.gridBounds.cols, Math.round(zone.w)));
+    const h = Math.max(1, Math.min(this.gridBounds.rows, Math.round(zone.h)));
+    return {
+      ...zone,
+      x: Math.max(0, Math.min(this.gridBounds.cols - w, Math.round(zone.x))),
+      y: Math.max(0, Math.min(this.gridBounds.rows - h, Math.round(zone.y))),
+      w,
+      h,
     };
   }
 
@@ -264,8 +290,21 @@ export class InteractionManager {
 
   private handleSelectDown(e: PointerEvent, gridX: number, gridY: number): void {
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
+    const additiveSelection = e.ctrlKey || e.metaKey || e.shiftKey;
 
     if (entityId) {
+      if (additiveSelection) {
+        const nextIds = new Set(this.selectedIds);
+        if (nextIds.has(entityId)) nextIds.delete(entityId);
+        else nextIds.add(entityId);
+        const nextList = [...nextIds];
+        this.selectedIds = nextIds;
+        this.selectedId = nextList[0] ?? null;
+        this.callbacks.onTokenSelect(this.selectedId);
+        this.callbacks.onMultiTokenSelect?.(nextList);
+        return;
+      }
+
       // Clicked on a token
       if (this.selectedIds.has(entityId) && this.selectedIds.size > 1) {
         // Clicked on an already-selected token in a multi-selection → start group drag
@@ -290,13 +329,35 @@ export class InteractionManager {
         }
       }
     } else {
-      // Clicked on empty space
-      if (this.isDirector) {
-        // Start marquee selection
+      if (this.isDirector && this.terrainLayer) {
         const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
-        this.marqueeActive = true;
-        this.marqueeStartWorld = { x: worldX, y: worldY };
+        const resizeId = this.terrainLayer.getResizeHandleAtWorld(worldX, worldY);
+        if (resizeId) {
+          const zone = this.terrainLayer.getZone(resizeId);
+          if (zone) {
+            this.terrainResizing = { id: resizeId, original: { ...zone } };
+            return;
+          }
+        }
+
+        const terrainId = this.terrainLayer.getZoneAt(gridX, gridY);
+        if (terrainId) {
+          const zone = this.terrainLayer.getZone(terrainId);
+          if (zone) {
+            this.terrainDragging = {
+              id: terrainId,
+              startGrid: { gridX, gridY },
+              original: { ...zone },
+            };
+            return;
+          }
+        }
       }
+
+      // Clicked on empty space
+      const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+      this.marqueeActive = true;
+      this.marqueeStartWorld = { x: worldX, y: worldY };
 
       // Clear selection
       this.selectedId = null;
@@ -307,6 +368,31 @@ export class InteractionManager {
   }
 
   private handleSelectMove(e: PointerEvent): void {
+    if (this.terrainDragging) {
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+      const dx = gridX - this.terrainDragging.startGrid.gridX;
+      const dy = gridY - this.terrainDragging.startGrid.gridY;
+      const next = this.clampTerrain({
+        ...this.terrainDragging.original,
+        x: this.terrainDragging.original.x + dx,
+        y: this.terrainDragging.original.y + dy,
+      });
+      this.terrainLayer?.moveZone(this.terrainDragging.id, next.x, next.y);
+      return;
+    }
+
+    if (this.terrainResizing) {
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+      const original = this.terrainResizing.original;
+      const next = this.clampTerrain({
+        ...original,
+        w: gridX - original.x + 1,
+        h: gridY - original.y + 1,
+      });
+      this.terrainLayer?.resizeZone(this.terrainResizing.id, next);
+      return;
+    }
+
     // Group drag — move all selected tokens by grid delta
     if (this.groupDragging && this.groupDragLastGrid) {
       const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
@@ -364,6 +450,35 @@ export class InteractionManager {
   }
 
   private handleSelectUp(e: PointerEvent): void {
+    if (this.terrainDragging) {
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+      const dx = gridX - this.terrainDragging.startGrid.gridX;
+      const dy = gridY - this.terrainDragging.startGrid.gridY;
+      const next = this.clampTerrain({
+        ...this.terrainDragging.original,
+        x: this.terrainDragging.original.x + dx,
+        y: this.terrainDragging.original.y + dy,
+      });
+      this.terrainLayer?.moveZone(this.terrainDragging.id, next.x, next.y);
+      this.callbacks.onTerrainUpdate?.(next);
+      this.terrainDragging = null;
+      return;
+    }
+
+    if (this.terrainResizing) {
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+      const original = this.terrainResizing.original;
+      const next = this.clampTerrain({
+        ...original,
+        w: gridX - original.x + 1,
+        h: gridY - original.y + 1,
+      });
+      this.terrainLayer?.resizeZone(this.terrainResizing.id, next);
+      this.callbacks.onTerrainUpdate?.(next);
+      this.terrainResizing = null;
+      return;
+    }
+
     // Group drag finished
     if (this.groupDragging && this.groupDragAnchorGrid && this.groupDragLastGrid) {
       // Emit final positions for all selected tokens
@@ -417,9 +532,9 @@ export class InteractionManager {
         if (firstId !== null) {
           this.selectedIds = new Set(ids);
           this.selectedId = firstId;
-          this.callbacks.onMultiTokenSelect?.(ids);
           // Also fire single-select for the first token (for context menu, etc.)
           this.callbacks.onTokenSelect(firstId);
+          this.callbacks.onMultiTokenSelect?.(ids);
         }
       }
       return;
@@ -559,9 +674,22 @@ export class InteractionManager {
       // Position the context menu at the token's right edge (gridX + 1) for consistent placement
       const { screenX, screenY } = this.viewport.gridToScreen(gridX + 1, gridY, this.cellSize);
       this.callbacks.onTokenRightClick?.(entityId, screenX, screenY);
+      this.callbacks.onTerrainRightClick?.(null, 0, 0);
+    } else if (this.terrainLayer) {
+      const terrainId = this.terrainLayer.getZoneAt(gridX, gridY);
+      if (terrainId) {
+        const { screenX, screenY } = this.viewport.gridToScreen(gridX + 1, gridY, this.cellSize);
+        this.callbacks.onTokenRightClick?.(null, 0, 0);
+        this.callbacks.onTerrainRightClick?.(terrainId, screenX, screenY);
+      } else {
+        // Right-clicked on empty space — signal close (null entityId = dismiss)
+        this.callbacks.onTokenRightClick?.(null, 0, 0);
+        this.callbacks.onTerrainRightClick?.(null, 0, 0);
+      }
     } else {
       // Right-clicked on empty space — signal close (null entityId = dismiss)
       this.callbacks.onTokenRightClick?.(null, 0, 0);
+      this.callbacks.onTerrainRightClick?.(null, 0, 0);
     }
   };
 }

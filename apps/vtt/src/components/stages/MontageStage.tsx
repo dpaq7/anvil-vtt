@@ -31,10 +31,12 @@ interface MontageStageProps {
   partialSuccess?: string;
   totalFailure?: string;
   testLog?: TestLogEntry[];
+  roundsCompleted?: boolean[];
   onMontageRoll?: (skillId: string, characteristicId: string) => void;
   onAdjustSuccesses?: (delta: number) => void;
   onAdjustFailures?: (delta: number) => void;
   onResetMontage?: () => void;
+  onToggleRound?: (roundIndex: number) => void;
 }
 
 function TestLogItem({ entry }: { entry: TestLogEntry }) {
@@ -87,14 +89,17 @@ export function MontageStage({
   partialSuccess = '',
   totalFailure = '',
   testLog = [],
+  roundsCompleted = [],
   onMontageRoll,
   onAdjustSuccesses,
   onAdjustFailures,
   onResetMontage,
+  onToggleRound,
 }: MontageStageProps) {
   const successPct = successLimit > 0 ? (currentSuccesses / successLimit) * 100 : 0;
   const failurePct = failureLimit > 0 ? (currentFailures / failureLimit) * 100 : 0;
-  const isActive = outcome === 'pending';
+  const normalizedOutcome = outcome || 'pending';
+  const isActive = normalizedOutcome === 'pending';
 
   const [selectedSkillId, setSelectedSkillId] = useState<string>('');
   const [selectedChar, setSelectedChar] = useState<Characteristic>('reason');
@@ -140,6 +145,26 @@ export function MontageStage({
             <div key={stat.label} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-3 text-center">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{stat.label}</p>
               <p className="mt-1 text-2xl font-semibold text-zinc-100">{stat.value}</p>
+              {isDirector && stat.label === 'Rounds' && roundLimit > 0 && (
+                <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                  {Array.from({ length: roundLimit }, (_, index) => (
+                    <label
+                      key={index}
+                      className="flex size-5 items-center justify-center rounded border border-zinc-700 bg-zinc-950/60"
+                      title={`Round ${index + 1}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={roundsCompleted[index] === true}
+                        disabled={!isDirector || !onToggleRound}
+                        onChange={() => onToggleRound?.(index)}
+                        className="size-3 accent-amber-500"
+                        aria-label={`Round ${index + 1} complete`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -170,14 +195,14 @@ export function MontageStage({
           <div className="text-center">
             <span
               className={`rounded px-3 py-1 text-sm font-medium ${
-                outcome === 'total_success'
+                normalizedOutcome === 'total_success'
                   ? 'bg-emerald-500/20 text-emerald-400'
-                  : outcome === 'partial_success'
+                  : normalizedOutcome === 'partial_success'
                     ? 'bg-amber-500/20 text-amber-400'
                     : 'bg-red-500/20 text-red-400'
               }`}
             >
-              {outcome.replace('_', ' ').toUpperCase()}
+              {normalizedOutcome.replace(/_/g, ' ').toUpperCase()}
             </span>
           </div>
         )}

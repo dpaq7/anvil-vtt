@@ -5,6 +5,7 @@ export interface ViewportControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToMap: () => void;
+  className?: string;
 }
 
 export function ViewportControls({
@@ -12,9 +13,10 @@ export function ViewportControls({
   onZoomIn,
   onZoomOut,
   onFitToMap,
+  className,
 }: ViewportControlsProps) {
   return (
-    <div className="absolute bottom-4 right-4 z-10 flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm">
+    <div className={className ?? 'absolute bottom-4 right-4 z-10 flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm'}>
       <button
         type="button"
         className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
