@@ -23,8 +23,11 @@ import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 import { sceneImportRoutes } from './routes/scene-imports.js';
 import { bugReportRoutes } from './routes/bug-reports.js';
 import { csrfMiddleware } from './middleware/auth.js';
+import { securityHeadersMiddleware } from './middleware/security.js';
 
 const app = new Hono<AppEnv>();
+
+app.use('*', securityHeadersMiddleware);
 
 // CORS
 app.use(

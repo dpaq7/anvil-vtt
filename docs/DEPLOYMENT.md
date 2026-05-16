@@ -51,6 +51,13 @@ VITE_API_BASE=https://<your-worker-origin>
 
 The value should not have a trailing slash. It is used for HTTP API calls and live-session WebSocket URLs.
 
+## Security Policy Checks
+
+- Apply D1 migrations before deploying code that uses public rate limits. `0015_request_rate_limits.sql` is required by invite lookup/acceptance and bug report ingestion.
+- Keep the Cloudflare Pages headers in `apps/vtt/public/_headers` aligned with the deployed Worker origin. If the Worker moves to a custom domain, update `connect-src`, `img-src`, and `media-src` before deploying the VTT.
+- Keep `BUG_REPORT_WEBHOOK_URL` unset unless report forwarding is actively monitored. Anonymous bug reports are origin-checked and rate-limited, but the webhook still receives user-supplied error text.
+- Public invite URLs are bearer tokens. Treat them as shareable secrets, keep default expirations short, and prefer nonzero `max_uses` for private campaigns.
+
 ## Deployment Order
 
 1. Install dependencies: `pnpm install --frozen-lockfile`

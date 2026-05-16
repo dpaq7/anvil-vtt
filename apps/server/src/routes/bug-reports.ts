@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { getSessionCookie } from '../middleware/auth.js';
+import { enforceRateLimit } from '../lib/rate-limit.js';
 
 export const bugReportRoutes = new Hono<AppEnv>();
 
@@ -71,6 +72,21 @@ function parseBugReport(raw: unknown): { payload?: BugReportPayload; error?: str
   };
 }
 
+function validateBugReportOrigin(c: Context<AppEnv>): Response | null {
+  const origin = c.req.header('Origin');
+  if (!origin) return c.json({ error: 'Invalid request origin' }, 403);
+
+  try {
+    const requestOrigin = new URL(c.req.url).origin;
+    const frontendOrigin = c.env.FRONTEND_URL ? new URL(c.env.FRONTEND_URL).origin : requestOrigin;
+    if (origin === requestOrigin || origin === frontendOrigin) return null;
+  } catch {
+    return c.json({ error: 'Invalid request origin' }, 403);
+  }
+
+  return c.json({ error: 'Invalid request origin' }, 403);
+}
+
 async function optionalUser(c: Context<AppEnv>): Promise<AuthUser | null> {
   const sessionId = getSessionCookie(c);
   if (!sessionId) return null;
@@ -136,6 +152,16 @@ async function notifyBugReport(c: Context<AppEnv>, report: PersistedBugReport): 
 }
 
 bugReportRoutes.post('/', async (c) => {
+  const originError = validateBugReportOrigin(c);
+  if (originError) return originError;
+
+  const rateLimitError = await enforceRateLimit(c, {
+    namespace: 'bug-report',
+    limit: 20,
+    windowSeconds: 10 * 60,
+  });
+  if (rateLimitError) return rateLimitError;
+
   const raw = await c.req.json().catch(() => null);
   const parsed = parseBugReport(raw);
   if (!parsed.payload) return c.json({ error: parsed.error ?? 'Invalid bug report' }, 400);
