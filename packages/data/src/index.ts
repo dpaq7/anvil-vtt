@@ -79,6 +79,10 @@ export type {
   LevelUpChoice,
   StepStatus,
   WizardStepDefinition,
+  AbilityChoiceSlot,
+  ClassSkillChoiceSlot,
+  CompanionChoiceOption,
+  PerkChoiceSlot,
   // Kit Logic
   KitType,
   KitBonuses,

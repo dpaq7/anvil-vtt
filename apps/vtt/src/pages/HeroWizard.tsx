@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WizardLogic } from '@anvil/data';
 import { useWizardStore } from '../stores/wizardStore.js';
-import { loadWizardState, clearWizardState, useWizardPersistence } from '../hooks/useWizardPersistence.js';
+import { clearWizardState, useWizardPersistence } from '../hooks/useWizardPersistence.js';
 import { HeroCreatorLayout, LevelSelectStep, LevelUpStep } from '../components/creator/index.js';
 import { AncestryStep } from '../components/wizard/AncestryStep.js';
 import { CultureStep } from '../components/wizard/CultureStep.js';
@@ -29,34 +29,22 @@ export function HeroWizard() {
   const character = useWizardStore((state) => state.character);
   const currentStepId = useWizardStore((state) => state.currentStepId);
   const patch = useWizardStore((state) => state.patch);
-  const loadFromSaved = useWizardStore((state) => state.loadFromSaved);
   const reset = useWizardStore((state) => state.reset);
 
-  // Load saved state from IndexedDB on mount
+  // `/heroes/new` is always a new creation flow; stale drafts should not repopulate it.
   useEffect(() => {
-    loadWizardState().then((saved) => {
-      if (saved) {
-        // Need to migrate old saved state to new format if needed
-        const savedCharacter = saved.character;
-        // Ensure level and levelUpChoices exist
-        if (!('level' in savedCharacter)) {
-          (savedCharacter as { level?: number }).level = 1;
-        }
-        if (!('levelUpChoices' in savedCharacter)) {
-          (savedCharacter as { levelUpChoices?: Record<number, unknown[]> }).levelUpChoices = {};
-        }
-        // Convert old numeric step to step ID
-        const stepId = typeof saved.step === 'number'
-          ? convertLegacyStepToId(saved.step)
-          : saved.step;
-        loadFromSaved(savedCharacter, stepId);
+    let cancelled = false;
+    clearWizardState().then(() => {
+      if (!cancelled) {
+        reset();
+        setLoaded(true);
       }
-      setLoaded(true);
     });
-  }, [loadFromSaved]);
+    return () => { cancelled = true; };
+  }, [reset]);
 
   // Persist to IndexedDB on change (after initial load)
-  useWizardPersistence(currentStepId, character);
+  useWizardPersistence(currentStepId, character, loaded && !saving);
 
   const handleSave = async () => {
     if (!WizardLogic.isCharacterComplete(character)) return;
@@ -74,7 +62,7 @@ export function HeroWizard() {
         characteristics: character.characteristics,
         kit: character.kit,
         skills: WizardLogic.getSelectedSkillNames(character),
-        abilities: character.selectedAbilities,
+        abilities: WizardLogic.getSelectedAbilityIds(character),
         portraitUrl: character.portraitUrl,
         data: {
           heroClass: character.heroClass,
@@ -83,12 +71,16 @@ export function HeroWizard() {
           kit: character.kit,
           cultureSkills: character.cultureSkills,
           careerSkillChoices: character.careerSkillChoices,
+          classSkillChoices: character.classSkillChoices,
           ancestryTraits: character.ancestryTraits,
           incitingIncident: character.incitingIncident,
+          careerPerk: character.careerPerk,
           complication: character.complication,
           selectedLanguages: character.selectedLanguages,
-          selectedPerks: character.selectedPerks,
+          selectedPerks: WizardLogic.getSelectedPerkIds(character),
           selectedTitles: character.selectedTitles,
+          abilityChoices: character.abilityChoices,
+          companion: character.companion,
           pronouns: character.pronouns,
           backstory: character.backstory,
           appearance: character.appearance,
@@ -164,28 +156,4 @@ export function HeroWizard() {
       {renderStep()}
     </HeroCreatorLayout>
   );
-}
-
-/**
- * Convert legacy numeric step to step ID for backward compatibility.
- */
-function convertLegacyStepToId(step: number): string {
-  const mapping: Record<number, string> = {
-    1: WizardLogic.WIZARD_STEP_IDS.ANCESTRY,
-    2: WizardLogic.WIZARD_STEP_IDS.CULTURE,
-    3: WizardLogic.WIZARD_STEP_IDS.CAREER,
-    4: WizardLogic.WIZARD_STEP_IDS.CLASS,
-    5: WizardLogic.WIZARD_STEP_IDS.SUBCLASS,
-    6: WizardLogic.WIZARD_STEP_IDS.COMPLICATION,
-    7: WizardLogic.WIZARD_STEP_IDS.CHARACTERISTICS,
-    8: WizardLogic.WIZARD_STEP_IDS.KIT,
-    9: WizardLogic.WIZARD_STEP_IDS.SKILLS,
-    10: WizardLogic.WIZARD_STEP_IDS.LANGUAGES,
-    11: WizardLogic.WIZARD_STEP_IDS.PERKS,
-    12: WizardLogic.WIZARD_STEP_IDS.TITLES,
-    13: WizardLogic.WIZARD_STEP_IDS.ABILITIES,
-    14: WizardLogic.WIZARD_STEP_IDS.PERSONAL,
-    15: WizardLogic.WIZARD_STEP_IDS.REVIEW,
-  };
-  return mapping[step] || WizardLogic.WIZARD_STEP_IDS.LEVEL;
 }

@@ -3,11 +3,10 @@ import {
   PERKS,
   PERK_CATEGORY_INFO,
   ALL_PERK_CATEGORIES,
-  getAvailablePerkCategories,
-  getClassPerkLevels,
+  WizardLogic,
 } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
-import type { Perk, PerkCategory, HeroClass } from '@anvil/types';
+import type { Perk, PerkCategory } from '@anvil/types';
 import { CardContent, cn, Input } from '@anvil/ui';
 import { SplitViewSelector, SelectionCard, DetailPanel } from '../creator/index.js';
 import { Check, Search, Lock, Sparkles, Compass, Users, BookOpen, Search as SearchIcon, Hammer } from 'lucide-react';
@@ -27,21 +26,33 @@ const CATEGORY_ICONS: Record<PerkCategory, React.ComponentType<{ className?: str
   supernatural: Sparkles,
 };
 
-// Get perks granted at each level up to the current level
-function getPerkSlots(heroClass: HeroClass | null, level: number): { level: number; categories: PerkCategory[] }[] {
-  if (!heroClass) return [];
+interface PerkSlot {
+  id: string;
+  label: string;
+  description: string;
+  categories: PerkCategory[];
+  source: 'career' | 'class';
+  classIndex?: number;
+  selectedPerkId: string | null;
+}
 
-  const perkLevels = getClassPerkLevels(heroClass);
-  const slots: { level: number; categories: PerkCategory[] }[] = [];
-
-  for (const perkLevel of perkLevels) {
-    if (perkLevel <= level) {
-      const categories = getAvailablePerkCategories(heroClass, perkLevel);
-      slots.push({ level: perkLevel, categories });
+function getPerkSlots(character: CharacterInProgress): PerkSlot[] {
+  let classIndex = 0;
+  return WizardLogic.getPerkChoiceSlots(character).map((slot) => {
+    const mapped: PerkSlot = {
+      id: slot.id,
+      label: slot.label,
+      description: slot.description,
+      categories: slot.categories as PerkCategory[],
+      source: slot.source,
+      selectedPerkId: slot.selectedPerkId,
+    };
+    if (slot.source === 'class') {
+      mapped.classIndex = classIndex;
+      classIndex += 1;
     }
-  }
-
-  return slots;
+    return mapped;
+  });
 }
 
 export function PerksStep({ character, onChange }: Props) {
@@ -49,14 +60,12 @@ export function PerksStep({ character, onChange }: Props) {
   const [selectedSlot, setSelectedSlot] = useState<number>(0);
   const [previewedPerk, setPreviewedPerk] = useState<Perk | null>(null);
 
-  const heroClass = character.heroClass as HeroClass | null;
   const level = character.level ?? 1;
 
-  // Get perk slots for this class and level
-  const perkSlots = useMemo(() => getPerkSlots(heroClass, level), [heroClass, level]);
+  const perkSlots = useMemo(() => getPerkSlots(character), [character]);
 
   // Get perks already selected across all slots
-  const selectedPerkIds = new Set(character.selectedPerks ?? []);
+  const selectedPerkIds = new Set(WizardLogic.getSelectedPerkIds(character));
 
   // Current slot info
   const currentSlot = perkSlots[selectedSlot];
@@ -93,23 +102,35 @@ export function PerksStep({ character, onChange }: Props) {
   }, [availablePerks]);
 
   // Get the perk selected for the current slot
-  const currentSlotPerkId = character.selectedPerks?.[selectedSlot] ?? null;
+  const currentSlotPerkId = currentSlot?.selectedPerkId ?? null;
 
   const handleSelectPerk = (perk: Perk) => {
-    const newPerks = [...(character.selectedPerks ?? [])];
-    // Ensure array has enough slots
-    while (newPerks.length < perkSlots.length) {
-      newPerks.push('');
+    if (!currentSlot) return;
+
+    if (currentSlot.source === 'career') {
+      onChange({ careerPerk: perk.id });
+      return;
     }
-    newPerks[selectedSlot] = perk.id;
+
+    const newPerks = [...(character.selectedPerks ?? [])];
+    const classIndex = currentSlot.classIndex ?? 0;
+    while (newPerks.length <= classIndex) newPerks.push('');
+    newPerks[classIndex] = perk.id;
     onChange({ selectedPerks: newPerks });
   };
 
   const handleClearSlot = () => {
-    const newPerks = [...(character.selectedPerks ?? [])];
-    if (newPerks[selectedSlot]) {
-      newPerks[selectedSlot] = '';
-      onChange({ selectedPerks: newPerks });
+    if (!currentSlot) return;
+
+    if (currentSlot.source === 'career') {
+      onChange({ careerPerk: null });
+    } else {
+      const newPerks = [...(character.selectedPerks ?? [])];
+      const classIndex = currentSlot.classIndex ?? 0;
+      if (newPerks[classIndex]) {
+        newPerks[classIndex] = '';
+        onChange({ selectedPerks: newPerks });
+      }
     }
     setPreviewedPerk(null);
   };
@@ -196,10 +217,10 @@ export function PerksStep({ character, onChange }: Props) {
           <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <h2 className="text-lg font-semibold mb-2">No Perks Available</h2>
           <p className="text-sm max-w-md">
-            {!heroClass
-              ? 'Select a class first to see available perks.'
+            {!character.career
+              ? 'Select a career first to see available perks.'
               : level < 2
-                ? 'Perks are gained starting at level 2. Increase your level to unlock perk selections.'
+                ? 'Your current choices do not grant a perk slot.'
                 : 'Your class and level combination has no perk slots available.'}
           </p>
         </div>
@@ -212,13 +233,13 @@ export function PerksStep({ character, onChange }: Props) {
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Select Perks</h2>
         <p className="mb-4 text-sm text-zinc-400">
-          Choose perks gained at levels 2, 4, 6, and 8. Some levels restrict which categories you can choose from.
+          Choose the perk granted by your career, plus any class perks unlocked by your level.
         </p>
 
         {/* Slot Selector */}
         <div className="flex gap-2 mb-4">
           {perkSlots.map((slot, index) => {
-            const slotPerkId = character.selectedPerks?.[index];
+            const slotPerkId = slot.selectedPerkId;
             const slotPerk = slotPerkId ? PERKS.find((p) => p.id === slotPerkId) : null;
             const isActive = selectedSlot === index;
             const hasSelection = !!slotPerk;
@@ -226,7 +247,7 @@ export function PerksStep({ character, onChange }: Props) {
 
             return (
               <button
-                key={slot.level}
+                key={slot.id}
                 onClick={() => setSelectedSlot(index)}
                 className={cn(
                   'flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition',
@@ -238,7 +259,7 @@ export function PerksStep({ character, onChange }: Props) {
                 )}
               >
                 <div className="flex items-center justify-center gap-1.5">
-                  Level {slot.level}
+                  {slot.label}
                   {hasSelection && <Check className="h-3.5 w-3.5" />}
                   {isRestricted && !hasSelection && <Lock className="h-3 w-3 opacity-50" />}
                 </div>
@@ -312,7 +333,7 @@ export function PerksStep({ character, onChange }: Props) {
 
       <div className="flex-shrink-0 mt-4 pt-3 border-t border-zinc-800">
         <p className="text-xs text-zinc-500">
-          {perkSlots.filter((_, i) => character.selectedPerks?.[i]).length} / {perkSlots.length} perk slots filled
+          {perkSlots.filter((slot) => slot.selectedPerkId).length} / {perkSlots.length} perk slots filled
         </p>
       </div>
     </div>

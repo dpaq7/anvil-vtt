@@ -14,7 +14,8 @@ const HEALTH_REQUEST_TIMEOUT_MS = 1_500;
 const API_REQUEST_TIMEOUT_MS = 10_000;
 const MESSAGE_TIMEOUT_MS = 8_000;
 
-const args = new Set(process.argv.slice(2));
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
 const shouldStartServer = args.has('--start-server');
 const apiBase = stripTrailingSlash(
   process.env['ANVIL_API_BASE'] ?? (shouldStartServer ? DEFAULT_LOCAL_API_BASE : DEFAULT_API_BASE),
@@ -22,6 +23,13 @@ const apiBase = stripTrailingSlash(
 const frontendOrigin = stripTrailingSlash(process.env['ANVIL_FRONTEND_ORIGIN'] ?? DEFAULT_FRONTEND_ORIGIN);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const smokeHome = process.env['ANVIL_SMOKE_HOME'] ?? '/private/tmp/anvil-vtt-smoke-home';
+const smokeWranglerState = process.env['ANVIL_SMOKE_WRANGLER_STATE'] ?? `${smokeHome}/wrangler-state-${process.pid}`;
+const holdOpenMs = Math.max(
+  0,
+  Number.parseInt(process.env['ANVIL_SMOKE_HOLD_MS'] ?? argValue('--hold-ms') ?? '0', 10) || 0,
+);
+const shouldHoldOpen = args.has('--hold-open') || holdOpenMs > 0;
+const holdOpenDurationMs = holdOpenMs > 0 ? holdOpenMs : 300_000;
 
 if (typeof WebSocket !== 'function') {
   throw new Error('This smoke test requires a Node runtime with the global WebSocket client available.');
@@ -363,7 +371,7 @@ async function main() {
         level: 1,
         characteristics: { might: 1, agility: 1, reason: 2, intuition: 0, presence: 0 },
         abilities: ['meteoric-introduction'],
-        data: { staminaCurrent: 24, recoveriesCurrent: 8 },
+        data: { staminaCurrent: 18, recoveriesCurrent: 8 },
       },
     });
 
@@ -440,6 +448,20 @@ async function main() {
     ]);
 
     await smokeBattleTokenActions(directorSocket, playerSocket, directorCombatMessage.combat, hero.id, villain.id);
+
+    if (shouldHoldOpen) {
+      console.log([
+        `hold live smoke: director=${director.user.username}`,
+        `player=${player.user.username}`,
+        `room=${roomCode}`,
+        `session=${sessionId}`,
+        `playerUrl=${frontendOrigin}/app/session/${sessionId}`,
+        `playerLoginUrl=${apiBase}/api/auth/dev-login?role=player`,
+      ].join(' '));
+      await delay(holdOpenDurationMs);
+      return;
+    }
+
     await smokeBattleSnapshotRestore(directorSocket, playerSocket, scenes.story, scenes.battle, villain.id);
 
     await smokeStoryScene(directorSocket, playerSocket, scenes.story);
@@ -615,7 +637,17 @@ async function switchScene(directorSocket, playerSocket, scene, statePredicate) 
 }
 
 async function smokeBattleTokenActions(directorSocket, playerSocket, combat, heroId, villainId) {
-  if (combat.activeSide === 'villains') {
+  let currentCombat = combat;
+  if (currentCombat.initiativeRoll === null || !currentCombat.activeSide) {
+    playerSocket.send({ type: 'combat_action', action: { type: 'ROLL_INITIATIVE' } });
+    const [directorInitiativeMessage] = await Promise.all([
+      directorSocket.waitFor(hasInitiativeRolled(), 'director initiative roll'),
+      playerSocket.waitFor(hasInitiativeRolled(), 'player initiative roll'),
+    ]);
+    currentCombat = directorInitiativeMessage.combat;
+  }
+
+  if (currentCombat.activeSide === 'villains') {
     directorSocket.send({ type: 'combat_action', action: { type: 'SELECT_TURN', entityId: villainId } });
     await Promise.all([
       directorSocket.waitFor(hasActiveTurn(villainId), 'director villain active turn'),
@@ -837,6 +869,12 @@ function hasCombat(heroId, villainId) {
     message.combat.round === 1;
 }
 
+function hasInitiativeRolled() {
+  return (message) => message.type === 'combat_updated' &&
+    message.combat?.initiativeRoll !== null &&
+    (message.combat?.activeSide === 'heroes' || message.combat?.activeSide === 'villains');
+}
+
 function hasEntityMoved(entityId) {
   return (message) => message.type === 'entity_moved' && message.entityId === entityId;
 }
@@ -909,6 +947,8 @@ async function applyLocalMigrations() {
     'apply',
     'anvil-db',
     '--local',
+    '--persist-to',
+    smokeWranglerState,
   ]);
   await runCommand(command.file, command.args);
 }
@@ -925,7 +965,11 @@ function startServer() {
     '--var',
     'SESSION_SECRET:smoke-test-session-secret',
     '--var',
+    'ENVIRONMENT:development',
+    '--var',
     `FRONTEND_URL:${frontendOrigin}`,
+    '--persist-to',
+    smokeWranglerState,
   ]);
 
   const child = spawn(command.file, command.args, {
@@ -978,6 +1022,7 @@ function runCommand(command, commandArgs) {
 function childEnv() {
   mkdirSync(smokeHome, { recursive: true });
   mkdirSync(`${smokeHome}/.config`, { recursive: true });
+  mkdirSync(smokeWranglerState, { recursive: true });
   return {
     ...process.env,
     HOME: smokeHome,
@@ -1035,6 +1080,16 @@ async function safeText(res) {
 
 function stripTrailingSlash(value) {
   return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function argValue(name) {
+  const inlinePrefix = `${name}=`;
+  const inline = rawArgs.find((arg) => arg.startsWith(inlinePrefix));
+  if (inline) return inline.slice(inlinePrefix.length);
+  const index = rawArgs.indexOf(name);
+  if (index === -1) return null;
+  const value = rawArgs[index + 1];
+  return value && !value.startsWith('--') ? value : null;
 }
 
 function assert(condition, message) {

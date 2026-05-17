@@ -32,8 +32,14 @@ export async function loadWizardState(): Promise<SavedWizardState | null> {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(KEY);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => resolve(null);
+      req.onsuccess = () => {
+        db.close();
+        resolve(req.result ?? null);
+      };
+      req.onerror = () => {
+        db.close();
+        resolve(null);
+      };
     });
   } catch {
     return null;
@@ -43,8 +49,14 @@ export async function loadWizardState(): Promise<SavedWizardState | null> {
 export async function saveWizardState(step: number | string, character: CharacterInProgress): Promise<void> {
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put({ step, character }, KEY);
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put({ step, character }, KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    });
+    db.close();
   } catch {
     // silently fail
   }
@@ -53,8 +65,14 @@ export async function saveWizardState(step: number | string, character: Characte
 export async function clearWizardState(): Promise<void> {
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).delete(KEY);
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    });
+    db.close();
   } catch {
     // silently fail
   }
@@ -63,14 +81,16 @@ export async function clearWizardState(): Promise<void> {
 export function useWizardPersistence(
   step: number | string,
   character: CharacterInProgress,
+  enabled = true,
 ) {
   const initialized = useRef(false);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!initialized.current) {
       initialized.current = true;
       return;
     }
     saveWizardState(step, character);
-  }, [step, character]);
+  }, [step, character, enabled]);
 }

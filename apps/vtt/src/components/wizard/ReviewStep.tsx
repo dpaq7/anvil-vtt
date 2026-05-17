@@ -16,6 +16,8 @@ const REQUIRED_STEP_LABELS: Record<number, string> = {
   [WizardLogic.WIZARD_STEPS.KIT]: "Kit",
   [WizardLogic.WIZARD_STEPS.SKILLS]: "Skills",
   [WizardLogic.WIZARD_STEPS.LANGUAGES]: "Languages",
+  [WizardLogic.WIZARD_STEPS.PERKS]: "Perks",
+  [WizardLogic.WIZARD_STEPS.ABILITIES]: "Abilities",
   [WizardLogic.WIZARD_STEPS.PERSONAL]: "Personal",
 };
 
@@ -28,6 +30,13 @@ function getMissingStepText(character: CharacterInProgress): string | null {
     const made = WizardLogic.getSkillSelectionsMade(character);
     const remaining = Math.max(needed - made, 0);
     return `Missing: Skills (${remaining} selection${remaining === 1 ? "" : "s"} remaining).`;
+  }
+
+  if (firstIncomplete === WizardLogic.WIZARD_STEPS.ABILITIES) {
+    const slots = WizardLogic.getAbilityChoiceSlots(character);
+    const made = slots.filter((slot) => !!character.abilityChoices?.[slot.id]).length;
+    const remaining = Math.max(slots.length - made, 0);
+    return `Missing: Abilities (${remaining} slot${remaining === 1 ? "" : "s"} remaining).`;
   }
 
   return `Missing: ${REQUIRED_STEP_LABELS[firstIncomplete] ?? "Required step"}.`;

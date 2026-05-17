@@ -7,23 +7,27 @@ interface PowerRollDisplayProps {
 }
 
 const TIER_COLORS = {
-  1: { bg: 'bg-zinc-500/20', text: 'text-zinc-300', label: 'Tier 1' },
-  2: { bg: 'bg-blue-500/20', text: 'text-blue-300', label: 'Tier 2' },
-  3: { bg: 'bg-green-500/20', text: 'text-green-300', label: 'Tier 3' },
+  1: { text: 'text-zinc-300', label: '≤11' },
+  2: { text: 'text-blue-300', label: '12-16' },
+  3: { text: 'text-green-300', label: '17+' },
 } as const;
 
 export function PowerRollDisplay({ result, className }: PowerRollDisplayProps) {
   const tier = TIER_COLORS[result.tier];
 
   return (
-    <div className={cn('rounded border border-zinc-700 bg-zinc-900 p-3', className)}>
+    <div className={cn('rounded-lg border border-zinc-300/80 bg-zinc-800/95 p-3 shadow-sm', className)}>
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium text-zinc-200">{result.abilityName}</span>
-        <span className={cn('rounded px-2 py-0.5 text-xs font-bold', tier.bg, tier.text)}>
+        <span className="min-w-0 truncate text-sm font-black uppercase tracking-wide text-zinc-100">{result.abilityName}</span>
+        <span
+          className={cn('inline-flex h-6 min-w-14 items-center justify-center border border-zinc-300 px-2 text-[11px] font-black leading-none', tier.text)}
+          style={{ clipPath: 'polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%)' }}
+        >
           {tier.label}
         </span>
       </div>
+      <div className="mb-3 border-t border-zinc-300/70" />
 
       {/* Dice */}
       <div className="mb-2 flex items-center gap-2">

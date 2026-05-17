@@ -2,17 +2,20 @@ import { useCallback, useMemo, useState, useEffect, useRef, type DragEvent, type
 import {
   Button,
   Input,
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
   ScrollArea,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from '@anvil/ui';
-import { ChevronDown, CloudFog, Gauge, Grid3X3, HeartPulse, ImageIcon, Keyboard, Map, Mountain, Music, PanelRightClose, PanelRightOpen, PencilLine, ScrollText, ShieldAlert, Sword, Trash2, Users, X } from 'lucide-react';
+import { CloudFog, Gauge, Grid3X3, HeartPulse, ImageIcon, Keyboard, Map, Mountain, Music, PanelRightClose, PanelRightOpen, PencilLine, ScrollText, ShieldAlert, Sword, Trash2, Users, X } from 'lucide-react';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import { BattleToolbar } from './BattleToolbar.js';
 import { ViewportControls } from './ViewportControls.js';
 import { MapPickerDialog } from './MapPickerDialog.js';
 import { SceneAudioPanel } from '../session/SceneAudioPanel.js';
+import { AbilityBlock } from '../drawsteel/AbilityBlock.js';
+import { drawSteelAbilityFromLike } from '../drawsteel/abilityData.js';
 import type { BattleTool } from './BattleToolbar.js';
 import type { ViewportSystem } from '../../canvas/systems/ViewportSystem.js';
 import type { Scene } from './SceneWorkspace.js';
@@ -77,6 +80,8 @@ interface BattleSceneData {
 interface BuilderMonsterFeature {
   name?: string;
   feature_type?: string;
+  ability_type?: string;
+  cost?: string;
   usage?: string;
   distance?: string;
   target?: string;
@@ -133,13 +138,6 @@ function extractSpeedFromNotes(notes?: string): string | null {
   return match?.[1] ?? null;
 }
 
-function featureEffectText(feature: BuilderMonsterFeature): string {
-  const firstEffect = feature.effects?.[0];
-  return [firstEffect?.effect, firstEffect?.tier1, firstEffect?.tier2, firstEffect?.tier3]
-    .filter(Boolean)
-    .join(' ');
-}
-
 // ---------------------------------------------------------------------------
 // Undo stack
 // ---------------------------------------------------------------------------
@@ -151,6 +149,15 @@ interface UndoEntry {
 const MAX_UNDO = 50;
 const RIGHT_RAIL_DEFAULT_WIDTH = 384;
 const RIGHT_RAIL_MIN_WIDTH = 320;
+const RAIL_TABS_LIST_CLASS =
+  'grid h-auto w-full shrink-0 grid-cols-3 gap-1 rounded-none border-b border-zinc-800 bg-zinc-950/40 p-2';
+const RAIL_TAB_TRIGGER_CLASS =
+  'h-8 min-w-0 rounded-md border border-transparent px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 transition data-[state=active]:border-zinc-700 data-[state=active]:bg-zinc-900 data-[state=active]:text-zinc-100 data-[state=inactive]:hover:bg-zinc-800/50 data-[state=inactive]:hover:text-zinc-300';
+const RAIL_TAB_CONTENT_CLASS = 'mt-0 min-h-0 flex-1 overflow-y-auto p-3 focus-visible:ring-0';
+const PANE_HANDLE_CLASS =
+  'absolute top-1/2 z-40 flex h-14 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-400 shadow-lg transition hover:border-zinc-500 hover:text-zinc-100';
+
+type BuilderRightRailTab = 'audio' | 'map' | 'grid' | 'tokens' | 'terrain' | 'notes';
 
 function maxHalfViewportWidth(): number {
   return typeof window === 'undefined' ? 760 : Math.floor(window.innerWidth * 0.5);
@@ -179,32 +186,29 @@ const TERRAIN_ROLE_COLORS: Record<string, number> = {
   trigger: 0x22c55e,
 };
 
+function terrainColorHex(terrain: CompendiumTerrain | undefined): string {
+  const color = terrain ? TERRAIN_ROLE_COLORS[terrain.role.terrainType] ?? 0x3b82f6 : 0x3b82f6;
+  return `#${color.toString(16).padStart(6, '0')}`;
+}
+
 function RightRailSection({
   title,
   icon,
   children,
-  defaultOpen = true,
 }: {
   title: string;
   icon: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="rounded-md border border-zinc-800 bg-zinc-900/50">
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-bold text-zinc-200 hover:text-white">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="text-zinc-400">{icon}</span>
-          <span className="truncate">{title}</span>
-        </span>
-        <ChevronDown className={`size-4 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-zinc-800 p-3">
-        {children}
-      </CollapsibleContent>
-    </Collapsible>
+    <section className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3">
+      <div className="mb-3 flex min-w-0 items-center gap-2 text-sm font-bold text-zinc-200">
+        <span className="text-zinc-400">{icon}</span>
+        <h3 className="truncate">{title}</h3>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -323,20 +327,7 @@ function BuilderTokenContextMenu({
             {actions.length > 0 ? (
               <div className="space-y-1.5">
                 {actions.map((action) => (
-                  <div key={action.name} className="rounded-md border border-zinc-800 bg-zinc-900/70 p-2">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-xs font-semibold text-zinc-100">{action.name}</p>
-                      {action.usage ? <span className="text-[10px] text-zinc-500">{action.usage}</span> : null}
-                    </div>
-                    {action.distance || action.target ? (
-                      <p className="mt-0.5 text-[10px] text-zinc-500">
-                        {[action.distance, action.target].filter(Boolean).join(' • ')}
-                      </p>
-                    ) : null}
-                    {featureEffectText(action) ? (
-                      <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-zinc-400">{featureEffectText(action)}</p>
-                    ) : null}
-                  </div>
+                  <AbilityBlock key={action.name} ability={drawSteelAbilityFromLike(action, 'Action')} compact />
                 ))}
               </div>
             ) : (
@@ -378,6 +369,7 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
   const [terrainCategoryFilter, setTerrainCategoryFilter] = useState<TerrainCategory | 'all'>('all');
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [rightRailWidth, setRightRailWidth] = useState(RIGHT_RAIL_DEFAULT_WIDTH);
+  const [rightRailTab, setRightRailTab] = useState<BuilderRightRailTab>('map');
   const [mapPreviewError, setMapPreviewError] = useState(false);
   const [tokenMenu, setTokenMenu] = useState<{ tokenId: string; x: number; y: number } | null>(null);
 
@@ -467,6 +459,14 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
     notes: (data['notes'] as string) ?? '',
     creatureGroups: (data['creatureGroups'] as string) ?? '',
   };
+  const rightRailTabs = useMemo<Array<{ value: BuilderRightRailTab; label: string; count?: number }>>(() => [
+    { value: 'audio', label: 'Audio' },
+    { value: 'map', label: 'Map' },
+    { value: 'grid', label: 'Grid' },
+    { value: 'tokens', label: 'Tokens', count: battleData.tokens.length },
+    { value: 'terrain', label: 'Terrain', count: battleData.terrain.length + battleData.drawings.length + battleData.fog.length },
+    { value: 'notes', label: 'Notes' },
+  ], [battleData.drawings.length, battleData.fog.length, battleData.terrain.length, battleData.tokens.length]);
 
   // When a background is loaded, derive grid cols/rows from image dimensions and cell size.
   // Otherwise use the manually-set gridCols/gridRows.
@@ -512,6 +512,11 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
     if (terrainCategoryFilter === 'all') return ALL_TERRAINS;
     return ALL_TERRAINS.filter((terrain) => terrain.category === terrainCategoryFilter);
   }, [terrainCategoryFilter]);
+
+  const selectTerrainForDrawing = useCallback((terrainId: string) => {
+    setSelectedTerrainId(terrainId);
+    setActiveTool('terrain');
+  }, []);
 
   const updateField = <K extends keyof BattleSceneData>(field: K, value: BattleSceneData[K]) => {
     onChange({ ...data, [field]: value });
@@ -960,16 +965,16 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
           title="Expand editor pane"
           aria-label="Expand editor pane"
           onClick={() => setRightRailCollapsed(false)}
-          className="absolute right-2 top-3 z-30 rounded-md border border-zinc-700 bg-zinc-900 p-1.5 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100"
+          className={`${PANE_HANDLE_CLASS} right-0 -translate-x-1/2`}
         >
-          <PanelRightOpen className="size-4" />
+          <PanelRightOpen className="size-3.5" />
         </button>
       )}
 
       {/* Right sidebar: Editor fields */}
       {!focusMode && !rightRailCollapsed && (
         <div
-          className="relative shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-900/80 p-4 pl-10"
+          className="relative flex min-h-0 shrink-0 flex-col overflow-visible border-l border-zinc-800 bg-zinc-900/80"
           style={{ width: rightRailWidth, maxWidth: '50vw' }}
         >
         <div
@@ -987,393 +992,305 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
           title="Collapse editor pane"
           aria-label="Collapse editor pane"
           onClick={() => setRightRailCollapsed(true)}
-          className="absolute left-2 top-3 z-20 rounded-md border border-zinc-700 bg-zinc-900 p-1.5 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100"
+          className={`${PANE_HANDLE_CLASS} left-0 -translate-x-1/2`}
         >
-          <PanelRightClose className="size-4" />
+          <PanelRightClose className="size-3.5" />
         </button>
-        <div className="flex flex-col gap-3">
-          <RightRailSection title="Scene Audio" icon={<Music className="size-4" />}>
-            <SceneAudioPanel
-              campaignId={campaignId}
-              audioId={(data['audioMusic'] as string) ?? null}
-              onAudioChange={(id) => onChange({ ...data, audioMusic: id ?? undefined })}
-              hideLabel
-            />
-          </RightRailSection>
+        <Tabs
+          value={rightRailTab}
+          onValueChange={(value) => setRightRailTab(value as BuilderRightRailTab)}
+          className="flex h-full min-h-0 flex-col overflow-hidden"
+        >
+          <TabsList className={RAIL_TABS_LIST_CLASS}>
+            {rightRailTabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className={RAIL_TAB_TRIGGER_CLASS}>
+                <span className="truncate">{tab.label}</span>
+                {tab.count !== undefined && tab.count > 0 ? (
+                  <span className="ml-1 rounded bg-zinc-800 px-1 text-[9px] font-semibold text-zinc-400">
+                    {tab.count}
+                  </span>
+                ) : null}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-          <RightRailSection title="Battle Map" icon={<Map className="size-4" />}>
+          <TabsContent value="audio" className={RAIL_TAB_CONTENT_CLASS}>
             <div className="flex flex-col gap-3">
-              {battleData.mapUrl && (
-                <div className="relative aspect-video overflow-hidden rounded-md border border-zinc-700 bg-zinc-800">
-                  <img
-                    key={battleData.mapUrl}
-                    src={battleData.mapUrl}
-                    alt="Battle map preview"
-                    className={`h-full w-full object-cover ${mapPreviewError ? 'opacity-0' : 'opacity-100'}`}
-                    onLoad={() => setMapPreviewError(false)}
-                    onError={() => setMapPreviewError(true)}
-                  />
-                  {mapPreviewError && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-4 text-center">
-                      <ImageIcon className="size-5 text-zinc-500" />
-                      <p className="text-xs font-medium text-zinc-300">Map image did not load</p>
-                      <p className="max-w-full truncate text-[10px] text-zinc-500">{battleData.mapUrl}</p>
-                    </div>
-                  )}
-                  {selectedMapName && (
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6">
-                      <p className="truncate text-xs text-zinc-300">{selectedMapName}</p>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleClearMap}
-                    className="absolute right-1.5 top-1.5 rounded bg-black/60 p-1 text-zinc-400 hover:bg-black/80 hover:text-zinc-200"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              )}
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setMapPickerOpen(true)}
-                className="w-full"
-              >
-                <ImageIcon className="mr-1.5 size-3.5" />
-                Browse Maps
-              </Button>
-
-              <MapPickerDialog
-                campaignId={campaignId}
-                open={mapPickerOpen}
-                onOpenChange={setMapPickerOpen}
-                onSelect={handleLibraryMapSelect}
-                selectedMapId={battleData.mapAssetId || null}
-              />
-
-              <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-300">
-                  <ChevronDown className="size-3" />
-                  Or paste an external URL
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <Input
-                    value={battleData.mapAssetId ? '' : battleData.mapUrl}
-                    onChange={(e) => handleExternalUrlChange(e.target.value)}
-                    placeholder="https://... (battle map image)"
-                    className="text-sm"
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              <RightRailSection title="Scene Audio" icon={<Music className="size-4" />}>
+                <SceneAudioPanel
+                  campaignId={campaignId}
+                  audioId={(data['audioMusic'] as string) ?? null}
+                  onAudioChange={(id) => onChange({ ...data, audioMusic: id ?? undefined })}
+                  hideLabel
+                />
+              </RightRailSection>
             </div>
-          </RightRailSection>
+          </TabsContent>
 
-          {activeTool === 'terrain' && (
-            <RightRailSection title="Terrain Tools" icon={<Mountain className="size-4" />}>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase text-zinc-500">Draw or drag</span>
-                  <span className="text-xs text-zinc-500">Boxes become zones</span>
-                </div>
-                <select
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-red-500 focus:outline-none"
-                  value={terrainCategoryFilter}
-                  onChange={(e) => setTerrainCategoryFilter(e.target.value as TerrainCategory | 'all')}
-                >
-                  {TERRAIN_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {category === 'all' ? 'All terrain' : TERRAIN_CATEGORY_NAMES[category]}
-                    </option>
-                  ))}
-                </select>
-                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                  {filteredTerrains.map((terrain) => {
-                    const active = terrain.id === selectedTerrainId;
-                    return (
-                      <button
-                        key={terrain.id}
-                        type="button"
-                        draggable
-                        onClick={() => setSelectedTerrainId(terrain.id)}
-                        onDragStart={(event) => {
-                          event.dataTransfer.setData('application/x-anvil-terrain', terrain.id);
-                          event.dataTransfer.effectAllowed = 'copy';
-                          setSelectedTerrainId(terrain.id);
-                        }}
-                        className={`w-full cursor-grab rounded-md border p-3 text-left transition-colors active:cursor-grabbing ${
-                          active
-                            ? 'border-red-400 bg-red-500/10 text-zinc-100'
-                            : 'border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:border-zinc-500'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-medium">{terrain.name}</span>
-                          <span className="shrink-0 rounded bg-zinc-950/80 px-1.5 py-0.5 text-[10px] uppercase text-zinc-500">
-                            Lv {terrain.level}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs text-zinc-500">{getTerrainDescription(terrain)}</p>
-                        <p className="mt-2 line-clamp-2 text-xs text-zinc-400">{terrain.description}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </RightRailSection>
-          )}
-
-          <RightRailSection title="Grid" icon={<Grid3X3 className="size-4" />}>
-            <div className="flex flex-col gap-4">
-              {hasBackground ? (
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-300">Cell Size</span>
-                    <span className="text-xs text-zinc-500">
-                      {effectiveCols} x {effectiveRows} cells
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min={16}
-                      max={200}
-                      step={1}
-                      value={battleData.gridCellSize}
-                      onChange={(e) => updateField('gridCellSize', Number(e.target.value))}
-                      className="h-1 flex-1 accent-zinc-400"
-                    />
-                    <span className="w-10 text-right text-xs text-zinc-500">
-                      {battleData.gridCellSize}px
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-sm font-medium text-zinc-300">Grid Columns</span>
-                    <Input
-                      type="number"
-                      min={5}
-                      max={100}
-                      value={battleData.gridCols}
-                      onChange={(e) => updateField('gridCols', Number(e.target.value))}
-                      className="text-sm"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-sm font-medium text-zinc-300">Grid Rows</span>
-                    <Input
-                      type="number"
-                      min={5}
-                      max={100}
-                      value={battleData.gridRows}
-                      onChange={(e) => updateField('gridRows', Number(e.target.value))}
-                      className="text-sm"
-                    />
-                  </label>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-300">Grid Overlay</span>
-                  <button
-                    type="button"
-                    onClick={() => setGridVisible((v) => !v)}
-                    className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                      gridVisible
-                        ? 'bg-zinc-700 text-zinc-200'
-                        : 'bg-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    {gridVisible ? 'On' : 'Off'}
-                  </button>
-                </div>
-                {gridVisible && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(battleData.gridOpacity * 100)}
-                        onChange={(e) => updateField('gridOpacity', Number(e.target.value) / 100)}
-                        className="h-1 flex-1 accent-zinc-400"
+          <TabsContent value="map" className={RAIL_TAB_CONTENT_CLASS}>
+            <div className="flex flex-col gap-3">
+              <RightRailSection title="Battle Map" icon={<Map className="size-4" />}>
+                <div className="flex flex-col gap-3">
+                  {battleData.mapUrl && (
+                    <div className="relative aspect-video overflow-hidden rounded-md border border-zinc-700 bg-zinc-800">
+                      <img
+                        key={battleData.mapUrl}
+                        src={battleData.mapUrl}
+                        alt="Battle map preview"
+                        className={`h-full w-full object-cover ${mapPreviewError ? 'opacity-0' : 'opacity-100'}`}
+                        onLoad={() => setMapPreviewError(false)}
+                        onError={() => setMapPreviewError(true)}
                       />
-                      <span className="w-8 text-right text-xs text-zinc-500">
-                        {Math.round(battleData.gridOpacity * 100)}%
-                      </span>
+                      {mapPreviewError && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-4 text-center">
+                          <ImageIcon className="size-5 text-zinc-500" />
+                          <p className="text-xs font-medium text-zinc-300">Map image did not load</p>
+                          <p className="max-w-full truncate text-[10px] text-zinc-500">{battleData.mapUrl}</p>
+                        </div>
+                      )}
+                      {selectedMapName && (
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6">
+                          <p className="truncate text-xs text-zinc-300">{selectedMapName}</p>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleClearMap}
+                        className="absolute right-1.5 top-1.5 rounded bg-black/60 p-1 text-zinc-400 hover:bg-black/80 hover:text-zinc-200"
+                      >
+                        <X className="size-3" />
+                      </button>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-zinc-500">Color</span>
-                      {[
-                        { color: '#444444', label: 'Gray' },
-                        { color: '#ffffff', label: 'White' },
-                        { color: '#000000', label: 'Black' },
-                        { color: '#eab308', label: 'Yellow' },
-                        { color: '#ef4444', label: 'Red' },
-                        { color: '#3b82f6', label: 'Blue' },
-                      ].map(({ color, label }) => (
-                        <button
-                          key={color}
-                          type="button"
-                          title={label}
-                          className={`h-5 w-5 rounded-full border-2 transition-transform ${
-                            battleData.gridColor === color
-                              ? 'scale-125 border-white'
-                              : 'border-zinc-600 hover:border-zinc-400'
-                          }`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => updateField('gridColor', color)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </RightRailSection>
+                  )}
 
-          <RightRailSection title="Encounter Difficulty" icon={<ShieldAlert className="size-4" />}>
-            <select
-              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-red-500 focus:outline-none"
-              value={battleData.difficulty}
-              onChange={(e) => updateField('difficulty', e.target.value as BattleSceneData['difficulty'])}
-            >
-              <option value="easy">Easy</option>
-              <option value="standard">Standard</option>
-              <option value="hard">Hard</option>
-              <option value="extreme">Extreme</option>
-            </select>
-          </RightRailSection>
-
-          <RightRailSection title={`Tokens (${battleData.tokens.length})`} icon={<Users className="size-4" />}>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addToken('Monster', 'monster')}
-                  className="text-red-400"
-                >
-                  + Monster
-                </Button>
-                <div className="flex min-w-0 flex-1 gap-2">
-                  <select
-                    className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-purple-500 focus:outline-none"
-                    value={selectedNpcId}
-                    onChange={(e) => setSelectedNpcId(e.target.value)}
-                  >
-                    <option value="">Generic NPC</option>
-                    {npcs.map((npc) => (
-                      <option key={npc.id} value={npc.id}>{npc.name}</option>
-                    ))}
-                  </select>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={addSelectedNpcToken}
-                    className="shrink-0 text-purple-400"
+                    onClick={() => setMapPickerOpen(true)}
+                    className="w-full"
                   >
-                    + NPC
+                    <ImageIcon className="mr-1.5 size-3.5" />
+                    Browse Maps
                   </Button>
+
+                  <MapPickerDialog
+                    campaignId={campaignId}
+                    open={mapPickerOpen}
+                    onOpenChange={setMapPickerOpen}
+                    onSelect={handleLibraryMapSelect}
+                    selectedMapId={battleData.mapAssetId || null}
+                  />
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-zinc-500">External URL</span>
+                    <Input
+                      value={battleData.mapAssetId ? '' : battleData.mapUrl}
+                      onChange={(e) => handleExternalUrlChange(e.target.value)}
+                      placeholder="https://... (battle map image)"
+                      className="text-sm"
+                    />
+                  </label>
                 </div>
-              </div>
-              {battleData.tokens.length === 0 && (
-                <p className="text-xs text-zinc-500">
-                  No tokens yet. Add monsters or NPCs to the battle.
-                </p>
-              )}
-              {battleData.tokens.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2"
-                >
-                  <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
-                    style={{ backgroundColor: `#${t.color.toString(16).padStart(6, '0')}` }}
-                  >
-                    {t.portraitUrl ? (
-                      <img src={t.portraitUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="text-[10px] font-semibold uppercase text-white/80">{t.type.slice(0, 1)}</span>
+              </RightRailSection>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="grid" className={RAIL_TAB_CONTENT_CLASS}>
+            <div className="flex flex-col gap-3">
+              <RightRailSection title="Grid" icon={<Grid3X3 className="size-4" />}>
+                <div className="flex flex-col gap-4">
+                  {hasBackground ? (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-zinc-300">Cell Size</span>
+                        <span className="text-xs text-zinc-500">
+                          {effectiveCols} x {effectiveRows} cells
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={16}
+                          max={200}
+                          step={1}
+                          value={battleData.gridCellSize}
+                          onChange={(e) => updateField('gridCellSize', Number(e.target.value))}
+                          className="h-1 flex-1 accent-zinc-400"
+                        />
+                        <span className="w-10 text-right text-xs text-zinc-500">
+                          {battleData.gridCellSize}px
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-sm font-medium text-zinc-300">Grid Columns</span>
+                        <Input
+                          type="number"
+                          min={5}
+                          max={100}
+                          value={battleData.gridCols}
+                          onChange={(e) => updateField('gridCols', Number(e.target.value))}
+                          className="text-sm"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-sm font-medium text-zinc-300">Grid Rows</span>
+                        <Input
+                          type="number"
+                          min={5}
+                          max={100}
+                          value={battleData.gridRows}
+                          onChange={(e) => updateField('gridRows', Number(e.target.value))}
+                          className="text-sm"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-zinc-300">Grid Overlay</span>
+                      <button
+                        type="button"
+                        onClick={() => setGridVisible((v) => !v)}
+                        className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                          gridVisible
+                            ? 'bg-zinc-700 text-zinc-200'
+                            : 'bg-zinc-800 text-zinc-500'
+                        }`}
+                      >
+                        {gridVisible ? 'On' : 'Off'}
+                      </button>
+                    </div>
+                    {gridVisible && (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={Math.round(battleData.gridOpacity * 100)}
+                            onChange={(e) => updateField('gridOpacity', Number(e.target.value) / 100)}
+                            className="h-1 flex-1 accent-zinc-400"
+                          />
+                          <span className="w-8 text-right text-xs text-zinc-500">
+                            {Math.round(battleData.gridOpacity * 100)}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-zinc-500">Color</span>
+                          {[
+                            { color: '#444444', label: 'Gray' },
+                            { color: '#ffffff', label: 'White' },
+                            { color: '#000000', label: 'Black' },
+                            { color: '#eab308', label: 'Yellow' },
+                            { color: '#ef4444', label: 'Red' },
+                            { color: '#3b82f6', label: 'Blue' },
+                          ].map(({ color, label }) => (
+                            <button
+                              key={color}
+                              type="button"
+                              title={label}
+                              className={`h-5 w-5 rounded-full border-2 transition-transform ${
+                                battleData.gridColor === color
+                                  ? 'scale-125 border-white'
+                                  : 'border-zinc-600 hover:border-zinc-400'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => updateField('gridColor', color)}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <Input
-                    value={t.name}
-                    onChange={(e) => updateToken(t.id, { name: e.target.value })}
-                    placeholder="Token name"
-                    className="min-w-0 flex-1 text-sm"
-                  />
-                  <span className="shrink-0 text-xs text-zinc-500">
-                    ({t.x}, {t.y})
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeToken(t.id)}
-                    className="shrink-0 text-red-400 hover:text-red-300"
-                  >
-                    Remove
-                  </Button>
                 </div>
-              ))}
-            </div>
-          </RightRailSection>
+              </RightRailSection>
 
-          {battleData.drawings.length > 0 && (
-            <RightRailSection title={`Drawings (${battleData.drawings.length})`} icon={<PencilLine className="size-4" />} defaultOpen={false}>
-              <div className="flex items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
-                <span className="text-sm text-zinc-300">
-                  {battleData.drawings.length} drawing{battleData.drawings.length !== 1 ? 's' : ''}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => changeWithUndo({ ...data, drawings: [] })}
-                  className="text-red-400 hover:text-red-300"
+              <RightRailSection title="Encounter Difficulty" icon={<ShieldAlert className="size-4" />}>
+                <select
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-red-500 focus:outline-none"
+                  value={battleData.difficulty}
+                  onChange={(e) => updateField('difficulty', e.target.value as BattleSceneData['difficulty'])}
                 >
-                  Clear All
-                </Button>
-              </div>
-            </RightRailSection>
-          )}
+                  <option value="easy">Easy</option>
+                  <option value="standard">Standard</option>
+                  <option value="hard">Hard</option>
+                  <option value="extreme">Extreme</option>
+                </select>
+              </RightRailSection>
+            </div>
+          </TabsContent>
 
-          {battleData.terrain.length > 0 && (
-            <RightRailSection title={`Terrain Zones (${battleData.terrain.length})`} icon={<Mountain className="size-4" />}>
-              <div className="rounded-md border border-zinc-700 bg-zinc-800/50">
-                <div className="flex items-center justify-between gap-2 border-b border-zinc-700/70 px-3 py-2">
-                  <span className="text-sm text-zinc-300">
-                    {battleData.terrain.length} terrain zone{battleData.terrain.length !== 1 ? 's' : ''}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => changeWithUndo({ ...data, terrain: [] })}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    Clear All
-                  </Button>
-                </div>
-                <div className="divide-y divide-zinc-800">
-                  {battleData.terrain.map((zone) => (
-                    <div key={zone.id} className="flex items-center gap-2 px-3 py-2">
-                      <span
-                        className="size-3 shrink-0 rounded-sm ring-1 ring-white/10"
-                        style={{ backgroundColor: `#${(zone.color ?? 0x3b82f6).toString(16).padStart(6, '0')}` }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-zinc-300">{zone.name}</p>
-                        <p className="text-[10px] text-zinc-500">
-                          ({zone.x}, {zone.y}) - {zone.w} x {zone.h}
-                        </p>
+          <TabsContent value="tokens" className={RAIL_TAB_CONTENT_CLASS}>
+            <div className="flex flex-col gap-3">
+              <RightRailSection title={`Tokens (${battleData.tokens.length})`} icon={<Users className="size-4" />}>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addToken('Monster', 'monster')}
+                      className="text-red-400"
+                    >
+                      + Monster
+                    </Button>
+                    <div className="flex min-w-0 flex-1 gap-2">
+                      <select
+                        className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-purple-500 focus:outline-none"
+                        value={selectedNpcId}
+                        onChange={(e) => setSelectedNpcId(e.target.value)}
+                      >
+                        <option value="">Generic NPC</option>
+                        {npcs.map((npc) => (
+                          <option key={npc.id} value={npc.id}>{npc.name}</option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addSelectedNpcToken}
+                        className="shrink-0 text-purple-400"
+                      >
+                        + NPC
+                      </Button>
+                    </div>
+                  </div>
+                  {battleData.tokens.length === 0 && (
+                    <p className="text-xs text-zinc-500">
+                      No tokens yet. Add monsters or NPCs to the battle.
+                    </p>
+                  )}
+                  {battleData.tokens.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2"
+                    >
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
+                        style={{ backgroundColor: `#${t.color.toString(16).padStart(6, '0')}` }}
+                      >
+                        {t.portraitUrl ? (
+                          <img src={t.portraitUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-semibold uppercase text-white/80">{t.type.slice(0, 1)}</span>
+                        )}
                       </div>
+                      <Input
+                        value={t.name}
+                        onChange={(e) => updateToken(t.id, { name: e.target.value })}
+                        placeholder="Token name"
+                        className="min-w-0 flex-1 text-sm"
+                      />
+                      <span className="shrink-0 text-xs text-zinc-500">
+                        ({t.x}, {t.y})
+                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleTerrainRemove(zone.id)}
+                        onClick={() => removeToken(t.id)}
                         className="shrink-0 text-red-400 hover:text-red-300"
                       >
                         Remove
@@ -1381,68 +1298,212 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
                     </div>
                   ))}
                 </div>
-              </div>
-            </RightRailSection>
-          )}
-
-          {battleData.fog.length > 0 && (
-            <RightRailSection title={`Fog (${battleData.fog.length})`} icon={<CloudFog className="size-4" />} defaultOpen={false}>
-              <div className="flex items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
-                <span className="text-sm text-zinc-300">
-                  {battleData.fog.length} fog zone{battleData.fog.length !== 1 ? 's' : ''}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => changeWithUndo({ ...data, fog: [] })}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  Clear All
-                </Button>
-              </div>
-            </RightRailSection>
-          )}
-
-          <RightRailSection title="Creature Notes" icon={<ScrollText className="size-4" />} defaultOpen={false}>
-            <label className="flex flex-col gap-1.5">
-              <textarea
-                className="min-h-[80px] w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
-                value={battleData.creatureGroups}
-                onChange={(e) => updateField('creatureGroups', e.target.value)}
-                placeholder="Goblin x3&#10;Goblin Cursespitter x1"
-              />
-              <p className="text-xs text-zinc-500">
-                Quick reference for creatures in this encounter.
-              </p>
-            </label>
-          </RightRailSection>
-
-          <RightRailSection title="Director Notes" icon={<PencilLine className="size-4" />}>
-            <textarea
-              className="min-h-[80px] w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
-              value={battleData.notes}
-              onChange={(e) => updateField('notes', e.target.value)}
-              placeholder="Tactical notes for running this encounter..."
-            />
-          </RightRailSection>
-
-          <RightRailSection title="Shortcuts" icon={<Keyboard className="size-4" />} defaultOpen={false}>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-500">
-              <span><kbd className="rounded bg-zinc-800 px-1">H</kbd> Pan</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">V</kbd> Select</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">D</kbd> Draw</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">F</kbd> Fog</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">T</kbd> Terrain</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">E</kbd> Eraser</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">G</kbd> Grid</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">Space</kbd> Hold to pan</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+Z</kbd> Undo</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+Shift+Z</kbd> Redo</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+=/-</kbd> Zoom</span>
-              <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+0</kbd> Fit map</span>
+              </RightRailSection>
             </div>
-          </RightRailSection>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="terrain" className={RAIL_TAB_CONTENT_CLASS}>
+            <div className="flex flex-col gap-3">
+              <RightRailSection title="Terrain Tools" icon={<Mountain className="size-4" />}>
+                <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-500">
+                  {activeTool === 'terrain' ? (
+                    <span>
+                      Drawing {selectedTerrain?.name ?? 'terrain'} zones. Drag on the map to create a grid-fitted box.
+                    </span>
+                  ) : (
+                    <span>Choose a terrain asset below to make it active and start drawing grid-fitted boxes.</span>
+                  )}
+                </div>
+              </RightRailSection>
+
+              <RightRailSection title={`Active Terrain Zones (${battleData.terrain.length})`} icon={<Mountain className="size-4" />}>
+                <div className="rounded-md border border-zinc-700 bg-zinc-800/50">
+                  <div className="flex items-center justify-between gap-2 border-b border-zinc-700/70 px-3 py-2">
+                    <span className="text-sm text-zinc-300">
+                      {battleData.terrain.length} terrain zone{battleData.terrain.length !== 1 ? 's' : ''}
+                    </span>
+                    {battleData.terrain.length > 0 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => changeWithUndo({ ...data, terrain: [] })}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        Clear All
+                      </Button>
+                    ) : null}
+                  </div>
+                  {battleData.terrain.length > 0 ? (
+                    <div className="divide-y divide-zinc-800">
+                      {battleData.terrain.map((zone) => (
+                        <div key={zone.id} className="flex items-center gap-2 px-3 py-2">
+                          <span
+                            className="size-3 shrink-0 rounded-sm ring-1 ring-white/10"
+                            style={{ backgroundColor: `#${(zone.color ?? 0x3b82f6).toString(16).padStart(6, '0')}` }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-zinc-300">{zone.name}</p>
+                            <p className="text-[10px] text-zinc-500">
+                              ({zone.x}, {zone.y}) - {zone.w} x {zone.h}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleTerrainRemove(zone.id)}
+                            className="shrink-0 text-red-400 hover:text-red-300"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="px-3 py-3 text-xs text-zinc-500">No terrain zones on this map yet.</p>
+                  )}
+                </div>
+              </RightRailSection>
+
+              <RightRailSection title="Terrain Assets" icon={<Mountain className="size-4" />}>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold uppercase text-zinc-500">Select to draw</span>
+                    <span className="text-xs text-zinc-500">Drag map boxes or drop cards</span>
+                  </div>
+                  <select
+                    className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-red-500 focus:outline-none"
+                    value={terrainCategoryFilter}
+                    onChange={(e) => setTerrainCategoryFilter(e.target.value as TerrainCategory | 'all')}
+                  >
+                    {TERRAIN_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category === 'all' ? 'All terrain' : TERRAIN_CATEGORY_NAMES[category]}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                    {filteredTerrains.map((terrain) => {
+                      const active = terrain.id === selectedTerrainId;
+                      return (
+                        <button
+                          key={terrain.id}
+                          type="button"
+                          draggable
+                          onClick={() => selectTerrainForDrawing(terrain.id)}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData('application/x-anvil-terrain', terrain.id);
+                            event.dataTransfer.effectAllowed = 'copy';
+                            selectTerrainForDrawing(terrain.id);
+                          }}
+                          className={`w-full cursor-grab rounded-md border p-3 text-left transition-colors active:cursor-grabbing ${
+                            active
+                              ? 'border-red-400 bg-red-500/10 text-zinc-100 ring-1 ring-red-400/40'
+                              : 'border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:border-zinc-500'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span
+                                className="size-3 shrink-0 rounded-sm ring-1 ring-white/15"
+                                style={{ backgroundColor: terrainColorHex(terrain) }}
+                              />
+                              <span className="truncate text-sm font-medium">{terrain.name}</span>
+                            </div>
+                            <span className="shrink-0 rounded bg-zinc-950/80 px-1.5 py-0.5 text-[10px] uppercase text-zinc-500">
+                              {active ? 'Active' : `Lv ${terrain.level}`}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-zinc-500">{getTerrainDescription(terrain)}</p>
+                          <p className="mt-2 line-clamp-2 text-xs text-zinc-400">{terrain.description}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </RightRailSection>
+
+              {battleData.drawings.length > 0 && (
+                <RightRailSection title={`Drawings (${battleData.drawings.length})`} icon={<PencilLine className="size-4" />} defaultOpen={false}>
+                  <div className="flex items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
+                    <span className="text-sm text-zinc-300">
+                      {battleData.drawings.length} drawing{battleData.drawings.length !== 1 ? 's' : ''}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => changeWithUndo({ ...data, drawings: [] })}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+                </RightRailSection>
+              )}
+
+              {battleData.fog.length > 0 && (
+                <RightRailSection title={`Fog (${battleData.fog.length})`} icon={<CloudFog className="size-4" />} defaultOpen={false}>
+                  <div className="flex items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
+                    <span className="text-sm text-zinc-300">
+                      {battleData.fog.length} fog zone{battleData.fog.length !== 1 ? 's' : ''}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => changeWithUndo({ ...data, fog: [] })}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+                </RightRailSection>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="notes" className={RAIL_TAB_CONTENT_CLASS}>
+            <div className="flex flex-col gap-3">
+              <RightRailSection title="Creature Notes" icon={<ScrollText className="size-4" />} defaultOpen={false}>
+                <label className="flex flex-col gap-1.5">
+                  <textarea
+                    className="min-h-[80px] w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    value={battleData.creatureGroups}
+                    onChange={(e) => updateField('creatureGroups', e.target.value)}
+                    placeholder="Goblin x3&#10;Goblin Cursespitter x1"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    Quick reference for creatures in this encounter.
+                  </p>
+                </label>
+              </RightRailSection>
+
+              <RightRailSection title="Director Notes" icon={<PencilLine className="size-4" />}>
+                <textarea
+                  className="min-h-[80px] w-full resize-y rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                  value={battleData.notes}
+                  onChange={(e) => updateField('notes', e.target.value)}
+                  placeholder="Tactical notes for running this encounter..."
+                />
+              </RightRailSection>
+
+              <RightRailSection title="Shortcuts" icon={<Keyboard className="size-4" />} defaultOpen={false}>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-500">
+                  <span><kbd className="rounded bg-zinc-800 px-1">H</kbd> Pan</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">V</kbd> Select</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">D</kbd> Draw</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">F</kbd> Fog</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">T</kbd> Terrain</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">E</kbd> Eraser</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">G</kbd> Grid</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">Space</kbd> Hold to pan</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+Z</kbd> Undo</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+Shift+Z</kbd> Redo</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+=/-</kbd> Zoom</span>
+                  <span><kbd className="rounded bg-zinc-800 px-1">Ctrl+0</kbd> Fit map</span>
+                </div>
+              </RightRailSection>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
       )}
     </div>

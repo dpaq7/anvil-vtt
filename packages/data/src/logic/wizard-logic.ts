@@ -8,12 +8,56 @@
  */
 
 import { GameData } from '../game-data/index.js';
+import { getAvailablePerkCategories, getClassPerkLevels } from '../rules/perks/index.js';
 import * as HeroLogic from './hero-logic.js';
 
 const CAREER_SKILL_GROUP_NAMES = new Set(['crafting', 'exploration', 'interpersonal', 'intrigue', 'lore']);
+const SKILL_GROUP_NAMES = ['crafting', 'exploration', 'interpersonal', 'intrigue', 'lore'] as const;
 
 export function isCareerSkillChoice(skillName: string): boolean {
   return skillName.includes('/') || CAREER_SKILL_GROUP_NAMES.has(skillName.toLowerCase());
+}
+
+export function isSkillGroupName(value: string): boolean {
+  return SKILL_GROUP_NAMES.includes(value.toLowerCase() as (typeof SKILL_GROUP_NAMES)[number]);
+}
+
+type GameDataAbility = ReturnType<typeof GameData.getAbilitiesByClassAndLevel>[number];
+type GameDataMonster = ReturnType<typeof GameData.getAllMonsters>[number];
+
+export interface AbilityChoiceSlot {
+  id: string;
+  label: string;
+  description: string;
+  costAmount: number | null;
+  abilityType?: string;
+  level: number;
+}
+
+export interface ClassSkillChoiceSlot {
+  id: string;
+  label: string;
+  description: string;
+  groups: string[];
+  index: number;
+}
+
+export interface CompanionChoiceOption {
+  id: string;
+  name: string;
+  level: number;
+  roles: string[];
+  ancestry?: string[];
+}
+
+export interface PerkChoiceSlot {
+  id: string;
+  label: string;
+  description: string;
+  categories: string[];
+  source: 'career' | 'class';
+  level?: number;
+  selectedPerkId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,18 +145,23 @@ export interface CharacterInProgress {
   };
   // Skills selected from career choice options (e.g., "Crafting/Exploration")
   careerSkillChoices?: string[];
+  // Skills selected from class choice options.
+  classSkillChoices?: string[];
 
   // Step 10: Languages
   selectedLanguages: string[];
 
   // Step 11: Perks
   selectedPerks: string[];
+  careerPerk?: string | null;
 
   // Step 12: Titles
   selectedTitles: Title[];
 
   // Step 13: Abilities
   selectedAbilities: string[];
+  abilityChoices?: Record<string, string>;
+  companion?: string | null;
 
   // Step 14: Personal Details
   name: string;
@@ -176,6 +225,197 @@ export interface WizardStepDefinition {
   required: boolean;
   /** For level-up steps, the level number (2-10) */
   levelUpLevel?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Slot-Driven Creation Choices
+// ---------------------------------------------------------------------------
+
+const LEVEL_ONE_ABILITY_SLOTS: Omit<AbilityChoiceSlot, 'id'>[] = [
+  {
+    label: 'Signature Ability',
+    description: 'Choose one signature ability. Signature abilities are free to use.',
+    abilityType: 'Signature',
+    costAmount: null,
+    level: 1,
+  },
+  {
+    label: '3pt Ability',
+    description: 'Choose one ability that costs 3 heroic resource.',
+    costAmount: 3,
+    level: 1,
+  },
+  {
+    label: '5pt Ability',
+    description: 'Choose one ability that costs 5 heroic resource.',
+    costAmount: 5,
+    level: 1,
+  },
+];
+
+function normalizeChoiceId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+export function getAbilityFeatureId(feature: GameDataAbility): string {
+  return feature.metadata.item_id ?? feature.metadata.scc?.[0] ?? normalizeChoiceId(feature.name);
+}
+
+export function getAbilityChoiceSlots(character: CharacterInProgress): AbilityChoiceSlot[] {
+  if (!character.heroClass) return [];
+
+  const slots = LEVEL_ONE_ABILITY_SLOTS.map((slot) => ({
+    ...slot,
+    id: `class:${character.heroClass}:level-${slot.level}:${slot.abilityType ?? `cost-${slot.costAmount}`}`,
+  }));
+
+  return slots.filter((slot) => getAbilityOptionsForSlot(character, slot).length > 0);
+}
+
+function abilityMatchesSlot(ability: GameDataAbility, slot: AbilityChoiceSlot): boolean {
+  if (ability.feature_type !== 'ability') return false;
+
+  const abilityType = ability.metadata.ability_type;
+  const costAmount = ability.metadata.cost_amount;
+
+  if (slot.abilityType) {
+    return abilityType === slot.abilityType;
+  }
+
+  return costAmount === slot.costAmount;
+}
+
+export function getAbilityOptionsForSlot(
+  character: CharacterInProgress,
+  slot: AbilityChoiceSlot
+): GameDataAbility[] {
+  if (!character.heroClass) return [];
+
+  return GameData.getAbilitiesByClassAndLevel(character.heroClass, slot.level).filter((ability) =>
+    abilityMatchesSlot(ability, slot)
+  );
+}
+
+export function getSelectedAbilityIds(character: CharacterInProgress): string[] {
+  const ids: string[] = [];
+  const push = (id: string | null | undefined) => {
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+
+  for (const slot of getAbilityChoiceSlots(character)) {
+    push(character.abilityChoices?.[slot.id]);
+  }
+
+  for (const id of character.selectedAbilities ?? []) {
+    push(id);
+  }
+
+  return ids;
+}
+
+export function hasCompleteAbilitySelections(character: CharacterInProgress): boolean {
+  const slots = getAbilityChoiceSlots(character);
+  if (slots.length === 0) return !!character.heroClass;
+
+  return slots.every((slot) => {
+    const selectedId = character.abilityChoices?.[slot.id];
+    if (!selectedId) return false;
+    return getAbilityOptionsForSlot(character, slot).some(
+      (ability) => getAbilityFeatureId(ability) === selectedId
+    );
+  });
+}
+
+export function getClassSkillChoiceSlots(character: CharacterInProgress): ClassSkillChoiceSlot[] {
+  if (!character.heroClass) return [];
+
+  const classDef = GameData.getClass(character.heroClass);
+  if (!classDef) return [];
+
+  const slots: ClassSkillChoiceSlot[] = [];
+  for (const groupChoice of classDef.skillGroupChoices) {
+    const groups = groupChoice.groups.map((group) => group.toLowerCase());
+    for (let i = 0; i < groupChoice.count; i++) {
+      slots.push({
+        id: `class-skill-${slots.length}`,
+        label: `Class: ${classDef.name} (Choice ${slots.length + 1})`,
+        description: `Choose 1 skill from: ${groups.join(' or ')}`,
+        groups,
+        index: slots.length,
+      });
+    }
+  }
+
+  return slots;
+}
+
+export function getPerkChoiceSlots(character: CharacterInProgress): PerkChoiceSlot[] {
+  const slots: PerkChoiceSlot[] = [];
+
+  if (character.career) {
+    const career = GameData.getCareer(character.career);
+    if (career) {
+      slots.push({
+        id: 'career-perk',
+        label: `Career: ${career.name}`,
+        description: `Choose one ${career.perkType} perk granted by your career.`,
+        categories: [career.perkType],
+        source: 'career',
+        selectedPerkId: character.careerPerk ?? null,
+      });
+    }
+  }
+
+  if (character.heroClass) {
+    const perkLevels = getClassPerkLevels(character.heroClass);
+    for (const perkLevel of perkLevels) {
+      if (perkLevel <= character.level) {
+        const categories = getAvailablePerkCategories(character.heroClass, perkLevel);
+        slots.push({
+          id: `class-perk:${perkLevel}`,
+          label: `Level ${perkLevel}`,
+          description: `Choose one perk gained at level ${perkLevel}.`,
+          categories,
+          source: 'class',
+          level: perkLevel,
+          selectedPerkId: character.selectedPerks?.[slots.filter((slot) => slot.source === 'class').length] ?? null,
+        });
+      }
+    }
+  }
+
+  return slots;
+}
+
+export function getSelectedPerkIds(character: CharacterInProgress): string[] {
+  const ids: string[] = [];
+  const push = (id: string | null | undefined) => {
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+
+  push(character.careerPerk);
+  for (const id of character.selectedPerks ?? []) {
+    push(id);
+  }
+
+  return ids;
+}
+
+export function isCompanionRequired(character: CharacterInProgress): boolean {
+  return character.heroClass === 'beastheart';
+}
+
+export function getCompanionOptions(): CompanionChoiceOption[] {
+  return GameData.getAllMonsters()
+    .slice()
+    .sort((a: GameDataMonster, b: GameDataMonster) => a.level - b.level || a.name.localeCompare(b.name))
+    .map((monster) => ({
+      id: normalizeChoiceId(monster.name),
+      name: monster.name,
+      level: monster.level,
+      roles: monster.roles,
+      ancestry: monster.ancestry,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +585,8 @@ export function getSkillSelectionsNeeded(character: CharacterInProgress): number
     }
   }
 
+  selections += getClassSkillChoiceSlots(character).length;
+
   return selections;
 }
 
@@ -366,6 +608,10 @@ export function getSkillSelectionsMade(character: CharacterInProgress): number {
     for (let i = 0; i < choiceCount; i++) {
       if (character.careerSkillChoices?.[i]) selections++;
     }
+  }
+
+  for (const slot of getClassSkillChoiceSlots(character)) {
+    if (character.classSkillChoices?.[slot.index]) selections++;
   }
 
   return selections;
@@ -395,6 +641,10 @@ export function getSelectedSkillNames(character: CharacterInProgress): string[] 
   push(character.cultureSkills?.upbringing);
 
   for (const choice of character.careerSkillChoices ?? []) {
+    push(choice);
+  }
+
+  for (const choice of character.classSkillChoices ?? []) {
     push(choice);
   }
 
@@ -467,9 +717,9 @@ export const BASE_WIZARD_STEPS: WizardStepDefinition[] = [
   { id: WIZARD_STEP_IDS.KIT, label: 'Kit', required: true },
   { id: WIZARD_STEP_IDS.SKILLS, label: 'Skills', required: true },
   { id: WIZARD_STEP_IDS.LANGUAGES, label: 'Languages', required: true },
-  { id: WIZARD_STEP_IDS.PERKS, label: 'Perks', required: false },
+  { id: WIZARD_STEP_IDS.PERKS, label: 'Perks', required: true },
   { id: WIZARD_STEP_IDS.TITLES, label: 'Titles', required: false },
-  { id: WIZARD_STEP_IDS.ABILITIES, label: 'Abilities', required: false },
+  { id: WIZARD_STEP_IDS.ABILITIES, label: 'Abilities', required: true },
   { id: WIZARD_STEP_IDS.PERSONAL, label: 'Personal', required: true },
 ];
 
@@ -558,7 +808,9 @@ export function getStepStatus(
           const selectedCount = Array.isArray(character.subclass)
             ? character.subclass.length
             : 1;
-          if (selectedCount >= selectCount) return 'complete';
+          if (selectedCount >= selectCount && (!isCompanionRequired(character) || character.companion)) {
+            return 'complete';
+          }
         }
         return 'incomplete';
       }
@@ -598,9 +850,9 @@ export function getStepStatus(
       return 'not-begun';
 
     case WIZARD_STEP_IDS.PERKS:
-      // Optional step
-      if (character.selectedPerks.length > 0) return 'complete';
-      if (character.selectedLanguages.length > 0) return 'incomplete';
+      const perkSlots = getPerkChoiceSlots(character);
+      if (perkSlots.length === 0 || perkSlots.every((slot) => !!slot.selectedPerkId)) return 'complete';
+      if (character.career) return 'incomplete';
       return 'not-begun';
 
     case WIZARD_STEP_IDS.TITLES:
@@ -610,14 +862,19 @@ export function getStepStatus(
       return 'not-begun';
 
     case WIZARD_STEP_IDS.ABILITIES:
-      // Optional step
-      if (character.selectedAbilities.length > 0) return 'complete';
-      if (character.selectedLanguages.length > 0) return 'incomplete';
+      if (hasCompleteAbilitySelections(character)) return 'complete';
+      const abilityPrereqPerkSlots = getPerkChoiceSlots(character);
+      if (
+        abilityPrereqPerkSlots.length > 0 &&
+        abilityPrereqPerkSlots.every((slot) => !!slot.selectedPerkId)
+      ) {
+        return 'incomplete';
+      }
       return 'not-begun';
 
     case WIZARD_STEP_IDS.PERSONAL:
       if (character.name.trim()) return 'complete';
-      if (character.selectedLanguages.length > 0) return 'incomplete';
+      if (hasCompleteAbilitySelections(character)) return 'incomplete';
       return 'not-begun';
 
     case WIZARD_STEP_IDS.REVIEW:
@@ -707,6 +964,9 @@ export function validateStep(
         if (selectedCount < selectCount) {
           errors.push(`Select ${selectCount} subclass(es)`);
         }
+        if (isCompanionRequired(character) && !character.companion) {
+          errors.push('Companion is required');
+        }
       }
       break;
 
@@ -743,6 +1003,24 @@ export function validateStep(
       }
       break;
 
+    case WIZARD_STEPS.PERKS:
+      const perkSlots = getPerkChoiceSlots(character);
+      const completedPerkSlots = perkSlots.filter((slot) => !!slot.selectedPerkId).length;
+      if (completedPerkSlots < perkSlots.length) {
+        errors.push(`Select ${perkSlots.length} perks (have ${completedPerkSlots})`);
+      }
+      break;
+
+    case WIZARD_STEPS.ABILITIES:
+      if (!character.heroClass) {
+        errors.push('Class is required before abilities');
+      } else if (!hasCompleteAbilitySelections(character)) {
+        const abilitySlots = getAbilityChoiceSlots(character);
+        const completeSlots = abilitySlots.filter((slot) => !!character.abilityChoices?.[slot.id]).length;
+        errors.push(`Select ${abilitySlots.length} abilities (have ${completeSlots})`);
+      }
+      break;
+
     case WIZARD_STEPS.PERSONAL:
       if (!character.name.trim()) {
         errors.push('Name is required');
@@ -751,9 +1029,7 @@ export function validateStep(
 
     // Optional steps don't fail validation
     case WIZARD_STEPS.COMPLICATIONS:
-    case WIZARD_STEPS.PERKS:
     case WIZARD_STEPS.TITLES:
-    case WIZARD_STEPS.ABILITIES:
     case WIZARD_STEPS.REVIEW:
       // These steps are optional or just review
       break;
@@ -794,6 +1070,8 @@ export function isCharacterComplete(character: CharacterInProgress): boolean {
     WIZARD_STEPS.KIT,
     WIZARD_STEPS.SKILLS,
     WIZARD_STEPS.LANGUAGES,
+    WIZARD_STEPS.PERKS,
+    WIZARD_STEPS.ABILITIES,
     WIZARD_STEPS.PERSONAL,
   ];
 
@@ -817,6 +1095,8 @@ export function getFirstIncompleteStep(character: CharacterInProgress): number |
     WIZARD_STEPS.KIT,
     WIZARD_STEPS.SKILLS,
     WIZARD_STEPS.LANGUAGES,
+    WIZARD_STEPS.PERKS,
+    WIZARD_STEPS.ABILITIES,
     WIZARD_STEPS.PERSONAL,
   ];
 
@@ -858,10 +1138,14 @@ export function createEmptyCharacter(): CharacterInProgress {
     selectedSkills: [],
     cultureSkills: {},
     careerSkillChoices: [],
+    classSkillChoices: [],
     selectedLanguages: [],
     selectedPerks: [],
+    careerPerk: null,
     selectedTitles: [],
     selectedAbilities: [],
+    abilityChoices: {},
+    companion: null,
     name: '',
     pronouns: '',
     backstory: '',
@@ -907,6 +1191,8 @@ export function getWizardProgress(character: CharacterInProgress): number {
     WIZARD_STEPS.KIT,
     WIZARD_STEPS.SKILLS,
     WIZARD_STEPS.LANGUAGES,
+    WIZARD_STEPS.PERKS,
+    WIZARD_STEPS.ABILITIES,
     WIZARD_STEPS.PERSONAL,
   ];
 

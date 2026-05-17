@@ -57,11 +57,14 @@ interface HeroEntityRow {
   name: string;
   user_id: string;
   ancestry: string | null;
+  culture: string | null;
+  career: string | null;
   hero_class: string | null;
   subclass: string | null;
   level: number;
   characteristics: string | null;
   kit: string | null;
+  skills: string | null;
   abilities: string | null;
   portrait_url: string | null;
   data: string | null;
@@ -910,8 +913,8 @@ export class SessionRoom extends DurableObject<Env> {
 
   private async loadHeroEntities(sessionId: string): Promise<SessionState['entities']> {
     const rows = await this.env.DB.prepare(
-      `SELECT h.id, h.name, h.user_id, h.ancestry, h.hero_class, h.subclass, h.level,
-              h.characteristics, h.kit, h.abilities, h.portrait_url, h.data
+      `SELECT h.id, h.name, h.user_id, h.ancestry, h.culture, h.career, h.hero_class, h.subclass, h.level,
+              h.characteristics, h.kit, h.skills, h.abilities, h.portrait_url, h.data
        FROM session_participants sp
        JOIN heroes h ON h.id = sp.hero_id
        WHERE sp.game_session_id = ? AND h.deleted_at IS NULL
@@ -956,6 +959,7 @@ export class SessionRoom extends DurableObject<Env> {
   private createHeroEntity(hero: HeroEntityRow, index: number): SessionState['entities'][number] {
     const data = parseJson<Record<string, unknown>>(hero.data, {});
     const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
+    const selectedSkills = parseJson<string[]>(hero.skills, []);
     const selectedAbilityIds = parseJson<string[]>(hero.abilities, []);
     const heroClass = hero.hero_class && HeroLogic.isValidHeroClass(hero.hero_class)
       ? hero.hero_class
@@ -976,15 +980,20 @@ export class SessionRoom extends DurableObject<Env> {
       y: 2 + index,
       ownerUserId: hero.user_id,
       ancestry: hero.ancestry,
+      culture: hero.culture,
+      career: hero.career,
       heroClass,
       subclass: hero.subclass,
       level: hero.level,
       kit: hero.kit,
+      skills: selectedSkills,
       portraitUrl: hero.portrait_url,
       maxStamina,
       currentStamina: typeof data['staminaCurrent'] === 'number' ? data['staminaCurrent'] : maxStamina,
       recoveriesMax: maxRecoveries,
       recoveriesCurrent: typeof data['recoveriesCurrent'] === 'number' ? data['recoveriesCurrent'] : maxRecoveries,
+      victories: typeof data['victories'] === 'number' ? data['victories'] : 0,
+      xp: typeof data['xp'] === 'number' ? data['xp'] : 0,
       heroicResource: heroClass ? HeroLogic.getStartingHeroicResource(heroClass) : 0,
       heroicResourceName: resourceType ? HeroLogic.getHeroicResourceName(resourceType) : 'Resource',
       speed,

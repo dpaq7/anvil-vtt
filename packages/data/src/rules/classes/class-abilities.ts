@@ -15,7 +15,7 @@ import {
   furyElevenFerocityAbilities,
   getAspectAbilitiesByCost,
   getAspectTriggeredAction,
-} from './fury/abilities';
+} from './fury/abilities.js';
 import {
   conduitSignatureAbilities,
   conduitThreePietyAbilities,
@@ -26,7 +26,7 @@ import {
   conduitTriggeredActions,
   rayOfWrath,
   healingGrace,
-} from './conduit/abilities';
+} from './conduit/abilities.js';
 import {
   censorSignatureAbilities,
   censorThreeWrathAbilities,
@@ -34,7 +34,7 @@ import {
   censorSevenWrathAbilities,
   censorNineWrathAbilities,
   censorElevenWrathAbilities,
-} from './censor/abilities';
+} from './censor/abilities.js';
 import {
   elementalistSignatureAbilities,
   elementalistThreeEssenceAbilities,
@@ -44,7 +44,7 @@ import {
   elementalistElevenEssenceAbilities,
   elementalistTriggeredActions,
   getSpecializationTriggeredAction,
-} from './elementalist/abilities';
+} from './elementalist/abilities.js';
 import {
   nullSignatureAbilities,
   nullThreeDisciplineAbilities,
@@ -52,7 +52,7 @@ import {
   nullSevenDisciplineAbilities,
   nullNineDisciplineAbilities,
   nullElevenDisciplineAbilities,
-} from './null/abilities';
+} from './null/abilities.js';
 import {
   shadowSignatureAbilities,
   shadowThreeInsightAbilities,
@@ -60,7 +60,7 @@ import {
   shadowSevenInsightAbilities,
   shadowNineInsightAbilities,
   shadowElevenInsightAbilities,
-} from './shadow/abilities';
+} from './shadow/abilities.js';
 import {
   tacticianSignatureAbilities,
   tacticianThreeFocusAbilities,
@@ -70,7 +70,7 @@ import {
   tacticianElevenFocusAbilities,
   tacticianTriggeredActions,
   getDoctrineTriggeredAction,
-} from './tactician/abilities';
+} from './tactician/abilities.js';
 import {
   talentSignatureAbilities,
   talentThreeClarityAbilities,
@@ -79,7 +79,7 @@ import {
   talentNineClarityAbilities,
   talentElevenClarityAbilities,
   talentTraditionFeatures,
-} from './talent/abilities';
+} from './talent/abilities.js';
 import {
   troubadourSignatureAbilities,
   troubadourThreeDramaAbilities,
@@ -89,7 +89,7 @@ import {
   troubadourElevenDramaAbilities,
   troubadourTriggeredActions,
   getClassActTriggeredAction,
-} from './troubadour/abilities';
+} from './troubadour/abilities.js';
 import {
   beastheartSignatureAbilities,
   beastheartThreeFerocityAbilities,
@@ -100,7 +100,7 @@ import {
   beastheartTriggeredActions,
   getWildNatureAbilitiesByCost,
   getWildNatureTriggeredAction,
-} from './beastheart/abilities';
+} from './beastheart/abilities.js';
 import {
   summonerSignatureAbilities,
   summonerThreeEssenceAbilities,
@@ -109,7 +109,7 @@ import {
   summonerNineEssenceAbilities,
   summonerElevenEssenceAbilities,
   summonerTriggeredActions,
-} from './summoner/abilities';
+} from './summoner/abilities.js';
 
 // Types for ability categories
 export interface AbilitiesByTier {
@@ -430,6 +430,7 @@ export function getClassAbilities(
  */
 export function getClassResourceName(heroClass: HeroClass): string {
   const resourceMap: Record<HeroClass, string> = {
+    beastheart: 'Rage',
     fury: 'Ferocity',
     summoner: 'Essence',
     elementalist: 'Essence',

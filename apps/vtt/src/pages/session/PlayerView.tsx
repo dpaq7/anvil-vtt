@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Expand, Minimize2 } from 'lucide-react';
-import { AppShell } from '@anvil/ui';
+import { AppShell, Tabs, TabsContent, TabsList, TabsTrigger } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
@@ -9,12 +9,12 @@ import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleDa
 import { filterVisibleEntities } from '../../lib/fog-visibility.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useAudioSync } from '../../hooks/useAudioSync.js';
-import { VitalsBar } from '../../components/session/VitalsBar.js';
 import { ParticipantStatusBar } from '../../components/session/ParticipantStatusBar.js';
 import { CombatTracker } from '../../components/session/CombatTracker.js';
 import { TurnActionBar } from '../../components/session/TurnActionBar.js';
 import { AbilityPanel } from '../../components/session/AbilityPanel.js';
 import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
+import { PlayerHeroCommandBar, PlayerHeroSheetPanel } from '../../components/session/PlayerHeroLiveSheet.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
@@ -28,6 +28,14 @@ interface PlayerViewProps {
   combatLog: AbilityResult[];
 }
 
+type RightRailTab = 'sheet' | 'abilities' | 'turn' | 'combat' | 'log';
+
+const RAIL_TABS_LIST_CLASS =
+  'flex h-9 w-full justify-start overflow-x-auto rounded-none border-b border-zinc-800 bg-zinc-950/40 p-0 px-2 pt-1';
+const RAIL_TAB_TRIGGER_CLASS =
+  'h-8 min-w-16 shrink-0 whitespace-nowrap rounded-b-none rounded-t-md border border-transparent border-b-0 px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 transition data-[state=active]:border-zinc-700 data-[state=active]:bg-zinc-900 data-[state=active]:text-zinc-100 data-[state=inactive]:hover:bg-zinc-800/50 data-[state=inactive]:hover:text-zinc-300';
+const RAIL_TAB_CONTENT_CLASS = 'mt-0 min-h-0 flex-1 overflow-hidden focus-visible:ring-0';
+
 export function PlayerView({ sessionState, connectionStatus, send, combatLog }: PlayerViewProps) {
   const user = useAuthStore((s) => s.user);
 
@@ -36,8 +44,8 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
-  const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
+  const [rightRailTab, setRightRailTab] = useState<RightRailTab>('sheet');
   const [focusMode, setFocusMode] = useState(false);
   const initiativePromptedRef = useRef(false);
   const { scenes, activeSceneId, participants, entities, combat } = sessionState;
@@ -94,6 +102,25 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
     return used;
   }, [turnActions]);
 
+  const rightRailTabs = useMemo<RightRailTab[]>(() => {
+    const tabs: RightRailTab[] = ['sheet'];
+    if (heroAbilities.length > 0) tabs.push('abilities');
+    if (combat) tabs.push('turn', 'combat');
+    if (sceneType) tabs.push('log');
+    return tabs;
+  }, [combat, heroAbilities.length, sceneType]);
+
+  useEffect(() => {
+    if (!rightRailTabs.includes(rightRailTab)) {
+      setRightRailTab(rightRailTabs[0] ?? 'sheet');
+    }
+  }, [rightRailTab, rightRailTabs]);
+
+  const openRightRailTab = useCallback((tab: RightRailTab) => {
+    setRightRailCollapsed(false);
+    setRightRailTab(tab);
+  }, []);
+
   const handleUseAbility = useCallback(
     (abilityId: string) => {
       if (!heroEntity) return;
@@ -121,23 +148,87 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
     [combat, heroEntity, entities, isMyTurn, selectedEntityId, send],
   );
 
+  const handleRollCharacteristic = useCallback(
+    (label: string, modifier: number) => {
+      if (!heroEntity) return;
+      send({
+        type: 'draw_steel_roll',
+        roll: {
+          kind: 'power',
+          label,
+          modifier,
+          sourceId: heroEntity.id,
+        },
+      });
+      toast.info(`Rolling ${label}...`);
+    },
+    [heroEntity, send],
+  );
+
+  const handleRollResource = useCallback(() => {
+    if (!heroEntity) return;
+    send({
+      type: 'draw_steel_roll',
+      roll: {
+        kind: 'heroic-resource',
+        label: resourceName,
+        sourceId: heroEntity.id,
+      },
+    });
+    toast.info(`Rolling ${resourceName}...`);
+  }, [heroEntity, resourceName, send]);
+
   const handleCatchBreath = useCallback(() => {
     if (!heroEntity) return;
+    if (!combat || !isMyTurn) {
+      toast.info('Catch Breath is available on your turn.');
+      return;
+    }
     send({
       type: 'token_action',
       action: { kind: 'catch-breath', sourceId: heroEntity.id, targetId: heroEntity.id },
     });
     toast.success('Caught breath! Recovering stamina...');
-  }, [heroEntity, send]);
+  }, [combat, heroEntity, isMyTurn, send]);
 
   const handleDefend = useCallback(() => {
     if (!heroEntity) return;
+    if (!combat || !isMyTurn) {
+      toast.info('Defend is available on your turn.');
+      return;
+    }
     send({
       type: 'token_action',
       action: { kind: 'defend', sourceId: heroEntity.id, targetId: heroEntity.id },
     });
     toast.info('Defending until your next turn.');
-  }, [heroEntity, send]);
+  }, [combat, heroEntity, isMyTurn, send]);
+
+  const handleStandUp = useCallback(() => {
+    if (!heroEntity) return;
+    if (!combat || !isMyTurn) {
+      toast.info('Stand Up is available on your turn.');
+      return;
+    }
+    send({
+      type: 'token_action',
+      action: { kind: 'stand-up', sourceId: heroEntity.id, targetId: heroEntity.id },
+    });
+    toast.info('Standing up...');
+  }, [combat, heroEntity, isMyTurn, send]);
+
+  const handleEscapeGrab = useCallback(() => {
+    if (!heroEntity) return;
+    if (!combat || !isMyTurn) {
+      toast.info('Escape is available on your turn.');
+      return;
+    }
+    send({
+      type: 'token_action',
+      action: { kind: 'escape-grab', sourceId: heroEntity.id, targetId: heroEntity.id },
+    });
+    toast.info('Escaping grab...');
+  }, [combat, heroEntity, isMyTurn, send]);
 
   const handleRollInitiative = useCallback(() => {
     send({ type: 'combat_action', action: { type: 'ROLL_INITIATIVE' } });
@@ -308,27 +399,25 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
           </button>
         </div>
       ) : (
-        <div className="flex w-full items-center gap-2">
-          <div className="flex-1">
-            <VitalsBar
-              name={(heroEntity?.name as string) ?? 'Hero'}
-              heroClass={(heroEntity?.['heroClass'] as string) ?? null}
-              level={(heroEntity?.['level'] as number) ?? 1}
-              currentStamina={(heroEntity?.['currentStamina'] as number) ?? 20}
-              maxStamina={(heroEntity?.['maxStamina'] as number) ?? 20}
-              heroicResource={heroicResource}
-            />
-          </div>
+        <div className="flex w-full min-w-0 items-center gap-2">
+          <PlayerHeroCommandBar
+            hero={heroEntity ?? null}
+            combatActive={Boolean(combat)}
+            onCatchBreath={handleCatchBreath}
+            onRollCharacteristic={handleRollCharacteristic}
+            onRollResource={handleRollResource}
+            onOpenSheet={() => openRightRailTab('sheet')}
+          />
           {/* Audio now-playing indicator */}
           {sessionState.audio?.playing && sessionState.audio.assetName && (
-            <span className="mr-1 flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
+            <span className="mr-1 flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
               <span className="inline-block size-1.5 animate-pulse rounded-full bg-purple-400" />
               {sessionState.audio.assetName}
             </span>
           )}
           {/* Scene type indicator */}
           {sceneType && (
-            <span className="mr-2 rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+            <span className="mr-2 shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
               {sceneType}
             </span>
           )}
@@ -343,64 +432,102 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
           </button>
         </div>
       )}
-      leftRail={focusMode || !sceneType || sceneType === 'story' ? undefined : (
-        <div className="flex h-full min-h-0 flex-col">
-          {sceneType === 'battle' && combat && (
-            <div className="min-h-0 flex-1">
-              <AbilityPanel
-                abilities={heroAbilities}
-                usedActionTypes={usedActionTypes}
-                onUseAbility={handleUseAbility}
-              />
-            </div>
-          )}
-          <ActionLogPanel
-            entries={sessionState.actionLog ?? []}
-            sceneType={sceneType}
-            activeSceneId={activeSceneId}
-            send={send}
-            showDiceControls={sceneType !== 'battle'}
-            className={sceneType === 'battle' && combat ? 'max-h-[45%] shrink-0 border-t' : 'h-full'}
-          />
-        </div>
-      )}
       rightRail={focusMode ? undefined : (
-        combat ? (
-          <div className="flex flex-col gap-3 overflow-y-auto p-3">
-            {/* Turn action bar — shows action economy during player's turn */}
-            <TurnActionBar
-              turnActions={turnActions}
+        <Tabs value={rightRailTab} onValueChange={(value) => setRightRailTab(value as RightRailTab)} className="flex h-full min-h-0 flex-col overflow-hidden">
+          <TabsList className={RAIL_TABS_LIST_CLASS}>
+            {rightRailTabs.includes('sheet') && (
+              <TabsTrigger value="sheet" className={RAIL_TAB_TRIGGER_CLASS}>Sheet</TabsTrigger>
+            )}
+            {rightRailTabs.includes('abilities') && (
+              <TabsTrigger value="abilities" className={RAIL_TAB_TRIGGER_CLASS}>Abilities</TabsTrigger>
+            )}
+            {rightRailTabs.includes('turn') && (
+              <TabsTrigger value="turn" className={RAIL_TAB_TRIGGER_CLASS}>Turn</TabsTrigger>
+            )}
+            {rightRailTabs.includes('combat') && (
+              <TabsTrigger value="combat" className={RAIL_TAB_TRIGGER_CLASS}>Combat</TabsTrigger>
+            )}
+            {rightRailTabs.includes('log') && (
+              <TabsTrigger value="log" className={RAIL_TAB_TRIGGER_CLASS}>Log</TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="sheet" className={RAIL_TAB_CONTENT_CLASS}>
+            <PlayerHeroSheetPanel
+              hero={heroEntity ?? null}
+              combatActive={Boolean(combat)}
               isMyTurn={isMyTurn}
-              baseSpeed={heroSpeed}
-              heroicResource={heroicResource}
-              resourceName={resourceName}
-              conditions={heroConditions}
+              abilityCount={heroAbilities.length}
+              onRollCharacteristic={handleRollCharacteristic}
+              onRollResource={handleRollResource}
               onCatchBreath={handleCatchBreath}
               onDefend={handleDefend}
-              onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
+              onStandUp={handleStandUp}
+              onEscapeGrab={handleEscapeGrab}
+              onOpenAbilities={() => openRightRailTab('abilities')}
             />
+          </TabsContent>
 
-            {/* Combat tracker */}
-            <CombatTracker
-              combat={combat}
-              entities={entities}
-              selectedEntityIds={selectedEntityIds}
-              isDirector={false}
-              currentHeroEntityId={heroEntityId}
-              onClaimTurn={(entityId) => send({ type: 'combat_action', action: { type: 'CLAIM_TURN', entityId } })}
-              onSelectEntities={handleSelectEntities}
-              onSelectTurn={() => {}}
-              onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
-              onEndCombat={() => {}}
-              onAdjustMalice={() => {}}
-              onRollInitiative={handleRollInitiative}
+          <TabsContent value="abilities" className={RAIL_TAB_CONTENT_CLASS}>
+            <AbilityPanel
+              abilities={heroAbilities}
+              usedActionTypes={usedActionTypes}
+              onUseAbility={handleUseAbility}
             />
-          </div>
-        ) : undefined
+          </TabsContent>
+
+          {combat && (
+            <TabsContent value="turn" className={RAIL_TAB_CONTENT_CLASS}>
+              <div className="h-full overflow-y-auto p-3">
+                <TurnActionBar
+                  turnActions={turnActions}
+                  isMyTurn={isMyTurn}
+                  baseSpeed={heroSpeed}
+                  heroicResource={heroicResource}
+                  resourceName={resourceName}
+                  conditions={heroConditions}
+                  onCatchBreath={handleCatchBreath}
+                  onDefend={handleDefend}
+                  onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
+                />
+              </div>
+            </TabsContent>
+          )}
+
+          {combat && (
+            <TabsContent value="combat" className={RAIL_TAB_CONTENT_CLASS}>
+              <div className="h-full overflow-y-auto p-3">
+                <CombatTracker
+                  combat={combat}
+                  entities={entities}
+                  selectedEntityIds={selectedEntityIds}
+                  isDirector={false}
+                  currentHeroEntityId={heroEntityId}
+                  onClaimTurn={(entityId) => send({ type: 'combat_action', action: { type: 'CLAIM_TURN', entityId } })}
+                  onSelectEntities={handleSelectEntities}
+                  onSelectTurn={() => {}}
+                  onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
+                  onEndCombat={() => {}}
+                  onAdjustMalice={() => {}}
+                  onRollInitiative={handleRollInitiative}
+                />
+              </div>
+            </TabsContent>
+          )}
+
+          <TabsContent value="log" className={RAIL_TAB_CONTENT_CLASS}>
+            <ActionLogPanel
+              entries={sessionState.actionLog ?? []}
+              sceneType={sceneType}
+              activeSceneId={activeSceneId}
+              send={send}
+              showDiceControls={sceneType !== 'battle'}
+              className="h-full border-0"
+            />
+          </TabsContent>
+        </Tabs>
       )}
-      leftRailCollapsed={leftRailCollapsed}
       rightRailCollapsed={rightRailCollapsed}
-      onToggleLeftRail={() => setLeftRailCollapsed((value) => !value)}
       onToggleRightRail={() => setRightRailCollapsed((value) => !value)}
       statusBar={
         <ParticipantStatusBar

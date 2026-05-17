@@ -411,7 +411,7 @@ function SectionHeader({
   );
 }
 
-function StatCard({ stat }: { stat: StatConfig }) {
+function StatStripItem({ stat }: { stat: StatConfig }) {
   const Icon = stat.icon;
   const toneClass = {
     cyan: 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200',
@@ -421,18 +421,28 @@ function StatCard({ stat }: { stat: StatConfig }) {
   }[stat.tone];
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
-      <CardContent className="flex items-center gap-4 p-4">
-        <div className={cn('flex size-11 items-center justify-center rounded-lg border', toneClass)}>
-          <Icon size={20} />
+    <div className="flex min-w-0 items-center gap-3 rounded-md border border-zinc-800/75 bg-zinc-950/65 px-3 py-2 shadow-sm shadow-black/20 backdrop-blur-sm">
+      <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-md border', toneClass)}>
+        <Icon size={15} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <p className="shrink-0 text-lg font-semibold leading-none text-zinc-50">{stat.value}</p>
+          <p className="truncate text-xs font-medium text-zinc-300">{stat.label}</p>
         </div>
-        <div className="min-w-0">
-          <p className="text-2xl font-semibold leading-none text-zinc-50">{stat.value}</p>
-          <p className="mt-1 text-sm font-medium text-zinc-300">{stat.label}</p>
-          <p className="mt-0.5 truncate text-xs text-zinc-500">{stat.detail}</p>
-        </div>
-      </CardContent>
-    </Card>
+        <p className="mt-0.5 truncate text-[11px] leading-none text-zinc-500">{stat.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardStatsRow({ stats }: { stats: StatConfig[] }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Dashboard stats">
+      {stats.map((stat) => (
+        <StatStripItem key={stat.id} stat={stat} />
+      ))}
+    </div>
   );
 }
 
@@ -720,20 +730,20 @@ export function Home() {
     return isDirector
       ? [
           {
-            id: 'director-campaigns',
-            label: 'Campaigns',
-            value: data.campaigns.length,
-            detail: `${sessionCount} sessions prepared`,
-            icon: FolderKanban,
-            tone: 'cyan',
-          },
-          {
             id: 'director-live',
             label: 'Live tables',
             value: liveTables.length,
             detail: liveTables.length > 0 ? 'Ready to rejoin' : 'No active rooms',
             icon: Clapperboard,
             tone: 'green',
+          },
+          {
+            id: 'director-campaigns',
+            label: 'Campaigns',
+            value: data.campaigns.length,
+            detail: `${sessionCount} sessions prepared`,
+            icon: FolderKanban,
+            tone: 'cyan',
           },
           {
             id: 'director-scenes',
@@ -754,20 +764,20 @@ export function Home() {
         ]
       : [
           {
-            id: 'player-campaigns',
-            label: 'Campaigns',
-            value: data.campaigns.length,
-            detail: 'Tables joined',
-            icon: Shield,
-            tone: 'cyan',
-          },
-          {
             id: 'player-live',
             label: 'Live tables',
             value: liveTables.length,
             detail: liveTables.length > 0 ? 'Ready to join' : 'No active rooms',
             icon: PlayCircle,
             tone: 'green',
+          },
+          {
+            id: 'player-campaigns',
+            label: 'Campaigns',
+            value: data.campaigns.length,
+            detail: 'Tables joined',
+            icon: Shield,
+            tone: 'cyan',
           },
           {
             id: 'player-characters',
@@ -1001,13 +1011,7 @@ export function Home() {
           </div>
         )}
 
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:stats`}
-          items={stats}
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-          emptyState={null}
-          renderItem={(stat) => <StatCard stat={stat} />}
-        />
+        <DashboardStatsRow stats={stats} />
 
         <SortableSections storageKey={`anvil-dashboard:${roleKey}:sections`} sections={dashboardSections} />
       </div>

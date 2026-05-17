@@ -39,6 +39,8 @@ import {
 import { CLASS_RESOURCE_CONFIG } from '../data/class-resources.js';
 import { PERKS } from '../data/perks/perks-data.js';
 import { classDefinitions as sourceClassDefinitions, type ClassDefinition } from '../data/classes/class-definitions.js';
+import { getClassAbilities } from '../../rules/classes/class-abilities.js';
+import type { Ability as RulesAbility, HeroClass as RulesHeroClass } from '@anvil/types';
 
 import type {
   DrawSteelData,
@@ -63,6 +65,7 @@ import type {
   HeroClass,
   HeroicResource,
   ConditionName,
+  ActionType,
   Tier,
   TestDifficulty,
   SkillGroup,
@@ -76,6 +79,168 @@ import {
   isAbility,
   isTrait,
 } from '../types/game-data.js';
+
+type AbilityTier = 'signature' | 'threeCost' | 'fiveCost' | 'sevenCost' | 'nineCost' | 'elevenCost' | 'triggeredActions' | 'other';
+
+const RULES_ABILITY_LEVELS: Record<AbilityTier, number> = {
+  signature: 1,
+  threeCost: 1,
+  fiveCost: 1,
+  sevenCost: 3,
+  nineCost: 5,
+  elevenCost: 8,
+  triggeredActions: 1,
+  other: 1,
+};
+
+const ACTION_TYPE_LABELS: Record<string, ActionType> = {
+  action: 'Main action',
+  main: 'Main action',
+  maneuver: 'Maneuver',
+  freeManeuver: 'Free maneuver',
+  'free-maneuver': 'Free maneuver',
+  triggered: 'Triggered action',
+  freeTriggered: 'Free triggered action',
+  'free-triggered': 'Free triggered action',
+  move: 'Move action',
+  noAction: '-',
+};
+
+const CLASS_RESOURCE_NAMES: Record<HeroClass, string> = {
+  beastheart: 'Rage',
+  censor: 'Wrath',
+  conduit: 'Piety',
+  elementalist: 'Essence',
+  fury: 'Ferocity',
+  null: 'Discipline',
+  shadow: 'Insight',
+  summoner: 'Essence',
+  tactician: 'Focus',
+  talent: 'Clarity',
+  troubadour: 'Drama',
+};
+
+function normalizedContentKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function titleCaseCharacteristic(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function powerRollLabel(powerRoll: RulesAbility['powerRoll']): string {
+  if (!powerRoll) return 'Power Roll';
+  const characteristics = [
+    powerRoll.characteristic,
+    ...(powerRoll.alternativeCharacteristics ?? []),
+  ].map(titleCaseCharacteristic);
+
+  if (characteristics.length === 0) return 'Power Roll';
+  return `Power Roll + ${characteristics.join(' or ')}`;
+}
+
+function rulesAbilityCost(heroClass: HeroClass, ability: RulesAbility): {
+  cost?: string;
+  cost_amount?: number;
+  cost_resource?: string;
+} {
+  const rawAmount = ability.cost?.amount ?? ability.essenceCost;
+  const amount = typeof rawAmount === 'number' && rawAmount > 0 ? rawAmount : undefined;
+  if (amount === undefined) return {};
+
+  const resource = ability.cost?.resource ?? CLASS_RESOURCE_NAMES[heroClass];
+  return {
+    cost: `${amount} ${resource}`,
+    cost_amount: amount,
+    cost_resource: resource,
+  };
+}
+
+function rulesAbilityToFeature(
+  heroClass: HeroClass,
+  ability: RulesAbility,
+  tier: AbilityTier,
+  index: number,
+): Ability {
+  const cost = rulesAbilityCost(heroClass, ability);
+  const abilityType = tier === 'signature' ? 'Signature' : undefined;
+  const usage = ACTION_TYPE_LABELS[ability.actionType] ?? 'Main action';
+  const effects: Ability['effects'] = [];
+
+  if (ability.powerRoll) {
+    effects.push({
+      roll: powerRollLabel(ability.powerRoll),
+      tier1: ability.powerRoll.tier1,
+      tier2: ability.powerRoll.tier2,
+      tier3: ability.powerRoll.tier3,
+    });
+  }
+
+  if (ability.effect.trim()) {
+    effects.push({ name: 'Effect', effect: ability.effect });
+  }
+
+  for (const additional of ability.additionalEffects ?? []) {
+    effects.push({
+      name: additional.cost ?? 'Effect',
+      effect: additional.description,
+    });
+  }
+
+  if (ability.spendEssence?.trim()) {
+    effects.push({ name: 'Spend Resource', effect: ability.spendEssence });
+  }
+
+  return {
+    type: 'feature',
+    feature_type: 'ability',
+    name: ability.name,
+    ...(abilityType ? { ability_type: abilityType } : {}),
+    ...(ability.flavorText ? { flavor: ability.flavorText } : {}),
+    keywords: ability.keywords,
+    usage,
+    distance: ability.distance,
+    target: ability.target,
+    ...(cost.cost ? { cost: cost.cost } : {}),
+    ...(ability.trigger ? { trigger: ability.trigger } : {}),
+    effects,
+    metadata: {
+      scc: [`mcdm.heroes.v1:feature.ability.${heroClass}.rules:${ability.id}`],
+      scdc: [],
+      source: 'mcdm.heroes.v1',
+      type: `feature/ability/${heroClass}/rules`,
+      item_id: ability.id,
+      item_name: ability.name,
+      item_index: index,
+      file_basename: 'class-abilities',
+      file_dpath: `rules/classes/${heroClass}`,
+      class: heroClass,
+      level: RULES_ABILITY_LEVELS[tier],
+      ...(abilityType ? { ability_type: abilityType } : {}),
+      action_type: usage,
+      ...(cost.cost ? { cost: cost.cost } : {}),
+      ...(cost.cost_amount !== undefined ? { cost_amount: cost.cost_amount } : {}),
+      ...(cost.cost_resource ? { cost_resource: cost.cost_resource } : {}),
+      keywords: ability.keywords,
+      distance: ability.distance,
+      target: ability.target,
+      ...(ability.flavorText ? { flavor: ability.flavorText } : {}),
+    },
+  };
+}
+
+function buildRulesClassAbilityFeatures(): Ability[] {
+  const abilities: Ability[] = [];
+  for (const heroClass of Object.keys(CLASS_RESOURCE_NAMES) as HeroClass[]) {
+    const byTier = getClassAbilities(heroClass as RulesHeroClass);
+    for (const tier of Object.keys(byTier) as AbilityTier[]) {
+      byTier[tier].forEach((ability, index) => {
+        abilities.push(rulesAbilityToFeature(heroClass, ability, tier, index));
+      });
+    }
+  }
+  return abilities;
+}
 
 // ============================================
 // INTERNAL: Data Store
@@ -226,6 +391,20 @@ function initializeData(): DrawSteelData {
     if (key && !featureMap.has(key)) {
       featureMap.set(key, feature);
     }
+  }
+
+  const existingClassAbilityNames = new Set(
+    Array.from(featureMap.values())
+      .filter((feature): feature is Ability => feature.feature_type === 'ability')
+      .map((feature) => `${feature.metadata.class ?? ''}:${normalizedContentKey(feature.name)}`),
+  );
+
+  for (const feature of buildRulesClassAbilityFeatures()) {
+    const nameKey = `${feature.metadata.class ?? ''}:${normalizedContentKey(feature.name)}`;
+    if (existingClassAbilityNames.has(nameKey)) continue;
+
+    featureMap.set(feature.metadata.scc[0], feature);
+    existingClassAbilityNames.add(nameKey);
   }
 
   const allFeatures = Array.from(featureMap.values());

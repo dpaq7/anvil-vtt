@@ -98,6 +98,10 @@ export type {
   LevelUpChoice,
   StepStatus,
   WizardStepDefinition,
+  AbilityChoiceSlot,
+  ClassSkillChoiceSlot,
+  CompanionChoiceOption,
+  PerkChoiceSlot,
 } from './wizard-logic.js';
 
 // Kit Logic types

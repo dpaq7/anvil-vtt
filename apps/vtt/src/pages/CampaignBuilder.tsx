@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input, Collapsible, CollapsibleContent, CollapsibleTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@anvil/ui';
+import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input, Tabs, TabsContent, TabsList, TabsTrigger } from '@anvil/ui';
 import { ChevronDown, Minimize2, PanelLeftClose, PanelLeftOpen, Swords } from 'lucide-react';
 import { FORGESTEEL_MONSTERS, LORD_RELG_STATBLOCK, isMinion, isMonsterStatblock, loadMonsters } from '@anvil/data';
 import type { CompendiumItemBase, CompendiumMonster, MonsterFeature } from '@anvil/data';
@@ -11,6 +11,8 @@ import { TreeSidebar } from '../components/builder/TreeSidebar.js';
 import { CardGrid } from '../components/builder/CardGrid.js';
 import { SceneWorkspace } from '../components/builder/SceneWorkspace.js';
 import { SceneImportDialog } from '../components/import/SceneImportDialog.js';
+import { AbilityBlock } from '../components/drawsteel/AbilityBlock.js';
+import { drawSteelAbilityFromLike } from '../components/drawsteel/abilityData.js';
 
 interface Module { id: string; name: string; description: string; order_index: number; }
 interface Session { id: string; name: string; description: string; module_id: string | null; order_index: number; status?: string; }
@@ -70,8 +72,17 @@ interface InitiativeSection {
   creatures: InitiativeCreatureGroup[];
 }
 
+type BuilderLeftRailTab = 'structure' | 'initiative';
+
 const BUILDER_SIDEBAR_DEFAULT_WIDTH = 256;
 const BUILDER_SIDEBAR_MIN_WIDTH = 220;
+const RAIL_TABS_LIST_CLASS =
+  'flex h-9 w-full shrink-0 justify-start rounded-none border-b border-zinc-800 bg-zinc-950/40 p-0 px-2 pt-1';
+const RAIL_TAB_TRIGGER_CLASS =
+  'h-8 min-w-0 flex-1 rounded-b-none rounded-t-md border border-transparent border-b-0 px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 transition data-[state=active]:border-zinc-700 data-[state=active]:bg-zinc-900 data-[state=active]:text-zinc-100 data-[state=inactive]:hover:bg-zinc-800/50 data-[state=inactive]:hover:text-zinc-300';
+const RAIL_TAB_CONTENT_CLASS = 'mt-0 min-h-0 flex-1 overflow-hidden focus-visible:ring-0';
+const PANE_HANDLE_CLASS =
+  'absolute top-1/2 z-40 flex h-14 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-400 shadow-lg transition hover:border-zinc-500 hover:text-zinc-100';
 
 function maxHalfViewportWidth(): number {
   return typeof window === 'undefined' ? 760 : Math.floor(window.innerWidth * 0.5);
@@ -105,19 +116,6 @@ function monsterRoles(monster: CompendiumMonster | null, token?: BattleTokenSumm
 
 function monsterEv(monster: CompendiumMonster | null, token?: BattleTokenSummary): number {
   return parseNumber(monster?.ev ?? token?.ev ?? token?.level ?? 0);
-}
-
-function renderFeatureEffect(feature: MonsterFeature): string {
-  const effects = feature.effects ?? [];
-  if (effects.length === 0) return '';
-  return effects
-    .map((effect) => {
-      const roll = effect.roll ? String(effect.roll) : '';
-      const tierText = [effect.tier1, effect.tier2, effect.tier3].filter(Boolean).join('; ');
-      return compactText([effect.name, roll, effect.effect, (effect as typeof effect & { damage?: string }).damage, tierText], '');
-    })
-    .filter(Boolean)
-    .join(' ');
 }
 
 function getMaliceFamilyName(monster: CompendiumMonster | null): string | null {
@@ -184,26 +182,20 @@ function InitiativeCreatureDetails({ group }: { group: InitiativeCreatureGroup }
 
       <div className="mt-3 space-y-2">
         {abilityFeatures.slice(0, 6).map((feature, index) => (
-          <div key={feature.name} className={(index === 0 ? 'border-red-700 bg-red-950/30' : 'border-blue-700 bg-blue-950/30') + ' rounded border'}>
-            <div className={(index === 0 ? 'bg-red-700' : 'bg-blue-700') + ' flex items-center justify-between px-2 py-1 text-xs font-bold text-white'}>
-              <span>{feature.name}</span>
-              <span>{(feature as MonsterFeature & { cost?: string }).cost ?? feature.ability_type ?? ''}</span>
-            </div>
-            <div className="space-y-1 p-2">
-              <div className="flex flex-wrap gap-1 text-[10px] text-zinc-400">
-                {feature.keywords?.map((keyword) => <span key={keyword}>{keyword}</span>)}
-                {feature.usage ? <span>{feature.usage}</span> : null}
-                {feature.distance ? <span>{feature.distance}</span> : null}
-              </div>
-              <p className="leading-relaxed">{renderFeatureEffect(feature) || 'No effect text loaded.'}</p>
-            </div>
-          </div>
+          <AbilityBlock
+            key={feature.name}
+            ability={drawSteelAbilityFromLike(feature)}
+            compact
+            className={index === 0 ? 'border-red-400/90' : 'border-sky-400/80'}
+          />
         ))}
         {traitFeatures.slice(0, 4).map((feature) => (
-          <div key={feature.name} className="rounded border border-purple-700 bg-purple-950/25">
-            <div className="bg-purple-700 px-2 py-1 text-xs font-bold text-white">{feature.name}</div>
-            <p className="p-2 leading-relaxed">{renderFeatureEffect(feature) || 'No effect text loaded.'}</p>
-          </div>
+          <AbilityBlock
+            key={feature.name}
+            ability={drawSteelAbilityFromLike(feature)}
+            compact
+            className="border-purple-400/80"
+          />
         ))}
       </div>
     </div>
@@ -217,13 +209,12 @@ function InitiativeMaliceDetails({ block }: { block: MaliceFeatureBlock }) {
       {block.flavor ? <p className="mb-2 text-[11px] text-zinc-500">{block.flavor}</p> : null}
       <div className="space-y-2">
         {(block.features ?? []).map((feature) => (
-          <div key={feature.name} className="rounded border border-purple-700 bg-purple-950/25">
-            <div className="flex items-center justify-between bg-purple-700 px-2 py-1 font-bold text-white">
-              <span>{feature.name}</span>
-              <span>{(feature as MonsterFeature & { cost?: string }).cost ?? ''}</span>
-            </div>
-            <p className="p-2 leading-relaxed">{renderFeatureEffect(feature) || 'No effect text loaded.'}</p>
-          </div>
+          <AbilityBlock
+            key={feature.name}
+            ability={drawSteelAbilityFromLike(feature)}
+            compact
+            className="border-purple-400/80"
+          />
         ))}
       </div>
     </div>
@@ -256,9 +247,7 @@ export function CampaignBuilder() {
   const [newSceneType, setNewSceneType] = useState('story');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [structureOpen, setStructureOpen] = useState(true);
-  const [initiativeOpen, setInitiativeOpen] = useState(true);
-  const [structurePaneHeight, setStructurePaneHeight] = useState(360);
+  const [leftRailTab, setLeftRailTab] = useState<BuilderLeftRailTab>('structure');
   const [leftRailWidth, setLeftRailWidth] = useState(BUILDER_SIDEBAR_DEFAULT_WIDTH);
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
@@ -413,31 +402,6 @@ export function CampaignBuilder() {
     await load();
   };
 
-  const handleSidebarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = structurePaneHeight;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const sidebar = sidebarRef.current;
-      const maxHeight = sidebar ? Math.max(220, sidebar.getBoundingClientRect().height - 220) : 640;
-      const nextHeight = startHeight + moveEvent.clientY - startY;
-      setStructurePaneHeight(Math.min(maxHeight, Math.max(160, nextHeight)));
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.body.style.cursor = 'ns-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [structurePaneHeight]);
-
   const handleLeftRailResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -480,6 +444,9 @@ export function CampaignBuilder() {
   const selectedSession = selectedType === 'session' ? sessions.find((s) => s.id === selectedId) : null;
   const selectedScene = selectedType === 'scene' ? scenes.find((s) => s.id === selectedId) ?? null : null;
   const showInitiativeTracker = selectedScene?.type === 'battle';
+  useEffect(() => {
+    setLeftRailTab(showInitiativeTracker ? 'initiative' : 'structure');
+  }, [selectedScene?.id, showInitiativeTracker]);
   const monsterStatblocks = useMemo(() => {
     const byName = new Map<string, CompendiumMonster>();
     for (const monster of [...monsterItems.filter(isMonsterStatblock), ...FORGESTEEL_MONSTERS, LORD_RELG_STATBLOCK]) {
@@ -580,7 +547,7 @@ export function CampaignBuilder() {
   const builderSidebar = (
     <div
       ref={sidebarRef}
-      className="relative flex h-full shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/50 pr-8"
+      className="relative flex h-full shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/50"
       style={{ width: leftRailWidth, maxWidth: '50vw' }}
     >
       <div
@@ -598,135 +565,106 @@ export function CampaignBuilder() {
         title="Collapse campaign pane"
         aria-label="Collapse campaign pane"
         onClick={() => setLeftRailCollapsed(true)}
-        className="absolute right-2 top-3 z-20 rounded-md border border-zinc-700 bg-zinc-900 p-1.5 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100"
+        className={`${PANE_HANDLE_CLASS} right-0 translate-x-1/2`}
       >
-        <PanelLeftClose className="size-4" />
+        <PanelLeftClose className="size-3.5" />
       </button>
 
-      <Collapsible
-        open={structureOpen}
-        onOpenChange={setStructureOpen}
-        className={structureOpen ? `flex min-h-0 ${showInitiativeTracker ? 'flex-none' : 'flex-1'} flex-col border-b border-zinc-800` : 'flex-none border-b border-zinc-800'}
-        style={structureOpen && showInitiativeTracker ? { height: structurePaneHeight } : undefined}
+      <Tabs
+        value={leftRailTab}
+        onValueChange={(value) => setLeftRailTab(value as BuilderLeftRailTab)}
+        className="flex h-full min-h-0 flex-col overflow-hidden"
       >
-        <CollapsibleTrigger className="flex w-full items-center justify-between border-b border-zinc-800 p-3 text-left">
-          <h2 className="text-sm font-semibold text-zinc-300">Campaign Structure</h2>
-          <ChevronDown className={'size-4 text-zinc-500 transition-transform ' + (structureOpen ? '' : '-rotate-90')} />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="min-h-0 flex-1 overflow-y-auto">
+        <TabsList className={RAIL_TABS_LIST_CLASS}>
+          <TabsTrigger value="structure" className={RAIL_TAB_TRIGGER_CLASS}>
+            <span className="truncate">Structure</span>
+          </TabsTrigger>
+          {showInitiativeTracker ? (
+            <TabsTrigger value="initiative" className={RAIL_TAB_TRIGGER_CLASS}>
+              <Swords className="mr-1 size-3.5 shrink-0 text-red-400" />
+              <span className="truncate">Initiative</span>
+            </TabsTrigger>
+          ) : null}
+        </TabsList>
+
+        <TabsContent value="structure" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto`}>
           <TreeSidebar
             nodes={buildTree()}
             selectedId={selectedId}
             onSelect={(id, type) => { setSelectedId(id); setSelectedType(type); }}
           />
-        </CollapsibleContent>
-      </Collapsible>
+        </TabsContent>
 
-      {showInitiativeTracker && (
-        <>
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize campaign sections"
-            title="Resize panes"
-            onMouseDown={handleSidebarResizeStart}
-            className="group flex h-2 flex-none cursor-ns-resize items-center bg-zinc-900 hover:bg-zinc-800"
-          >
-            <div className="mx-auto h-px w-14 bg-zinc-700 group-hover:bg-zinc-500" />
-          </div>
-
-          <Collapsible open={initiativeOpen} onOpenChange={setInitiativeOpen} className="flex min-h-0 flex-1 flex-col">
-            <CollapsibleTrigger className="flex w-full items-center justify-between border-b border-zinc-800 p-3 text-left">
-              <div className="flex items-center gap-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="inline-flex"
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      tabIndex={0}
-                    >
-                      <Swords className="size-4 text-red-400" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-64 text-xs leading-relaxed">
-                    Draw Steel uses side initiative: roll 1d10 when combat starts. On 6+, heroes choose first; otherwise villains choose first. Sides alternate until every combatant has acted, then the next round begins.
-                  </TooltipContent>
-                </Tooltip>
-                <h2 className="text-sm font-semibold text-zinc-300">Initiative Tracker</h2>
+        {showInitiativeTracker ? (
+          <TabsContent value="initiative" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto bg-zinc-200 p-1 text-zinc-950`}>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1 text-sm font-black text-zinc-950">
+                <span>Monsters</span>
+                <span>EV {encounterEv}</span>
               </div>
-              <ChevronDown className={'size-4 text-zinc-500 transition-transform ' + (initiativeOpen ? '' : '-rotate-90')} />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="min-h-0 flex-1 overflow-y-auto bg-zinc-200 p-1 text-zinc-950">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1 text-sm font-black text-zinc-950">
-                  <span>Monsters</span>
-                  <span>EV {encounterEv}</span>
+
+              {initiativeSections.length > 0 ? initiativeSections.map((section, sectionIndex) => (
+                <div key={section.id} className="space-y-2">
+                  <div className="flex items-center justify-between px-1 text-xs font-black text-zinc-800">
+                    <span>{section.label}</span>
+                    <span>EV {section.ev}</span>
+                  </div>
+                  {section.creatures.map((group) => {
+                    const itemId = 'creature:' + group.id;
+                    const expanded = Boolean(expandedInitiativeItems[itemId]);
+                    return (
+                      <div key={group.id}>
+                        <button
+                          type="button"
+                          onClick={() => toggleInitiativeItem(itemId)}
+                          className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-zinc-950 shadow-sm hover:border-zinc-400"
+                        >
+                          <span>{group.name}{group.count > 1 ? ' x' + group.count : ''}</span>
+                          <ChevronDown className={'size-4 rounded border border-zinc-300 p-0.5 text-zinc-500 transition-transform ' + (expanded ? 'rotate-180' : '')} />
+                        </button>
+                        {expanded ? <InitiativeCreatureDetails group={group} /> : null}
+                      </div>
+                    );
+                  })}
+
+                  {maliceBlock && sectionIndex === maliceInsertIndex ? (
+                    <div className="space-y-2 pt-1">
+                      <div className="px-1 text-xs font-black text-zinc-500">Malice</div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleInitiativeItem('malice')}
+                          className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-zinc-950 shadow-sm hover:border-zinc-400"
+                        >
+                          <span>{maliceBlock.name}</span>
+                          <ChevronDown className={'size-4 rounded border border-zinc-300 p-0.5 text-zinc-500 transition-transform ' + (expandedInitiativeItems['malice'] ? 'rotate-180' : '')} />
+                        </button>
+                        {expandedInitiativeItems['malice'] ? <InitiativeMaliceDetails block={maliceBlock} /> : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
+              )) : (
+                <p className="rounded-md border border-zinc-300 bg-white p-3 text-xs text-zinc-500">Add monsters or NPCs to this battle map to seed initiative groups.</p>
+              )}
 
-                {initiativeSections.length > 0 ? initiativeSections.map((section, sectionIndex) => (
-                  <div key={section.id} className="space-y-2">
-                    <div className="flex items-center justify-between px-1 text-xs font-black text-zinc-800">
-                      <span>{section.label}</span>
-                      <span>EV {section.ev}</span>
-                    </div>
-                    {section.creatures.map((group) => {
-                      const itemId = 'creature:' + group.id;
-                      const expanded = Boolean(expandedInitiativeItems[itemId]);
-                      return (
-                        <div key={group.id}>
-                          <button
-                            type="button"
-                            onClick={() => toggleInitiativeItem(itemId)}
-                            className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-zinc-950 shadow-sm hover:border-zinc-400"
-                          >
-                            <span>{group.name}{group.count > 1 ? ' x' + group.count : ''}</span>
-                            <ChevronDown className={'size-4 rounded border border-zinc-300 p-0.5 text-zinc-500 transition-transform ' + (expanded ? 'rotate-180' : '')} />
-                          </button>
-                          {expanded ? <InitiativeCreatureDetails group={group} /> : null}
-                        </div>
-                      );
-                    })}
-
-                    {maliceBlock && sectionIndex === maliceInsertIndex ? (
-                      <div className="space-y-2 pt-1">
-                        <div className="px-1 text-xs font-black text-zinc-500">Malice</div>
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => toggleInitiativeItem('malice')}
-                            className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-zinc-950 shadow-sm hover:border-zinc-400"
-                          >
-                            <span>{maliceBlock.name}</span>
-                            <ChevronDown className={'size-4 rounded border border-zinc-300 p-0.5 text-zinc-500 transition-transform ' + (expandedInitiativeItems['malice'] ? 'rotate-180' : '')} />
-                          </button>
-                          {expandedInitiativeItems['malice'] ? <InitiativeMaliceDetails block={maliceBlock} /> : null}
-                        </div>
-                      </div>
-                    ) : null}
+              {heroTokens.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between px-1 text-xs font-black text-zinc-800">
+                    <span>Heroes</span>
+                    <span>{heroTokens.length}</span>
                   </div>
-                )) : (
-                  <p className="rounded-md border border-zinc-300 bg-white p-3 text-xs text-zinc-500">Add monsters or NPCs to this battle map to seed initiative groups.</p>
-                )}
-
-                {heroTokens.length > 0 ? (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex items-center justify-between px-1 text-xs font-black text-zinc-800">
-                      <span>Heroes</span>
-                      <span>{heroTokens.length}</span>
+                  {heroTokens.map((token) => (
+                    <div key={token.id} className="rounded-md border border-zinc-300 bg-white px-2 py-2 text-xs font-bold text-zinc-950 shadow-sm">
+                      {token.name}
                     </div>
-                    {heroTokens.map((token) => (
-                      <div key={token.id} className="rounded-md border border-zinc-300 bg-white px-2 py-2 text-xs font-bold text-zinc-950 shadow-sm">
-                        {token.name}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </>
-      )}
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </TabsContent>
+        ) : null}
+      </Tabs>
     </div>
   );
 
@@ -739,9 +677,9 @@ export function CampaignBuilder() {
           title="Expand campaign pane"
           aria-label="Expand campaign pane"
           onClick={() => setLeftRailCollapsed(false)}
-          className="absolute left-2 top-3 z-30 rounded-md border border-zinc-700 bg-zinc-900 p-1.5 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100"
+          className={`${PANE_HANDLE_CLASS} left-0 translate-x-1/2`}
         >
-          <PanelLeftOpen className="size-4" />
+          <PanelLeftOpen className="size-3.5" />
         </button>
       )}
       {focusMode && (
@@ -758,9 +696,9 @@ export function CampaignBuilder() {
         </Button>
       )}
       {/* Main Content */}
-      <div className="min-w-0 flex-1 overflow-y-auto">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {!focusMode && (
-        <div className="flex items-center gap-2 border-b border-zinc-800 p-4">
+        <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 p-4">
           {campaignId && <SceneImportDialog buttonLabel="Import Scenes" onImport={handleSceneImport} />}
           {selectedType === 'campaign' && (
             <Dialog open={addModuleOpen} onOpenChange={setAddModuleOpen}>
@@ -836,51 +774,55 @@ export function CampaignBuilder() {
         )}
 
         {/* Conditionally render SceneWorkspace or CardGrid */}
-        {selectedType === 'scene' && selectedId ? (
-          (() => {
-            const selectedScene = scenes.find((s) => s.id === selectedId);
-            if (!selectedScene) return <div className="p-8 text-zinc-500">Scene not found</div>;
-            return (
-              <SceneWorkspace
-                scene={{
-                  ...selectedScene,
-                  type: selectedScene.type as 'battle' | 'story' | 'montage' | 'negotiation' | 'respite',
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {selectedType === 'scene' && selectedId ? (
+            (() => {
+              const selectedScene = scenes.find((s) => s.id === selectedId);
+              if (!selectedScene) return <div className="p-8 text-zinc-500">Scene not found</div>;
+              return (
+                <SceneWorkspace
+                  scene={{
+                    ...selectedScene,
+                    type: selectedScene.type as 'battle' | 'story' | 'montage' | 'negotiation' | 'respite',
+                  }}
+                  campaignId={campaignId!}
+                  onSave={load}
+                  onBeginCombat={handleBeginCombat}
+                  focusMode={focusMode}
+                  onFocusModeChange={setFocusMode}
+                />
+              );
+            })()
+          ) : (
+            <div className="h-full overflow-y-auto">
+              <CardGrid
+                items={getCardItems()}
+                onSelect={(id) => {
+                  // If clicking a scene, find and select it in tree
+                  const scene = scenes.find((s) => s.id === id);
+                  if (scene) {
+                    setSelectedId(id);
+                    setSelectedType('scene');
+                  } else {
+                    // It could be a module or session
+                    const mod = modules.find((m) => m.id === id);
+                    if (mod) { setSelectedId(id); setSelectedType('module'); }
+                    const sess = sessions.find((s) => s.id === id);
+                    if (sess) { setSelectedId(id); setSelectedType('session'); }
+                  }
                 }}
-                campaignId={campaignId!}
-                onSave={load}
-                onBeginCombat={handleBeginCombat}
-                focusMode={focusMode}
-                onFocusModeChange={setFocusMode}
+                onDoubleClick={(id) => {
+                  // Double-click on scene also opens it (select it)
+                  const scene = scenes.find((s) => s.id === id);
+                  if (scene) {
+                    setSelectedId(id);
+                    setSelectedType('scene');
+                  }
+                }}
               />
-            );
-          })()
-        ) : (
-          <CardGrid
-            items={getCardItems()}
-            onSelect={(id) => {
-              // If clicking a scene, find and select it in tree
-              const scene = scenes.find((s) => s.id === id);
-              if (scene) {
-                setSelectedId(id);
-                setSelectedType('scene');
-              } else {
-                // It could be a module or session
-                const mod = modules.find((m) => m.id === id);
-                if (mod) { setSelectedId(id); setSelectedType('module'); }
-                const sess = sessions.find((s) => s.id === id);
-                if (sess) { setSelectedId(id); setSelectedType('session'); }
-              }
-            }}
-            onDoubleClick={(id) => {
-              // Double-click on scene also opens it (select it)
-              const scene = scenes.find((s) => s.id === id);
-              if (scene) {
-                setSelectedId(id);
-                setSelectedType('scene');
-              }
-            }}
-          />
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Invite Dialog */}

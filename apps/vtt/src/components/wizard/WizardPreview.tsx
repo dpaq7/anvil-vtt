@@ -1,5 +1,5 @@
 import type { CharacterInProgress, DerivedStats } from '@anvil/data';
-import { GameData, WizardLogic } from '@anvil/data';
+import { GameData, PERKS, WizardLogic } from '@anvil/data';
 
 interface Props {
   character: CharacterInProgress;
@@ -47,11 +47,17 @@ export function WizardPreview({ character }: Props) {
     ? GameData.getKit(character.kit)?.name ?? character.kit
     : null;
   const selectedSkills = WizardLogic.getSelectedSkillNames(character);
-  const selectedAbilities = character.selectedAbilities.map((abilityId) => {
+  const selectedAbilities = WizardLogic.getSelectedAbilityIds(character).map((abilityId) => {
     const slug = abilityId.includes(':') ? abilityId.split(':').pop() ?? abilityId : abilityId;
     const ability = GameData.getByScc(abilityId) ?? GameData.getAbility(abilityId) ?? GameData.getAbility(slug);
     return ability?.name ?? slug;
   });
+  const selectedPerks = WizardLogic.getSelectedPerkIds(character).map((perkId) => {
+    return PERKS.find((perk) => perk.id === perkId)?.name ?? perkId;
+  });
+  const companionName = character.companion
+    ? WizardLogic.getCompanionOptions().find((option) => option.id === character.companion)?.name ?? character.companion
+    : null;
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -72,6 +78,7 @@ export function WizardPreview({ character }: Props) {
       {careerName && <Field label="Career" value={careerName} />}
       {complicationName && <Field label="Complication" value={complicationName} />}
       {kitName && <Field label="Kit" value={kitName} />}
+      {companionName && <Field label="Companion" value={companionName} />}
 
       {character.characteristics && (
         <div>
@@ -108,6 +115,13 @@ export function WizardPreview({ character }: Props) {
         <div>
           <span className="text-zinc-500">Abilities</span>
           <p className="text-zinc-300">{selectedAbilities.join(', ')}</p>
+        </div>
+      )}
+
+      {selectedPerks.length > 0 && (
+        <div>
+          <span className="text-zinc-500">Perks</span>
+          <p className="text-zinc-300">{selectedPerks.join(', ')}</p>
         </div>
       )}
     </div>
