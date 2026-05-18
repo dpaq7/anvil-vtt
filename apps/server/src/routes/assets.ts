@@ -43,10 +43,27 @@ async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: strin
        OR EXISTS (SELECT 1 FROM custom_terrain ct WHERE ct.asset_id = ? AND ct.campaign_id = cm.campaign_id)
        OR EXISTS (SELECT 1 FROM monster_portraits mp WHERE mp.asset_id = ? AND mp.campaign_id = cm.campaign_id)
        OR EXISTS (SELECT 1 FROM npcs n WHERE n.portrait_asset_id = ? AND n.campaign_id = cm.campaign_id)
+       OR EXISTS (
+         SELECT 1
+         FROM campaign_members hcm
+         JOIN heroes h ON h.id = hcm.hero_id
+         WHERE hcm.campaign_id = cm.campaign_id
+           AND h.portrait_asset_id = ?
+           AND h.deleted_at IS NULL
+       )
+       OR EXISTS (
+         SELECT 1
+         FROM session_participants sp
+         JOIN game_sessions gs ON gs.id = sp.game_session_id
+         JOIN heroes h ON h.id = sp.hero_id
+         WHERE gs.campaign_id = cm.campaign_id
+           AND h.portrait_asset_id = ?
+           AND h.deleted_at IS NULL
+       )
      )
      LIMIT 1`,
   )
-    .bind(userId, assetId, assetId, assetId, assetId, assetId)
+    .bind(userId, assetId, assetId, assetId, assetId, assetId, assetId, assetId)
     .first<{ 1: number }>();
   return linked !== null;
 }
@@ -197,9 +214,10 @@ assetRoutes.delete('/:id', async (c) => {
       OR EXISTS (SELECT 1 FROM custom_terrain WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM monster_portraits WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM npcs WHERE portrait_asset_id = ?)
+      OR EXISTS (SELECT 1 FROM heroes WHERE portrait_asset_id = ? AND deleted_at IS NULL)
      LIMIT 1`,
   )
-    .bind(assetId, assetId, assetId, assetId, assetId)
+    .bind(assetId, assetId, assetId, assetId, assetId, assetId)
     .first<{ 1: number }>();
   if (linked) return c.json({ error: 'Asset is in use' }, 409);
 

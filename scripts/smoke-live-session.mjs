@@ -365,13 +365,20 @@ async function main() {
     const hero = await player.request('/api/heroes', {
       method: 'POST',
       body: {
-        name: `Smoke Hero ${runId}`,
+        name: `Smoke Beastheart ${runId}`,
         ancestry: 'human',
-        heroClass: 'elementalist',
+        heroClass: 'beastheart',
+        subclass: 'guardian',
         level: 1,
-        characteristics: { might: 1, agility: 1, reason: 2, intuition: 0, presence: 0 },
-        abilities: ['meteoric-introduction'],
-        data: { staminaCurrent: 18, recoveriesCurrent: 8 },
+        characteristics: { might: 2, agility: 0, reason: 0, intuition: 2, presence: 0 },
+        abilities: ['stormrage', 'come-on'],
+        data: {
+          staminaCurrent: 21,
+          recoveriesCurrent: 12,
+          companion: 'wolf',
+          companionStaminaCurrent: 21,
+          companionRampage: 0,
+        },
       },
     });
 
@@ -405,6 +412,13 @@ async function main() {
     assert(playerState.sessionId === sessionId, 'player state has wrong session id');
     assertStateHasSceneTypes(directorState, ['story', 'montage', 'negotiation', 'battle', 'respite']);
     assert(playerState.entities.some((entity) => entity.id === hero.id && entity.type === 'hero'), 'player hero was not hydrated');
+    const liveHero = playerState.entities.find((entity) => entity.id === hero.id && entity.type === 'hero');
+    assert(liveHero?.heroicResourceName === 'Ferocity', 'beastheart live hero did not hydrate Ferocity');
+    assert(liveHero?.companionName === 'Wolf', 'beastheart live hero did not hydrate selected companion');
+    assert(liveHero?.companionSignatureAbility === 'Clamping Jaws', 'beastheart companion signature ability missing');
+    assert(liveHero?.companionMaxStamina === liveHero?.maxStamina, 'beastheart companion stamina does not match hero maximum');
+    assert(liveHero?.companionRecoveriesMax === 0 && liveHero?.companionUsesHeroRecoveries === true, 'beastheart companion recovery rules missing');
+    assert(Array.isArray(liveHero?.companionRampageThresholds) && liveHero.companionRampageThresholds.includes(8), 'beastheart rampage thresholds missing');
 
     const villain = directorState.entities.find((entity) => entity.type === 'monster' || entity.type === 'npc');
     assert(villain, 'demo battle villain token was not hydrated');

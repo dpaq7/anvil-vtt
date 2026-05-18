@@ -198,12 +198,11 @@ export function Account() {
                     <p className="mt-1 text-zinc-100">{user?.username ?? 'Unknown'}</p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">User ID</p>
-                    <p className="mt-1 break-all font-mono text-xs text-zinc-300">{user?.id ?? 'Unavailable'}</p>
-                  </div>
-                  <div>
                     <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Avatar</p>
                     <p className="mt-1 text-zinc-300">{user?.avatarUrl ? 'Connected' : 'Using initials'}</p>
+                  </div>
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-400">
+                    Internal account identifiers are hidden from this view.
                   </div>
                 </CardContent>
               </Card>

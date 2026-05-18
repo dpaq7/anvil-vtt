@@ -15,6 +15,9 @@ export interface MonsterPortraitDialogProps {
   currentPortraitUrl?: string;
   onSave: (assetId: string) => Promise<void>;
   onRemove?: () => Promise<void>;
+  title?: string;
+  uploadDescription?: string;
+  outputFileName?: string;
   children: React.ReactNode;
 }
 
@@ -26,6 +29,9 @@ export function MonsterPortraitDialog({
   currentPortraitUrl,
   onSave,
   onRemove,
+  title,
+  uploadDescription,
+  outputFileName,
   children,
 }: MonsterPortraitDialogProps) {
   const [open, setOpen] = useState(false);
@@ -137,7 +143,7 @@ export function MonsterPortraitDialog({
         canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas export failed'))), 'image/png');
       });
 
-      const portraitFile = new File([blob], `${monsterName}-portrait.png`, { type: 'image/png' });
+      const portraitFile = new File([blob], outputFileName ?? `${monsterName}-portrait.png`, { type: 'image/png' });
       const assetId = await uploadFile(portraitFile, 'portrait');
       await onSave(assetId);
 
@@ -168,7 +174,7 @@ export function MonsterPortraitDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="max-w-sm">
         <DialogTitle className="text-sm">
-          Portrait — {monsterName}
+          {title ?? `Portrait — ${monsterName}`}
         </DialogTitle>
 
         <input
@@ -256,7 +262,7 @@ export function MonsterPortraitDialog({
               Choose Image
             </Button>
             <p className="text-xs text-zinc-500">
-              Upload art for this monster&apos;s token
+              {uploadDescription ?? `Upload art for this monster's token`}
             </p>
           </div>
         )}

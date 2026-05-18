@@ -14,6 +14,7 @@ export interface HeroSummary {
   level: number;
   heroClass: string | null;
   subclass: string | null;
+  portraitAssetId: string | null;
   portraitUrl: string | null;
 
   /** Resolved from ancestry ID via GameData. */

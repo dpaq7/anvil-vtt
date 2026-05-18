@@ -10,6 +10,8 @@ import {
   Footprints,
   HeartPulse,
   Medal,
+  PawPrint,
+  Package,
   Shield,
   Sparkles,
   Star,
@@ -20,6 +22,9 @@ import {
 import { Badge, Button, cn } from '@anvil/ui';
 import { GameData, HeroLogic } from '@anvil/data';
 import type { CharacteristicId, EntityData } from '../../types/protocol.js';
+import { CharacterInventoryPanel } from '../CharacterInventoryPanel.js';
+import { normalizeInventory } from '../../lib/inventory.js';
+import type { CharacterInventoryItem } from '../../lib/inventory.js';
 
 type RollCharacteristicHandler = (label: string, modifier: number) => void;
 
@@ -44,6 +49,7 @@ interface PlayerHeroSheetPanelProps {
   onStandUp: () => void;
   onEscapeGrab: () => void;
   onOpenAbilities: () => void;
+  onInventoryChange: (inventory: CharacterInventoryItem[]) => void;
 }
 
 type CharacteristicConfig = {
@@ -210,6 +216,7 @@ export function PlayerHeroSheetPanel({
   onStandUp,
   onEscapeGrab,
   onOpenAbilities,
+  onInventoryChange,
 }: PlayerHeroSheetPanelProps) {
   if (!hero) {
     return (
@@ -243,6 +250,18 @@ export function PlayerHeroSheetPanel({
   const conditions = getStringArray(hero, 'conditions');
   const isProne = conditions.includes('prone');
   const isGrabbed = conditions.includes('grabbed') || conditions.includes('restrained');
+  const companionName = getString(hero, 'companionName');
+  const companionCurrentStamina = getNumber(hero, 'companionCurrentStamina', 0);
+  const companionMaxStamina = getNumber(hero, 'companionMaxStamina', companionCurrentStamina);
+  const companionRampage = getNumber(hero, 'companionRampage', 0);
+  const companionRampageThresholds = getNumberArray(hero, 'companionRampageThresholds');
+  const nextRampageThreshold = companionRampageThresholds.find((threshold) => threshold > companionRampage) ?? null;
+  const companionSummary = [
+    getString(hero, 'companionSize') ? `Size ${getString(hero, 'companionSize')}` : null,
+    getString(hero, 'companionSpeed') ? `Speed ${getString(hero, 'companionSpeed')}` : null,
+    typeof hero['companionStability'] === 'number' ? `Stability ${hero['companionStability']}` : null,
+  ].filter(Boolean).join(' / ');
+  const inventory = normalizeInventory(hero['inventory']);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-zinc-900/60">
@@ -305,6 +324,38 @@ export function PlayerHeroSheetPanel({
             />
           </div>
         </RailSection>
+
+        {companionName && (
+          <RailSection title="Companion" Icon={PawPrint}>
+            <div className="grid grid-cols-2 gap-2">
+              <MetricButton
+                label="Companion"
+                value={companionName}
+                sublabel={companionSummary || 'bonded ally'}
+              />
+              <MetricButton
+                label="Stamina"
+                value={`${companionCurrentStamina}/${companionMaxStamina}`}
+                sublabel="shares maximum"
+              />
+              <MetricButton
+                label="Recoveries"
+                value="0"
+                sublabel="uses yours"
+              />
+              <MetricButton
+                label="Rampage"
+                value={String(companionRampage)}
+                sublabel={nextRampageThreshold === null ? 'final threshold met' : `next ${nextRampageThreshold}`}
+              />
+            </div>
+            <div className="mt-2 space-y-1.5">
+              <DetailRow label="Ability" value={getString(hero, 'companionSignatureAbility')} />
+              <DetailRow label="Turn" value="Shared turn, separate move actions" />
+              <DetailRow label="Actions" value="Split main action and maneuver" />
+            </div>
+          </RailSection>
+        )}
 
         <RailSection title="Characteristics" Icon={Activity}>
           <div className="grid grid-cols-5 gap-1.5">
@@ -466,6 +517,14 @@ export function PlayerHeroSheetPanel({
             </div>
           )}
         </RailSection>
+
+        <RailSection title="Inventory" Icon={Package}>
+          <CharacterInventoryPanel
+            inventory={inventory}
+            onInventoryChange={onInventoryChange}
+            compact
+          />
+        </RailSection>
       </div>
     </div>
   );
@@ -602,6 +661,13 @@ function getStringArray(hero: EntityData | null | undefined, key: string): strin
   return stringArray(value);
 }
 
+function getNumberArray(hero: EntityData | null | undefined, key: string): number[] {
+  const value = hero?.[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+    : [];
+}
+
 function stringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
   if (typeof value !== 'string' || !value.trim()) return [];
@@ -662,8 +728,11 @@ function resolveAncestryName(hero: EntityData | null): string | null {
 
 function resolveKitName(hero: EntityData | null): string | null {
   const kitId = getString(hero, 'kit');
-  if (!kitId) return null;
-  return GameData.getKit(kitId)?.name ?? titleCaseId(kitId);
+  const secondaryKitId = getString(hero, 'secondaryKit');
+  const names = [kitId, secondaryKitId]
+    .filter((id): id is string => !!id)
+    .map((id) => GameData.getKit(id)?.name ?? titleCaseId(id));
+  return names.length > 0 ? names.join(', ') : null;
 }
 
 function resolveCareer(hero: EntityData | null) {

@@ -596,16 +596,16 @@ export function CampaignBuilder() {
         </TabsContent>
 
         {showInitiativeTracker ? (
-          <TabsContent value="initiative" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto bg-zinc-200 p-1 text-zinc-950`}>
+          <TabsContent value="initiative" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto bg-anvil-paper p-1 text-anvil-ink`}>
             <div className="space-y-3">
-              <div className="flex items-center justify-between px-1 text-sm font-black text-zinc-950">
+              <div className="flex items-center justify-between px-1 text-sm font-black text-anvil-ink">
                 <span>Monsters</span>
                 <span>EV {encounterEv}</span>
               </div>
 
               {initiativeSections.length > 0 ? initiativeSections.map((section, sectionIndex) => (
                 <div key={section.id} className="space-y-2">
-                  <div className="flex items-center justify-between px-1 text-xs font-black text-zinc-800">
+                  <div className="flex items-center justify-between px-1 text-xs font-black text-anvil-ink/80">
                     <span>{section.label}</span>
                     <span>EV {section.ev}</span>
                   </div>
@@ -617,7 +617,7 @@ export function CampaignBuilder() {
                         <button
                           type="button"
                           onClick={() => toggleInitiativeItem(itemId)}
-                          className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-zinc-950 shadow-sm hover:border-zinc-400"
+                          className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-anvil-ink shadow-sm hover:border-zinc-400"
                         >
                           <span>{group.name}{group.count > 1 ? ' x' + group.count : ''}</span>
                           <ChevronDown className={'size-4 rounded border border-zinc-300 p-0.5 text-zinc-500 transition-transform ' + (expanded ? 'rotate-180' : '')} />
@@ -634,7 +634,7 @@ export function CampaignBuilder() {
                         <button
                           type="button"
                           onClick={() => toggleInitiativeItem('malice')}
-                          className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-zinc-950 shadow-sm hover:border-zinc-400"
+                          className="flex w-full items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-2 text-left text-xs font-bold text-anvil-ink shadow-sm hover:border-zinc-400"
                         >
                           <span>{maliceBlock.name}</span>
                           <ChevronDown className={'size-4 rounded border border-zinc-300 p-0.5 text-zinc-500 transition-transform ' + (expandedInitiativeItems['malice'] ? 'rotate-180' : '')} />
@@ -650,12 +650,12 @@ export function CampaignBuilder() {
 
               {heroTokens.length > 0 ? (
                 <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between px-1 text-xs font-black text-zinc-800">
+                  <div className="flex items-center justify-between px-1 text-xs font-black text-anvil-ink/80">
                     <span>Heroes</span>
                     <span>{heroTokens.length}</span>
                   </div>
                   {heroTokens.map((token) => (
-                    <div key={token.id} className="rounded-md border border-zinc-300 bg-white px-2 py-2 text-xs font-bold text-zinc-950 shadow-sm">
+                    <div key={token.id} className="rounded-md border border-zinc-300 bg-white px-2 py-2 text-xs font-bold text-anvil-ink shadow-sm">
                       {token.name}
                     </div>
                   ))}
@@ -702,7 +702,7 @@ export function CampaignBuilder() {
           {campaignId && <SceneImportDialog buttonLabel="Import Scenes" onImport={handleSceneImport} />}
           {selectedType === 'campaign' && (
             <Dialog open={addModuleOpen} onOpenChange={setAddModuleOpen}>
-              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Module</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-anvil-ink hover:bg-sidebar-director/80">Add Module</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>New Module</DialogTitle>
                 <div className="mt-4 flex flex-col gap-4">
@@ -717,7 +717,7 @@ export function CampaignBuilder() {
           )}
           {selectedType === 'module' && (
             <Dialog open={addSessionOpen} onOpenChange={setAddSessionOpen}>
-              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Session</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-anvil-ink hover:bg-sidebar-director/80">Add Session</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>New Session</DialogTitle>
                 <div className="mt-4 flex flex-col gap-4">
@@ -732,7 +732,7 @@ export function CampaignBuilder() {
           )}
           {selectedType === 'session' && (
             <Dialog open={addSceneOpen} onOpenChange={setAddSceneOpen}>
-              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Scene</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-anvil-ink hover:bg-sidebar-director/80">Add Scene</Button></DialogTrigger>
               <DialogContent>
                 <DialogTitle>New Scene</DialogTitle>
                 <div className="mt-4 flex flex-col gap-4">

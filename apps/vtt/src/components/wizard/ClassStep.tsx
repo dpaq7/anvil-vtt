@@ -33,8 +33,11 @@ export function ClassStep({ character, onChange }: Props) {
                   heroClass: cls.id as CharacterInProgress['heroClass'],
                   subclass: null,
                   companion: null,
+                  characteristics: null,
+                  secondaryKit: null,
                   classSkillChoices: [],
                   abilityChoices: {},
+                  summonerMinionChoices: {},
                   selectedAbilities: [],
                   selectedPerks: [],
                 })

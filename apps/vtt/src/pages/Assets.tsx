@@ -275,6 +275,29 @@ export function Assets() {
     setNpcDialogOpen(false);
   }, [campaignId, newNpcName, createNpc]);
 
+  const handleHeroPortraitSave = useCallback(async (heroId: string, assetId: string) => {
+    await api.put(`/api/heroes/${heroId}`, { portraitAssetId: assetId });
+    const portraitUrl = `/api/assets/${assetId}/data`;
+    setHeroes((current) =>
+      current.map((hero) =>
+        hero.id === heroId
+          ? { ...hero, portraitAssetId: assetId, portraitUrl }
+          : hero,
+      ),
+    );
+  }, []);
+
+  const handleHeroPortraitRemove = useCallback(async (heroId: string) => {
+    await api.put(`/api/heroes/${heroId}`, { portraitAssetId: null, portraitUrl: null });
+    setHeroes((current) =>
+      current.map((hero) =>
+        hero.id === heroId
+          ? { ...hero, portraitAssetId: null, portraitUrl: null }
+          : hero,
+      ),
+    );
+  }, []);
+
   // ── Counts for sidebar ──
   const counts = useMemo(
     () => ({
@@ -360,6 +383,8 @@ export function Assets() {
           <HeroGrid
             heroes={heroes}
             onSelect={(id) => setSelectedItemId(id)}
+            onPortraitSave={handleHeroPortraitSave}
+            onPortraitRemove={handleHeroPortraitRemove}
             selectedId={selectedItemId}
           />
         );

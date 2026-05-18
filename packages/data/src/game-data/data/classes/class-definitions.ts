@@ -1,8 +1,21 @@
-// Class definitions for all 10 Draw Steel hero classes
+// Class definitions for Draw Steel hero classes
 // Contains starting stats, heroic resources, subclass options, and characteristics
 
 import { type HeroClass, type HeroicResourceType } from '../../types/hero.js';
 import { type Characteristic, type Characteristics } from '../../types/common.js';
+
+const TWO_FIXED_CHARACTERISTIC_ARRAYS = [
+  [2, -1, -1],
+  [1, 1, -1],
+  [1, 0, 0],
+];
+
+const ONE_FIXED_CHARACTERISTIC_ARRAYS = [
+  [2, 2, -1, -1],
+  [2, 1, 1, -1],
+  [2, 1, 0, 0],
+  [1, 1, 1, 0],
+];
 
 export interface SubclassOption {
   id: string;
@@ -33,6 +46,7 @@ export interface ClassDefinition {
 
   // Characteristics
   startingCharacteristics: Partial<Characteristics>;
+  characteristicArrays: number[][];
   potencyCharacteristic: Characteristic;
 
   // Skills
@@ -52,7 +66,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
     name: 'Beastheart',
     description: 'A warrior bonded with a ferocious companion creature, fighting side by side with primal fury.',
     role: 'Striker',
-    masterClass: false,
+    masterClass: true,
     startingStamina: 21,
     staminaPerLevel: 12,
     startingRecoveries: 12,
@@ -61,9 +75,10 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       type: 'ferocity',
       startingAmount: 'victories',
       gainPerTurn: '1d3',
-      gainTrigger: 'Start of turn + first time you/companion deal damage per round',
+      gainTrigger: 'Start of your turn + first time each round a creature adjacent to your companion takes damage',
     },
     startingCharacteristics: { might: 2, intuition: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'might',
     fixedSkills: ['Handle Animals'],
     skillGroupChoices: [{ groups: ['exploration', 'intrigue'], count: 2 }],
@@ -94,6 +109,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round a judged creature deals damage to you OR you deal damage to judged creature',
     },
     startingCharacteristics: { might: 2, presence: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'presence',
     fixedSkills: [],
     skillGroupChoices: [],
@@ -124,6 +140,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'Can Pray before rolling for chance at more Piety or Domain Effect (risk psychic damage)',
     },
     startingCharacteristics: { intuition: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'intuition',
     fixedSkills: [],
     skillGroupChoices: [{ groups: ['interpersonal', 'lore'], count: 2 }],
@@ -167,6 +184,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round you or an ally takes elemental (non-untyped/non-holy) damage',
     },
     startingCharacteristics: { reason: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'reason',
     fixedSkills: [],
     skillGroupChoices: [],
@@ -198,6 +216,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round you take damage (+1). First time per encounter you become winded or dying (+1d3).',
     },
     startingCharacteristics: { might: 2, agility: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'might',
     fixedSkills: ['Nature'],
     skillGroupChoices: [{ groups: ['exploration', 'intrigue'], count: 2 }],
@@ -228,6 +247,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round an enemy in Null Field uses main action OR Director spends Malice',
     },
     startingCharacteristics: { agility: 2, intuition: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'intuition',
     fixedSkills: [],
     skillGroupChoices: [],
@@ -258,6 +278,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round dealing damage with 1+ surges. Abilities cost 1 less if power roll has edge/double edge.',
     },
     startingCharacteristics: { agility: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'agility',
     fixedSkills: [],
     skillGroupChoices: [],
@@ -288,6 +309,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round a minion dies unwillingly. Can sacrifice minions to reduce ability costs.',
     },
     startingCharacteristics: { reason: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'reason',
     fixedSkills: ['Magic', 'Strategy'],
     skillGroupChoices: [{ groups: ['intrigue', 'lore'], count: 2 }],
@@ -319,6 +341,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round you or ally damages marked target OR ally uses heroic ability',
     },
     startingCharacteristics: { might: 2, reason: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'reason',
     fixedSkills: [],
     skillGroupChoices: [],
@@ -349,6 +372,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: 'First time per round a creature is force moved. Can spend below 0 (to -(1+Reason)), becoming Strained.',
     },
     startingCharacteristics: { reason: 2, presence: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'reason',
     fixedSkills: [],
     skillGroupChoices: [],
@@ -379,6 +403,7 @@ export const classDefinitions: Record<HeroClass, ClassDefinition> = {
       gainTrigger: '3+ heroes same turn (+2), hero winded (+2), natural 19-20 (+3), hero dies (+10). Can resurrect at 30 Drama!',
     },
     startingCharacteristics: { agility: 2, presence: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'presence',
     fixedSkills: [],
     skillGroupChoices: [],

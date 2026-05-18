@@ -30,6 +30,7 @@ import { ALL_CONDITIONS, type ConditionDefinition as SourceCondition } from '../
 import {
   ancestries as sourceAncestries,
   careers as sourceCareers,
+  cultures as sourcePrebuiltCultures,
   kits as sourceKits,
   languages as sourceLanguages,
   environmentOptions,
@@ -71,6 +72,7 @@ import type {
   SkillGroup,
   PerkCategory,
 } from '../types/game-data.js';
+import type { Culture, CultureType } from '../types/index.js';
 
 import {
   isHeroClass,
@@ -107,7 +109,7 @@ const ACTION_TYPE_LABELS: Record<string, ActionType> = {
 };
 
 const CLASS_RESOURCE_NAMES: Record<HeroClass, string> = {
-  beastheart: 'Rage',
+  beastheart: 'Ferocity',
   censor: 'Wrath',
   conduit: 'Piety',
   elementalist: 'Essence',
@@ -313,7 +315,7 @@ function buildClassDefinitions(): HeroClassDefinition[] {
           perLevel: staminaConfig.perLevel,
         },
         recoveries: staminaConfig.recoveries,
-        characteristicArrays: [[2, 2, -1, -1, 0], [2, 1, 1, -1, -1], [2, 1, 0, 0, -1]], // Default arrays
+        characteristicArrays: source.characteristicArrays.map((array) => [...array]),
         skills: source.fixedSkills || [], // Skills from source or empty
       },
       potency: {
@@ -869,6 +871,28 @@ export const GameData = {
    */
   getCulture: (id: string): CultureBenefit | undefined =>
     getData().cultures.find((c) => c.id === id),
+
+  /**
+   * Get all pre-built culture presets.
+   * @returns Array of named culture presets
+   */
+  getPrebuiltCultures: (): Culture[] => sourcePrebuiltCultures,
+
+  /**
+   * Get pre-built culture presets filtered by preset category.
+   * @param type - Pre-built culture category
+   * @returns Array of matching culture presets
+   */
+  getPrebuiltCulturesByType: (type: CultureType): Culture[] =>
+    sourcePrebuiltCultures.filter((culture) => culture.type === type),
+
+  /**
+   * Find a pre-built culture preset by id.
+   * @param id - Pre-built culture identifier
+   * @returns The culture preset or undefined
+   */
+  getPrebuiltCulture: (id: string): Culture | undefined =>
+    sourcePrebuiltCultures.find((culture) => culture.id === id),
 
   // ═══════════════════════════════════════════
   // CLASSES (from MD + JSON)

@@ -53,7 +53,7 @@ function ExternalTextLink({
 
 export function About() {
   return (
-    <main className="min-h-screen bg-[#242b2f] text-zinc-100">
+    <main data-theme="dark" className="min-h-screen bg-[#242b2f] text-zinc-100">
       <section className="border-b border-zinc-700/60 bg-[#1f2528] px-6 py-6 sm:px-10 lg:px-16 xl:px-24">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <Link

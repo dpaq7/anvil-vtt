@@ -38,7 +38,7 @@ export type Echelon = 1 | 2 | 3 | 4;
  * Heroic resource types by class.
  */
 export type HeroicResourceType =
-  | 'ferocity'   // Fury
+  | 'ferocity'   // Beastheart, Fury
   | 'piety'      // Conduit
   | 'focus'      // Tactician
   | 'insight'    // Shadow
@@ -47,7 +47,7 @@ export type HeroicResourceType =
   | 'clarity'    // Talent
   | 'drama'      // Troubadour
   | 'essence'    // Elementalist, Summoner
-  | 'rage'       // Beastheart
+  | 'rage'       // Legacy fallback
   | 'heroic';    // Generic fallback
 
 /**
@@ -94,7 +94,7 @@ const CLASS_STAMINA_CONFIG: Record<HeroClass, { level1: number; perLevel: number
  * Heroic resource type by class.
  */
 const CLASS_HEROIC_RESOURCE: Record<HeroClass, HeroicResourceType> = {
-  beastheart: 'rage',
+  beastheart: 'ferocity',
   censor: 'wrath',
   conduit: 'piety',
   elementalist: 'essence',

@@ -43,6 +43,27 @@ export {
   type DrawSteelEndType,
 } from './lib/condition-parser.js';
 
+// Export treasure catalog data for character inventory UI.
+export {
+  CONSUMABLE_ITEMS,
+  TRINKET_ITEMS,
+  LEVELED_ITEMS,
+  ARTIFACT_ITEMS,
+  ALL_MAGIC_ITEMS,
+  getItemsByCategory,
+  getItemsByEchelon,
+  getItemById,
+  parseItemBonuses,
+  getEnhancementTier,
+} from './data/magicItems.js';
+export type {
+  MagicItem,
+  ItemCategory as MagicItemCategory,
+  EquipmentSlot as MagicEquipmentSlot,
+  ItemEnhancement as MagicItemEnhancement,
+  ParsedBonus as MagicItemParsedBonus,
+} from './data/magicItems.js';
+
 // Re-export commonly used types from game-data.ts
 export type {
   // Core types

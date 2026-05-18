@@ -944,7 +944,7 @@ export function Home() {
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(to_bottom,rgba(9,9,11,0.69)_0%,rgba(9,9,11,0.68)_36%,rgba(9,9,11,0.62)_68%,rgba(9,9,11,0.45)_100%)]"
+          className="anvil-dashboard-scrim pointer-events-none fixed inset-0 z-0"
         />
         <Loader2 className="relative z-10 mr-2 size-5 animate-spin" />
         <span className="relative z-10">Loading dashboard...</span>
@@ -961,7 +961,7 @@ export function Home() {
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(to_bottom,rgba(9,9,11,0.69)_0%,rgba(9,9,11,0.68)_34%,rgba(9,9,11,0.62)_66%,rgba(9,9,11,0.43)_100%)]"
+        className="anvil-dashboard-scrim pointer-events-none fixed inset-0 z-0"
       />
       <div
         aria-hidden="true"
@@ -977,7 +977,7 @@ export function Home() {
           <div>
             <Badge className={cn(
               'mb-3 border-transparent',
-              isDirector ? 'bg-rose-300/10 text-rose-200' : 'bg-cyan-300/10 text-cyan-200',
+              isDirector ? 'bg-rose-300/10 text-flow-director' : 'bg-cyan-300/10 text-flow-player',
             )}>
               {isDirector ? 'Director flow' : 'Player flow'}
             </Badge>

@@ -68,7 +68,7 @@ export function Landing() {
   );
 
   return (
-    <main className="min-h-screen bg-[#242b2f] text-zinc-100">
+    <main data-theme="dark" className="min-h-screen bg-[#242b2f] text-zinc-100">
       <section className="relative isolate flex min-h-[100svh] overflow-hidden bg-[#242b2f] md:min-h-[88svh]">
         <div
           aria-hidden="true"
