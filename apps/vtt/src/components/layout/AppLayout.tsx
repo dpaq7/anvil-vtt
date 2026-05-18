@@ -63,6 +63,10 @@ const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 // Collect all labels from both nav configs for width calculation
 const ALL_LABELS = ['Account', ...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
 
+function onboardingId(label: string) {
+  return `menu-${label.toLowerCase()}`;
+}
+
 function isRoleExclusiveRoute(role: UserRole, pathname: string) {
   const exclusivePaths = role === 'director' ? ['/app/heroes'] : ['/app/campaigns', '/app/assets'];
   return exclusivePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
@@ -81,6 +85,7 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
     <div
       role="group"
       aria-label="Role"
+      data-onboarding="menu-role-toggle"
       className="mx-1 mt-2 flex flex-col gap-1 rounded-lg border border-black/10 bg-white/20 p-1 shadow-inner shadow-black/10"
     >
       {ROLE_OPTIONS.map(({ role, label, icon: Icon }) => {
@@ -134,6 +139,7 @@ function ThemeToggle() {
       type="button"
       aria-label={actionLabel}
       aria-pressed={isLight}
+      data-onboarding="menu-theme"
       onClick={toggleTheme}
       className={cn(
         'mx-1 mb-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold text-anvil-ink/80 transition-colors hover:bg-black/10 hover:text-anvil-ink',
@@ -193,6 +199,7 @@ function AccountMenu() {
             <button
               type="button"
               aria-label="Account"
+              data-onboarding="menu-account"
               className={cn(
                 'mx-1 mt-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
                 collapsed ? 'w-10 justify-center px-0' : 'w-[calc(100%-0.5rem)] justify-start',
@@ -300,7 +307,11 @@ export function AppLayout() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider labels={ALL_LABELS}>
         <div className="flex h-screen overflow-hidden">
-          <Sidebar className="relative z-30 shrink-0" variant={isPlayer ? 'player' : 'director'}>
+          <Sidebar
+            className="relative z-30 shrink-0"
+            variant={isPlayer ? 'player' : 'director'}
+            data-onboarding="menu-bar"
+          >
             <AccountMenu />
             <SidebarRoleToggle
               value={user?.role ?? 'director'}
@@ -319,14 +330,17 @@ export function AppLayout() {
                     icon={<Icon size={18} />}
                     label={label}
                     active={isActive(to, exact)}
+                    data-onboarding={onboardingId(label)}
                   />
                 );
               })}
             </SidebarNav>
             <ThemeToggle />
-            <SidebarToggle />
+            <div data-onboarding="menu-sidebar-toggle">
+              <SidebarToggle />
+            </div>
           </Sidebar>
-          <main className="relative z-0 flex-1 overflow-y-auto">
+          <main className="relative flex-1 overflow-y-auto">
             <Outlet key={`${user?.id ?? 'anonymous'}:${user?.role ?? 'unknown'}:${location.pathname}`} />
           </main>
         </div>

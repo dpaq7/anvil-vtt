@@ -22,13 +22,14 @@ type SidebarVariant = 'director' | 'player' | 'default';
 interface SidebarContextValue {
   collapsed: boolean;
   toggle: () => void;
+  expand: () => void;
   variant: SidebarVariant;
   setVariant: (v: SidebarVariant) => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
 
-const STORAGE_KEY = 'anvil-sidebar-collapsed';
+const STORAGE_KEY = 'anvil-sidebar-collapsed:v2';
 
 export interface SidebarProviderProps {
   children: ReactNode;
@@ -55,6 +56,7 @@ export function SidebarProvider({ children, labels = [] }: SidebarProviderProps)
   }, [collapsed]);
 
   const toggle = useCallback(() => setCollapsed((c) => !c), []);
+  const expand = useCallback(() => setCollapsed(false), []);
 
   // Calculate width: icon (18px) + gap (12px) + text + padding (16px each side)
   // Base: 18 + 12 + 32 = 62px + text width
@@ -64,7 +66,7 @@ export function SidebarProvider({ children, labels = [] }: SidebarProviderProps)
   const sidebarWidth = Math.max(144, 78 + textWidth);
 
   return (
-    <SidebarContext.Provider value={{ collapsed, toggle, variant, setVariant }}>
+    <SidebarContext.Provider value={{ collapsed, toggle, expand, variant, setVariant }}>
       <div style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}>
         {children}
       </div>
