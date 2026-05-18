@@ -31,6 +31,10 @@
 
   /* Site accent */
   --color-anvil-accent: #efea5a;
+  --color-anvil-ink: #242423;
+  --color-anvil-paper: #f7f2ea;
+  --color-flow-director: #fecdd3;
+  --color-flow-player: #a5f3fc;
 
   /* Creator color scheme — semantic aliases (still available) */
   --color-creator-bg: #363635;
@@ -50,8 +54,59 @@
   --sidebar-width-collapsed: 48px;
 }
 
-:root {
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+
+  --color-zinc-950: #242423;
+  --color-zinc-900: #2d2d2c;
+  --color-zinc-800: #363635;
+  --color-zinc-700: #4a4a49;
+  --color-zinc-600: #5a5a58;
+  --color-zinc-500: #7a9998;
+  --color-zinc-400: #8ab0af;
+  --color-zinc-300: #a0c4c3;
+  --color-zinc-200: #b7d5d4;
+  --color-zinc-100: #c8e0df;
+  --color-zinc-50: #d4e8e7;
+
+  --color-creator-bg: #363635;
+  --color-creator-highlight: #9a7197;
+  --color-creator-text: #b7d5d4;
+  --color-creator-text-muted: #8ab0af;
+  --color-creator-border: #4a4a49;
+  --color-creator-card: #2d2d2c;
+  --color-creator-card-hover: #404040;
+
+  --color-flow-director: #fecdd3;
+  --color-flow-player: #a5f3fc;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-zinc-950: #f6f1e8;
+  --color-zinc-900: #fffdf9;
+  --color-zinc-800: #eee7dd;
+  --color-zinc-700: #d7cec2;
+  --color-zinc-600: #b9afa4;
+  --color-zinc-500: #6c7d78;
+  --color-zinc-400: #586d68;
+  --color-zinc-300: #435a54;
+  --color-zinc-200: #30433e;
+  --color-zinc-100: #202c29;
+  --color-zinc-50: #111816;
+
+  --color-creator-bg: #f6f1e8;
+  --color-creator-highlight: #8a5d87;
+  --color-creator-text: #202c29;
+  --color-creator-text-muted: #647771;
+  --color-creator-border: #d7cec2;
+  --color-creator-card: #fffdf9;
+  --color-creator-card-hover: #eee7dd;
+
+  --color-flow-director: #9f1239;
+  --color-flow-player: #155e75;
 }
 
 body {
@@ -62,4 +117,24 @@ body {
     -apple-system,
     sans-serif;
   margin: 0;
+}
+
+.anvil-dashboard-scrim {
+  background: linear-gradient(
+    to bottom,
+    rgba(9, 9, 11, 0.69) 0%,
+    rgba(9, 9, 11, 0.68) 34%,
+    rgba(9, 9, 11, 0.62) 66%,
+    rgba(9, 9, 11, 0.43) 100%
+  );
+}
+
+[data-theme="light"] .anvil-dashboard-scrim {
+  background: linear-gradient(
+    to bottom,
+    rgba(246, 241, 232, 0.9) 0%,
+    rgba(246, 241, 232, 0.86) 34%,
+    rgba(246, 241, 232, 0.82) 66%,
+    rgba(246, 241, 232, 0.72) 100%
+  );
 }

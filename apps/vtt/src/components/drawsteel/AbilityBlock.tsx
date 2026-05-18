@@ -52,7 +52,7 @@ function TierBadge({ label, compact }: { label: string; compact?: boolean }) {
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded border border-cyan-300/30 bg-cyan-400/10 font-mono font-black leading-none text-cyan-100',
+        'inline-flex shrink-0 items-center justify-center rounded border border-flow-player/30 bg-flow-player/10 font-mono font-black leading-none text-flow-player',
         compact ? 'h-5 min-w-11 px-1.5 text-[10px]' : 'h-7 min-w-14 px-2 text-xs',
       )}
     >
@@ -101,7 +101,7 @@ function InfoItem({
       )}
     >
       <div className="flex items-center gap-2">
-        <Icon className={cn('shrink-0 text-cyan-200/70', compact ? 'size-3' : 'size-4')} />
+        <Icon className={cn('shrink-0 text-flow-player/70', compact ? 'size-3' : 'size-4')} />
         <span className={cn('font-black uppercase tracking-[0.12em] text-zinc-500', compact ? 'text-[9px]' : 'text-[10px]')}>
           {label}
         </span>
@@ -193,8 +193,8 @@ export function AbilityBlock({ ability, className, compact = false, disabled = f
       className={cn(
         'block w-full overflow-hidden rounded-md border bg-zinc-900/80 text-left text-zinc-100 shadow-sm shadow-black/20',
         compact ? 'p-2.5' : 'p-4',
-        selected ? 'border-cyan-300/70 ring-1 ring-cyan-300/45' : 'border-zinc-800',
-        onClick && 'transition hover:border-cyan-300/45 hover:bg-zinc-900',
+        selected ? 'border-flow-player/70 ring-1 ring-flow-player/45' : 'border-zinc-800',
+        onClick && 'transition hover:border-flow-player/45 hover:bg-zinc-900',
         disabled && 'cursor-not-allowed opacity-50',
         className,
       )}
@@ -221,8 +221,8 @@ export function AbilityBlock({ ability, className, compact = false, disabled = f
             className={cn(
               'shrink-0 rounded border px-2 py-1 text-center font-black uppercase tracking-wide leading-none',
               signature
-                ? 'border-cyan-300/40 bg-cyan-400/10 text-cyan-100'
-                : 'border-amber-300/35 bg-amber-400/10 text-amber-100',
+                ? 'border-flow-player/40 bg-flow-player/10 text-flow-player'
+                : 'border-creator-highlight/40 bg-creator-highlight/10 text-creator-highlight',
               compact ? 'max-w-24 text-[9px]' : 'max-w-32 text-[10px]',
             )}
           >

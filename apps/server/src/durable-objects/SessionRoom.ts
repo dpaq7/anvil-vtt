@@ -7,6 +7,7 @@ import {
   KitLogic,
   RollLogic,
   UniversalActions,
+  WizardLogic,
 } from '@anvil/data';
 import type { Env } from '../types.js';
 import type {
@@ -39,6 +40,7 @@ import type {
   ArgumentLogEntry,
   TestLogEntry,
   RespiteActivityState,
+  InventoryItemData,
 } from '../protocol.js';
 
 interface ConnectionMeta {
@@ -66,6 +68,7 @@ interface HeroEntityRow {
   kit: string | null;
   skills: string | null;
   abilities: string | null;
+  portrait_asset_id: string | null;
   portrait_url: string | null;
   data: string | null;
 }
@@ -134,6 +137,19 @@ type ConditionName = ReturnType<typeof ConditionLogic.getAllConditionNames>[numb
 const CHARACTERISTIC_IDS = ['might', 'agility', 'reason', 'intuition', 'presence'] as const;
 const VALID_CONDITIONS = new Set<string>(ConditionLogic.getAllConditionNames());
 const MAX_ACTION_LOG_ENTRIES = 200;
+const MAX_INVENTORY_ITEMS = 160;
+const MAX_INVENTORY_TEXT_LENGTH = 2400;
+const VALID_INVENTORY_SOURCES = new Set(['mcdm-treasure', 'mcdm-imbuement', 'custom']);
+const VALID_INVENTORY_CATEGORIES = new Set([
+  'consumable',
+  'trinket',
+  'leveled',
+  'artifact',
+  'imbuement',
+  'material',
+  'mundane',
+  'misc',
+]);
 
 /**
  * Encode connection metadata as multiple short tags (each ≤256 chars).
@@ -188,6 +204,98 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function inventoryString(value: unknown, maxLength = MAX_INVENTORY_TEXT_LENGTH): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
+}
+
+function inventoryNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(1, Math.floor(value));
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(1, Math.floor(parsed));
+  }
+  return undefined;
+}
+
+function inventoryStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim().slice(0, 80))
+    .slice(0, 12);
+  return items.length > 0 ? items : undefined;
+}
+
+function sanitizeInventory(value: unknown): InventoryItemData[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.slice(0, MAX_INVENTORY_ITEMS).flatMap((item, index): InventoryItemData[] => {
+    if (!isRecord(item)) return [];
+    const name = inventoryString(item['name'], 160);
+    if (!name) return [];
+
+    const rawSource = inventoryString(item['source'], 40);
+    const rawCategory = inventoryString(item['category'], 40);
+    const source = rawSource && VALID_INVENTORY_SOURCES.has(rawSource)
+      ? rawSource as InventoryItemData['source']
+      : 'custom';
+    const category = rawCategory && VALID_INVENTORY_CATEGORIES.has(rawCategory)
+      ? rawCategory as InventoryItemData['category']
+      : 'misc';
+
+    const enhancements = Array.isArray(item['enhancements'])
+      ? item['enhancements'].slice(0, 12).flatMap((enhancement): NonNullable<InventoryItemData['enhancements']> => {
+          if (!isRecord(enhancement)) return [];
+          const level = inventoryNumber(enhancement['level']);
+          const description = inventoryString(enhancement['description'] ?? enhancement['effect']);
+          if (!level || !description) return [];
+          const name = inventoryString(enhancement['name'], 80);
+          return [{ level, ...(name ? { name } : {}), description }];
+        })
+      : undefined;
+
+    const id = inventoryString(item['id'], 220) ?? `inventory-${index}`;
+    const catalogId = inventoryString(item['catalogId'], 220);
+    const quantity = inventoryNumber(item['quantity']) ?? 1;
+    const description = inventoryString(item['description']) ?? inventoryString(item['effect']) ?? '';
+    const effect = inventoryString(item['effect']);
+    const flavorText = inventoryString(item['flavorText']);
+    const echelon = inventoryNumber(item['echelon']);
+    const level = inventoryNumber(item['level']);
+    const slot = inventoryString(item['slot'], 60);
+    const keywords = inventoryStringArray(item['keywords']);
+    const projectGoal = inventoryNumber(item['projectGoal']);
+    const notes = inventoryString(item['notes']);
+
+    return [{
+      id,
+      ...(catalogId ? { catalogId } : {}),
+      source,
+      name,
+      category,
+      quantity,
+      description,
+      ...(effect ? { effect } : {}),
+      ...(flavorText ? { flavorText } : {}),
+      ...(echelon ? { echelon } : {}),
+      ...(level ? { level } : {}),
+      ...(slot ? { slot } : {}),
+      ...(keywords ? { keywords } : {}),
+      ...(projectGoal ? { projectGoal } : {}),
+      equipped: item['equipped'] === true,
+      ...(enhancements && enhancements.length > 0 ? { enhancements } : {}),
+      ...(notes ? { notes } : {}),
+    }];
+  });
 }
 
 function resolveAbility(abilityId: string): AbilityLike | undefined {
@@ -552,6 +660,10 @@ export class SessionRoom extends DurableObject<Env> {
         }
         break;
 
+      case 'update_inventory':
+        await this.handleInventoryUpdate(ws, meta, msg.heroId, msg.inventory);
+        break;
+
       case 'delete_entity':
         if (meta.role !== 'director') {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
@@ -914,7 +1026,7 @@ export class SessionRoom extends DurableObject<Env> {
   private async loadHeroEntities(sessionId: string): Promise<SessionState['entities']> {
     const rows = await this.env.DB.prepare(
       `SELECT h.id, h.name, h.user_id, h.ancestry, h.culture, h.career, h.hero_class, h.subclass, h.level,
-              h.characteristics, h.kit, h.skills, h.abilities, h.portrait_url, h.data
+              h.characteristics, h.kit, h.skills, h.abilities, h.portrait_asset_id, h.portrait_url, h.data
        FROM session_participants sp
        JOIN heroes h ON h.id = sp.hero_id
        WHERE sp.game_session_id = ? AND h.deleted_at IS NULL
@@ -949,7 +1061,9 @@ export class SessionRoom extends DurableObject<Env> {
     const snapshotById = new Map(snapshotEntities.map((entity) => [entity.id, entity]));
     const mergedHeroes = heroEntities.map((hero) => {
       const snapshot = snapshotById.get(hero.id);
-      return snapshot && snapshot.type === 'hero' ? { ...hero, ...snapshot } : hero;
+      return snapshot && snapshot.type === 'hero'
+        ? { ...hero, ...snapshot, inventory: hero['inventory'], portraitUrl: hero['portraitUrl'] }
+        : hero;
     });
     const heroIds = new Set(mergedHeroes.map((hero) => hero.id));
     const nonHeroes = snapshotEntities.filter((entity) => entity.type !== 'hero' || !heroIds.has(entity.id));
@@ -961,16 +1075,36 @@ export class SessionRoom extends DurableObject<Env> {
     const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
     const selectedSkills = parseJson<string[]>(hero.skills, []);
     const selectedAbilityIds = parseJson<string[]>(hero.abilities, []);
+    const state = isRecord(data['state']) ? data['state'] : {};
+    const inventory = sanitizeInventory(data['inventory'] ?? state['inventory']);
     const heroClass = hero.hero_class && HeroLogic.isValidHeroClass(hero.hero_class)
       ? hero.hero_class
       : null;
     const kit = hero.kit ? GameData.getKit(hero.kit) : null;
+    const secondaryKitId = heroClass === 'tactician' && typeof data['secondaryKit'] === 'string'
+      ? data['secondaryKit']
+      : null;
+    const secondaryKit = secondaryKitId ? GameData.getKit(secondaryKitId) : null;
+    const kitStaminaBonus = (kit?.staminaPerEchelon ?? 0) + (secondaryKit?.staminaPerEchelon ?? 0);
     const maxStamina = heroClass
-      ? HeroLogic.getMaxStaminaWithKit(heroClass, hero.level, kit?.staminaPerEchelon ?? 0)
+      ? HeroLogic.getMaxStaminaWithKit(heroClass, hero.level, kitStaminaBonus)
       : 20;
     const maxRecoveries = heroClass ? HeroLogic.getMaxRecoveries(heroClass) : null;
     const resourceType = heroClass ? HeroLogic.getHeroicResourceType(heroClass) : null;
-    const speed = HeroLogic.getBaseSpeed(hero.ancestry ?? '') + (hero.kit ? KitLogic.getKitSpeedBonus(hero.kit) : 0);
+    const speed = HeroLogic.getBaseSpeed(hero.ancestry ?? '')
+      + (hero.kit ? KitLogic.getKitSpeedBonus(hero.kit) : 0)
+      + (secondaryKitId ? KitLogic.getKitSpeedBonus(secondaryKitId) : 0);
+    const companionId = heroClass === 'beastheart' && typeof data['companion'] === 'string'
+      ? data['companion']
+      : null;
+    const companion = companionId
+      ? WizardLogic.getCompanionOptions().find((option) => option.id === companionId)
+      : undefined;
+    const companionDetails = companion as (typeof companion & Record<string, unknown>) | undefined;
+    const companionCurrentStamina = typeof data['companionStaminaCurrent'] === 'number'
+      ? data['companionStaminaCurrent']
+      : maxStamina;
+    const companionRampage = typeof data['companionRampage'] === 'number' ? data['companionRampage'] : 0;
 
     return {
       id: hero.id,
@@ -986,8 +1120,9 @@ export class SessionRoom extends DurableObject<Env> {
       subclass: hero.subclass,
       level: hero.level,
       kit: hero.kit,
+      secondaryKit: secondaryKitId,
       skills: selectedSkills,
-      portraitUrl: hero.portrait_url,
+      portraitUrl: hero.portrait_asset_id ? `/api/assets/${hero.portrait_asset_id}/data` : hero.portrait_url,
       maxStamina,
       currentStamina: typeof data['staminaCurrent'] === 'number' ? data['staminaCurrent'] : maxStamina,
       recoveriesMax: maxRecoveries,
@@ -1004,6 +1139,25 @@ export class SessionRoom extends DurableObject<Env> {
       intuition: characteristics['intuition'] ?? 0,
       presence: characteristics['presence'] ?? 0,
       abilities: selectedAbilityIds.map((abilityId) => toRuntimeAbility(abilityId)),
+      inventory,
+      ...(companion ? {
+        companionId: companion.id,
+        companionName: companion.name,
+        companionLevel: companion.level,
+        companionRoles: companion.roles,
+        companionAncestry: companion.ancestry,
+        companionSize: typeof companionDetails?.['size'] === 'string' ? companionDetails['size'] : undefined,
+        companionSpeed: typeof companionDetails?.['speed'] === 'string' ? companionDetails['speed'] : undefined,
+        companionStability: typeof companionDetails?.['stability'] === 'number' ? companionDetails['stability'] : undefined,
+        companionSignatureAbility: typeof companionDetails?.['signatureAbility'] === 'string' ? companionDetails['signatureAbility'] : undefined,
+        companionMaxStamina: maxStamina,
+        companionCurrentStamina,
+        companionRecoveriesMax: 0,
+        companionRecoveriesCurrent: 0,
+        companionUsesHeroRecoveries: true,
+        companionRampage,
+        companionRampageThresholds: [8, 12, 16, 20, 24],
+      } : {}),
     };
   }
 
@@ -1559,6 +1713,49 @@ export class SessionRoom extends DurableObject<Env> {
       });
     }
     return null;
+  }
+
+  private async handleInventoryUpdate(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    heroId: string,
+    rawInventory: unknown,
+  ): Promise<void> {
+    if (meta.role === 'player' && heroId !== meta.heroId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own inventory' });
+      return;
+    }
+
+    const inventory = sanitizeInventory(rawInventory);
+    const row = await this.env.DB.prepare(
+      'SELECT user_id, data FROM heroes WHERE id = ? AND deleted_at IS NULL',
+    )
+      .bind(heroId)
+      .first<{ user_id: string; data: string | null }>();
+
+    if (!row) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_HERO', message: 'Hero not found' });
+      return;
+    }
+
+    if (meta.role === 'player' && row.user_id !== meta.userId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own inventory' });
+      return;
+    }
+
+    const data = parseJson<Record<string, unknown>>(row.data, {});
+    data['inventory'] = inventory;
+
+    await this.env.DB.prepare(
+      "UPDATE heroes SET data = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?",
+    )
+      .bind(JSON.stringify(data), heroId)
+      .run();
+
+    const entity = this.sessionState?.entities.find((candidate) => candidate.id === heroId && candidate.type === 'hero');
+    if (entity) entity['inventory'] = inventory;
+
+    this.broadcast({ type: 'entity_updated', entityId: heroId, changes: { inventory } });
   }
 
   /** Roll n d10 using crypto-secure, unbiased randomness. */

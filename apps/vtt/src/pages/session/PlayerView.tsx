@@ -15,6 +15,7 @@ import { TurnActionBar } from '../../components/session/TurnActionBar.js';
 import { AbilityPanel } from '../../components/session/AbilityPanel.js';
 import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
 import { PlayerHeroCommandBar, PlayerHeroSheetPanel } from '../../components/session/PlayerHeroLiveSheet.js';
+import type { CharacterInventoryItem } from '../../lib/inventory.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
@@ -229,6 +230,11 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
     });
     toast.info('Escaping grab...');
   }, [combat, heroEntity, isMyTurn, send]);
+
+  const handleInventoryChange = useCallback((inventory: CharacterInventoryItem[]) => {
+    if (!heroEntity) return;
+    send({ type: 'update_inventory', heroId: heroEntity.id, inventory });
+  }, [heroEntity, send]);
 
   const handleRollInitiative = useCallback(() => {
     send({ type: 'combat_action', action: { type: 'ROLL_INITIATIVE' } });
@@ -465,6 +471,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               onStandUp={handleStandUp}
               onEscapeGrab={handleEscapeGrab}
               onOpenAbilities={() => openRightRailTab('abilities')}
+              onInventoryChange={handleInventoryChange}
             />
           </TabsContent>
 

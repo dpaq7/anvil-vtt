@@ -600,7 +600,7 @@ export function BattleStage({
             ) : (
               <button
                 type="button"
-                className="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-amber-500 px-4 text-sm font-semibold text-zinc-950 transition hover:bg-amber-400"
+                className="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-amber-500 px-4 text-sm font-semibold text-anvil-ink transition hover:bg-amber-400"
                 onClick={onRollInitiative}
               >
                 Roll d10

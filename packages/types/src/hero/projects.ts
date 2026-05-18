@@ -56,16 +56,42 @@ export interface ProjectRoll {
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'legendary';
 
 // ItemCategory for inventory items (distinct from equipment ItemCategory)
-export type InventoryItemCategory = 'weapon' | 'armor' | 'implement' | 'consumable' | 'treasure' | 'material' | 'misc';
+export type InventoryItemCategory =
+  | 'weapon'
+  | 'armor'
+  | 'implement'
+  | 'consumable'
+  | 'trinket'
+  | 'leveled'
+  | 'artifact'
+  | 'imbuement'
+  | 'treasure'
+  | 'material'
+  | 'mundane'
+  | 'misc';
+
+export type InventoryItemSource =
+  | 'mcdm-treasure'
+  | 'mcdm-imbuement'
+  | 'custom';
 
 export interface InventoryItem {
   id: string;
+  catalogId?: string;
+  source?: InventoryItemSource;
   name: string;
   category: InventoryItemCategory;
   rarity: ItemRarity;
   quantity: number;
   description: string;
+  effect?: string;
+  flavorText?: string;
   level?: number; // For leveled treasures
+  echelon?: number;
+  slot?: string;
+  keywords?: string[];
+  projectGoal?: number;
+  equipped?: boolean;
   enhancements?: ItemEnhancement[];
   notes?: string;
 }

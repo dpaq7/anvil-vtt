@@ -22,7 +22,7 @@ type DbRow = Record<string, DbValue>;
 
 const TABLE_COLUMNS = {
   assets: ['id', 'user_id', 'name', 'type', 'storage_key', 'thumbnail_key', 'width', 'height', 'tags', 'created_at', 'content_type', 'file_size', 'uploaded_at'],
-  heroes: ['id', 'user_id', 'name', 'ancestry', 'culture', 'career', 'hero_class', 'subclass', 'level', 'characteristics', 'kit', 'skills', 'abilities', 'portrait_url', 'data', 'version', 'created_at', 'updated_at', 'deleted_at'],
+  heroes: ['id', 'user_id', 'name', 'ancestry', 'culture', 'career', 'hero_class', 'subclass', 'level', 'characteristics', 'kit', 'skills', 'abilities', 'portrait_asset_id', 'portrait_url', 'data', 'version', 'created_at', 'updated_at', 'deleted_at'],
   campaigns: ['id', 'director_id', 'name', 'description', 'cover_image_url', 'settings', 'created_at', 'updated_at', 'deleted_at'],
   modules: ['id', 'campaign_id', 'name', 'description', 'order_index'],
   game_sessions: ['id', 'campaign_id', 'module_id', 'name', 'description', 'status', 'order_index', 'room_code', 'started_at', 'ended_at', 'active_scene_id'],
@@ -420,10 +420,15 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
     });
   });
 
-  const heroes = sourceHeroes.map((row) => pickRow('heroes', row, {
-    id: mappedId(heroIdMap, row['id'])!,
-    user_id: user.id,
-  }));
+  const heroes = sourceHeroes.map((row) => {
+    const portraitAssetId = mappedId(assetIdMap, row['portrait_asset_id']);
+    return pickRow('heroes', row, {
+      id: mappedId(heroIdMap, row['id'])!,
+      user_id: user.id,
+      portrait_asset_id: portraitAssetId,
+      portrait_url: portraitAssetId ? `/api/assets/${portraitAssetId}/data` : row['portrait_url'] ?? null,
+    });
+  });
 
   const campaigns = sourceCampaigns.map((row) => pickRow('campaigns', row, {
     id: mappedId(campaignIdMap, row['id'])!,

@@ -3,7 +3,9 @@ import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-do
 import {
   CircleUserRound,
   Download,
+  Moon,
   Settings,
+  Sun,
   Swords,
   Image,
   StickyNote,
@@ -32,6 +34,7 @@ import {
   cn,
 } from '@anvil/ui';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore } from '../../stores/themeStore';
 
 type UserRole = 'director' | 'player';
 
@@ -95,8 +98,8 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
               'flex h-9 w-full items-center gap-2 rounded-md px-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60',
               collapsed ? 'justify-center px-0' : 'justify-start',
               active
-                ? 'bg-zinc-950 text-zinc-50 shadow-sm shadow-black/20'
-                : 'text-zinc-800 hover:bg-black/10 hover:text-zinc-950',
+                ? 'bg-anvil-ink text-anvil-paper shadow-sm shadow-black/20'
+                : 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
             )}
           >
             <Icon size={15} className="shrink-0" />
@@ -114,6 +117,59 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
         );
       })}
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { collapsed } = useSidebar();
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const isLight = theme === 'light';
+  const Icon = isLight ? Sun : Moon;
+  const displayLabel = isLight ? 'Light' : 'Dark';
+  const actionLabel = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+
+  const button = (
+    <button
+      type="button"
+      aria-label={actionLabel}
+      aria-pressed={isLight}
+      onClick={toggleTheme}
+      className={cn(
+        'mx-1 mb-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold text-anvil-ink/80 transition-colors hover:bg-black/10 hover:text-anvil-ink',
+        collapsed ? 'w-10 justify-center px-0' : 'w-[calc(100%-0.5rem)] justify-start',
+      )}
+    >
+      <Icon size={16} className="shrink-0" />
+      {!collapsed && (
+        <>
+          <span className="truncate">{displayLabel}</span>
+          <span
+            aria-hidden="true"
+            className={cn(
+              'ml-auto flex h-5 w-9 shrink-0 items-center rounded-full border border-black/10 p-0.5 shadow-inner shadow-black/10 transition-colors',
+              isLight ? 'bg-anvil-ink/25' : 'bg-black/15',
+            )}
+          >
+            <span
+              className={cn(
+                'size-4 rounded-full bg-anvil-ink shadow-sm transition-transform',
+                isLight && 'translate-x-4',
+              )}
+            />
+          </span>
+        </>
+      )}
+    </button>
+  );
+
+  if (!collapsed) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="right">{actionLabel}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -141,8 +197,8 @@ function AccountMenu() {
                 'mx-1 mt-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
                 collapsed ? 'w-10 justify-center px-0' : 'w-[calc(100%-0.5rem)] justify-start',
                 active
-                  ? 'bg-zinc-950 text-zinc-50 shadow-sm shadow-black/20'
-                  : 'text-zinc-800 hover:bg-black/10 hover:text-zinc-950',
+                  ? 'bg-anvil-ink text-anvil-paper shadow-sm shadow-black/20'
+                  : 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
               )}
             >
               <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/15">
@@ -267,6 +323,7 @@ export function AppLayout() {
                 );
               })}
             </SidebarNav>
+            <ThemeToggle />
             <SidebarToggle />
           </Sidebar>
           <main className="relative z-0 flex-1 overflow-y-auto">

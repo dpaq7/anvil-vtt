@@ -101,6 +101,7 @@ export type {
   AbilityChoiceSlot,
   ClassSkillChoiceSlot,
   CompanionChoiceOption,
+  SummonerMinionChoiceOption,
   PerkChoiceSlot,
 } from './wizard-logic.js';
 

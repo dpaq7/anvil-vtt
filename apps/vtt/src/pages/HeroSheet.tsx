@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { toast } from "sonner";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -15,6 +16,7 @@ import {
   HeartPulse,
   Languages,
   Medal,
+  Package,
   ScrollText,
   Shield,
   Sparkles,
@@ -38,9 +40,12 @@ import type {
   HeroLogic as HeroLogicTypes,
 } from "@anvil/data";
 import { Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@anvil/ui";
+import { CharacterInventoryPanel } from "../components/CharacterInventoryPanel.js";
 import { AbilityBlock } from "../components/drawsteel/AbilityBlock.js";
 import { drawSteelAbilityFromLike } from "../components/drawsteel/abilityData.js";
 import { api } from "../lib/api.js";
+import { normalizeInventory } from "../lib/inventory.js";
+import type { CharacterInventoryItem } from "../lib/inventory.js";
 
 interface HeroRow {
   id: string;
@@ -107,6 +112,8 @@ interface CultureSelection {
   environment: string | null;
   organization: string | null;
   upbringing: string | null;
+  preset?: string | null;
+  language?: string | null;
 }
 
 interface ResolvedSkill {
@@ -551,6 +558,8 @@ function resolveCultureSelection(
       environment: stringValue(fromData["environment"]),
       organization: stringValue(fromData["organization"]),
       upbringing: stringValue(fromData["upbringing"]),
+      preset: stringValue(fromData["preset"]),
+      language: stringValue(fromData["language"]),
     };
   }
 
@@ -563,6 +572,8 @@ function resolveCultureSelection(
       environment: stringValue(parsed["environment"]),
       organization: stringValue(parsed["organization"]),
       upbringing: stringValue(parsed["upbringing"]),
+      preset: stringValue(parsed["preset"]),
+      language: stringValue(parsed["language"]),
     };
   }
 
@@ -692,6 +703,15 @@ function resolveLanguages(
   const languages: string[] = [];
   const defaultLanguage = GameData.getDefaultLanguage();
   if (defaultLanguage) languages.push(defaultLanguage.name);
+
+  const culture = isRecord(data["culture"]) ? data["culture"] : null;
+  const cultureLanguageId = culture ? stringValue(culture["language"]) : null;
+  if (cultureLanguageId) {
+    const cultureLanguage =
+      GameData.getLanguage(cultureLanguageId) ??
+      GameData.getLanguageByName(cultureLanguageId);
+    languages.push(cultureLanguage?.name ?? titleCaseId(cultureLanguageId));
+  }
 
   const career = careerId ? GameData.getCareer(careerId) : null;
   for (const language of career?.languages ?? []) {
@@ -891,6 +911,7 @@ export function HeroSheet() {
   const { id } = useParams<{ id: string }>();
   const [hero, setHero] = useState<HeroRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savingInventory, setSavingInventory] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -934,6 +955,13 @@ export function HeroSheet() {
     const ancestry = hero.ancestry ? GameData.getAncestry(hero.ancestry) : null;
     const career = hero.career ? GameData.getCareer(hero.career) : null;
     const kit = hero.kit ? GameData.getKit(hero.kit) : null;
+    const secondaryKitId =
+      heroClass === "tactician" ? stringFromData(data, "secondaryKit") : null;
+    const secondaryKit = secondaryKitId ? GameData.getKit(secondaryKitId) : null;
+    const kits = [kit, secondaryKit].filter(
+      (entry): entry is NonNullable<ReturnType<typeof GameData.getKit>> =>
+        Boolean(entry),
+    );
     const classDef = heroClass ? GameData.getClass(heroClass) : null;
     const cultureSelection = resolveCultureSelection(hero, data);
     const cultureEntries = cultureSelection
@@ -956,19 +984,40 @@ export function HeroSheet() {
       !hero.culture.trim().startsWith("{")
         ? titleCaseId(hero.culture)
         : null;
+    const culturePreset = cultureSelection?.preset
+      ? GameData.getPrebuiltCulture(cultureSelection.preset)
+      : null;
+    const cultureComponentDisplay =
+      cultureEntries.length > 0
+        ? cultureEntries.map((entry) => entry.name).join(" / ")
+        : null;
+    let cultureDisplay = cultureComponentDisplay ?? cultureFallback;
+    if (culturePreset?.type === "professional") {
+      cultureDisplay = culturePreset.name;
+    } else if (culturePreset?.type === "bespoke") {
+      cultureDisplay = cultureComponentDisplay
+        ? `${culturePreset.name}: ${cultureComponentDisplay}`
+        : cultureComponentDisplay;
+    }
     const className =
       classDef?.name ?? (heroClass ? titleCaseId(heroClass) : null);
     const ancestryName =
       ancestry?.name ?? (hero.ancestry ? titleCaseId(hero.ancestry) : null);
     const careerName =
       career?.name ?? (hero.career ? titleCaseId(hero.career) : null);
-    const kitName = kit?.name ?? (hero.kit ? titleCaseId(hero.kit) : null);
+    const kitName =
+      kits.length > 0
+        ? kits.map((entry) => entry.name).join(", ")
+        : hero.kit
+          ? titleCaseId(hero.kit)
+          : null;
     const resolvedSkills = skills.map(resolveSkill);
     const groupedSkills = groupSkills(resolvedSkills);
     const classFeatures = resolveClassFeatures(heroClass, hero.level);
     const languages = resolveLanguages(data, hero.career);
     const perks = resolvePerks(data);
     const titles = resolveTitles(data);
+    const inventory = normalizeInventory(data["inventory"]);
     const complication = resolveComplication(data);
     const ancestryTraits = resolveAncestryTraits(hero.ancestry, data);
     const availableAncestryTraits = resolveAvailableAncestryTraits(
@@ -1004,7 +1053,7 @@ export function HeroSheet() {
       maxStamina = HeroLogic.getMaxStaminaWithKit(
         heroClass,
         hero.level,
-        kit?.staminaPerEchelon ?? 0,
+        kits.reduce((total, entry) => total + entry.staminaPerEchelon, 0),
       );
       recoveryValue = HeroLogic.getRecoveryValue(maxStamina);
       maxRecoveries = HeroLogic.getMaxRecoveries(heroClass);
@@ -1024,9 +1073,11 @@ export function HeroSheet() {
     );
     const victories = numberFromData(data, "victories") ?? 0;
     const xp = numberFromData(data, "xp") ?? 0;
-    const speed = ancestry ? ancestry.speed + (kit?.speedBonus ?? 0) : null;
+    const speed = ancestry
+      ? ancestry.speed + kits.reduce((total, entry) => total + entry.speedBonus, 0)
+      : null;
     const size = ancestry?.size ?? null;
-    const stability = kit?.stabilityBonus ?? 0;
+    const stability = kits.reduce((total, entry) => total + entry.stabilityBonus, 0);
     const incitingIncident = stringFromData(data, "incitingIncident");
 
     return {
@@ -1044,12 +1095,15 @@ export function HeroSheet() {
       classProgression,
       className,
       complication,
+      cultureDisplay,
       cultureEntries,
       cultureFallback,
       data,
       echelon,
       heroicResource,
+      inventory,
       kit,
+      kits,
       kitName,
       languages,
       maxRecoveries,
@@ -1084,6 +1138,25 @@ export function HeroSheet() {
   ]
     .filter(Boolean)
     .join(" / ");
+
+  const handleInventoryChange = async (inventory: CharacterInventoryItem[]) => {
+    if (!hero || !sheet || savingInventory) return;
+
+    const previousHero = hero;
+    const nextData = { ...sheet.data, inventory };
+    const nextHero = { ...hero, data: JSON.stringify(nextData) };
+    setHero(nextHero);
+    setSavingInventory(true);
+
+    try {
+      await api.put(`/api/heroes/${hero.id}`, { data: nextData });
+    } catch (err) {
+      setHero(previousHero);
+      toast.error(err instanceof Error ? err.message : "Inventory update failed");
+    } finally {
+      setSavingInventory(false);
+    }
+  };
 
   return (
     <div className="min-h-full bg-zinc-950 text-zinc-100">
@@ -1195,13 +1268,7 @@ export function HeroSheet() {
                 <Detail label="Ancestry" value={sheet.ancestryName} />
                 <Detail
                   label="Culture"
-                  value={
-                    sheet.cultureEntries.length > 0
-                      ? sheet.cultureEntries
-                          .map((entry) => entry.name)
-                          .join(" / ")
-                      : sheet.cultureFallback
-                  }
+                  value={sheet.cultureDisplay}
                 />
                 <Detail label="Career" value={sheet.careerName} />
                 <Detail label="Class" value={sheet.className} />
@@ -1241,7 +1308,7 @@ export function HeroSheet() {
 
           <main className="min-w-0">
             <Tabs defaultValue="class" className="grid content-start gap-3">
-              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/55 p-1 sm:grid-cols-4 xl:grid-cols-7">
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/55 p-1 sm:grid-cols-4 xl:grid-cols-8">
                 <TabsTrigger value="class" className={SHEET_TAB_TRIGGER_CLASS}>
                   <Swords size={14} />
                   Class
@@ -1260,6 +1327,13 @@ export function HeroSheet() {
                 <TabsTrigger value="kit" className={SHEET_TAB_TRIGGER_CLASS}>
                   <Hammer size={14} />
                   Kit
+                </TabsTrigger>
+                <TabsTrigger
+                  value="inventory"
+                  className={SHEET_TAB_TRIGGER_CLASS}
+                >
+                  <Package size={14} />
+                  Inventory
                 </TabsTrigger>
                 <TabsTrigger
                   value="background"
@@ -1598,45 +1672,52 @@ export function HeroSheet() {
 
               <TabsContent value="kit" className={SHEET_TAB_CONTENT_CLASS}>
                 <SheetPanel icon={Hammer} title="Kit & Equipment">
-                  {sheet.kit ? (
+                  {sheet.kits.length > 0 ? (
                     <div className="grid gap-4">
-                      <div>
-                        <h3 className="text-lg font-black text-zinc-50">
-                          {sheet.kit.name}
-                        </h3>
-                        <p className="mt-2 text-sm leading-6 text-zinc-300">
-                          {sheet.kit.description}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <DetailCard label="Armor" value={sheet.kit.armor} />
-                        <DetailCard
-                          label="Weapons"
-                          value={sheet.kit.weapons.join(", ")}
-                        />
-                        <DetailCard
-                          label="Stamina"
-                          value={`+${sheet.kit.staminaPerEchelon} / echelon`}
-                        />
-                        <DetailCard
-                          label="Speed"
-                          value={formatModifier(sheet.kit.speedBonus)}
-                        />
-                        <DetailCard
-                          label="Stability"
-                          value={formatModifier(sheet.kit.stabilityBonus)}
-                        />
-                        <DetailCard
-                          label="Disengage"
-                          value={formatModifier(sheet.kit.disengageBonus)}
-                        />
-                      </div>
-                      <AbilityBlock
-                        ability={drawSteelAbilityFromLike(
-                          kitSignatureAsAbility(sheet.kit),
-                        )}
-                        compact
-                      />
+                      {sheet.kits.map((kit, index) => (
+                        <div key={kit.id} className="grid gap-4">
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-zinc-500">
+                              {sheet.kits.length > 1 && index === 1 ? "Second Kit" : "Kit"}
+                            </div>
+                            <h3 className="text-lg font-black text-zinc-50">
+                              {kit.name}
+                            </h3>
+                            <p className="mt-2 text-sm leading-6 text-zinc-300">
+                              {kit.description}
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <DetailCard label="Armor" value={kit.armor} />
+                            <DetailCard
+                              label="Weapons"
+                              value={kit.weapons.join(", ")}
+                            />
+                            <DetailCard
+                              label="Stamina"
+                              value={`+${kit.staminaPerEchelon} / echelon`}
+                            />
+                            <DetailCard
+                              label="Speed"
+                              value={formatModifier(kit.speedBonus)}
+                            />
+                            <DetailCard
+                              label="Stability"
+                              value={formatModifier(kit.stabilityBonus)}
+                            />
+                            <DetailCard
+                              label="Disengage"
+                              value={formatModifier(kit.disengageBonus)}
+                            />
+                          </div>
+                          <AbilityBlock
+                            ability={drawSteelAbilityFromLike(
+                              kitSignatureAsAbility(kit),
+                            )}
+                            compact
+                          />
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <div className="grid gap-4">
@@ -1654,6 +1735,45 @@ export function HeroSheet() {
                       </EmptyText>
                     </div>
                   )}
+                </SheetPanel>
+              </TabsContent>
+
+              <TabsContent
+                value="inventory"
+                className={SHEET_TAB_CONTENT_CLASS}
+              >
+                <SheetPanel icon={Package} title="Inventory">
+                  <div className="grid gap-4">
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <DetailCard
+                        label="Entries"
+                        value={sheet.inventory.length}
+                      />
+                      <DetailCard
+                        label="Carried"
+                        value={sheet.inventory.reduce(
+                          (sum, item) => sum + item.quantity,
+                          0,
+                        )}
+                      />
+                      <DetailCard
+                        label="Equipped"
+                        value={
+                          sheet.inventory.filter((item) => item.equipped)
+                            .length
+                        }
+                      />
+                    </div>
+                    {savingInventory && (
+                      <p className="rounded border border-cyan-800/60 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
+                        Saving inventory...
+                      </p>
+                    )}
+                    <CharacterInventoryPanel
+                      inventory={sheet.inventory}
+                      onInventoryChange={handleInventoryChange}
+                    />
+                  </div>
                 </SheetPanel>
               </TabsContent>
 

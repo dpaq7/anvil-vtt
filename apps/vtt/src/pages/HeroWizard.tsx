@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { WizardLogic } from '@anvil/data';
 import { useWizardStore } from '../stores/wizardStore.js';
 import { clearWizardState, useWizardPersistence } from '../hooks/useWizardPersistence.js';
@@ -69,6 +70,7 @@ export function HeroWizard() {
           subclass: character.subclass,
           culture: character.culture,
           kit: character.kit,
+          secondaryKit: character.secondaryKit,
           cultureSkills: character.cultureSkills,
           careerSkillChoices: character.careerSkillChoices,
           classSkillChoices: character.classSkillChoices,
@@ -80,6 +82,7 @@ export function HeroWizard() {
           selectedPerks: WizardLogic.getSelectedPerkIds(character),
           selectedTitles: character.selectedTitles,
           abilityChoices: character.abilityChoices,
+          summonerMinionChoices: character.summonerMinionChoices,
           companion: character.companion,
           pronouns: character.pronouns,
           backstory: character.backstory,
@@ -87,10 +90,14 @@ export function HeroWizard() {
           levelUpChoices: character.levelUpChoices,
         },
       });
+      if (!result.id) {
+        throw new Error('Hero was created without an id');
+      }
       await clearWizardState();
       reset();
-      navigate(`/app/heroes/${result.id}`);
-    } catch {
+      navigate(`/app/heroes/${result.id}`, { replace: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Hero creation failed');
       setSaving(false);
     }
   };

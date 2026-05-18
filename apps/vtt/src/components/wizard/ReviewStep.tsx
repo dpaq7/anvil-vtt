@@ -34,7 +34,7 @@ function getMissingStepText(character: CharacterInProgress): string | null {
 
   if (firstIncomplete === WizardLogic.WIZARD_STEPS.ABILITIES) {
     const slots = WizardLogic.getAbilityChoiceSlots(character);
-    const made = slots.filter((slot) => !!character.abilityChoices?.[slot.id]).length;
+    const made = slots.filter((slot) => !!WizardLogic.getSelectedChoiceIdForSlot(character, slot)).length;
     const remaining = Math.max(slots.length - made, 0);
     return `Missing: Abilities (${remaining} slot${remaining === 1 ? "" : "s"} remaining).`;
   }
@@ -52,7 +52,7 @@ export function ReviewStep({ character }: Props) {
       <h2 className="mb-1 text-lg font-semibold">Review Your Hero</h2>
       <p className="mb-2 text-sm text-zinc-400">
         {complete
-          ? "Your hero is ready! Click Save Hero to finish."
+          ? "Your hero is ready! Click Create Hero to finish."
           : `Your hero is ${progress}% complete. Go back to fill in missing steps.`}
       </p>
       {!complete && missingStepText ? (

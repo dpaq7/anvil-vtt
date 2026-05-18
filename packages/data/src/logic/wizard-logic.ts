@@ -8,11 +8,21 @@
  */
 
 import { GameData } from '../game-data/index.js';
+import { portfolios } from '../portfolios/index.js';
+import { BEASTHEART_COMPANION_OPTIONS } from '../rules/classes/beastheart/companions.js';
 import { getAvailablePerkCategories, getClassPerkLevels } from '../rules/perks/index.js';
 import * as HeroLogic from './hero-logic.js';
+import type { MinionTemplate, PortfolioType } from '@anvil/types';
 
 const CAREER_SKILL_GROUP_NAMES = new Set(['crafting', 'exploration', 'interpersonal', 'intrigue', 'lore']);
 const SKILL_GROUP_NAMES = ['crafting', 'exploration', 'interpersonal', 'intrigue', 'lore'] as const;
+export const CHARACTERISTIC_ORDER: HeroLogic.CharacteristicName[] = [
+  'might',
+  'agility',
+  'reason',
+  'intuition',
+  'presence',
+];
 
 export function isCareerSkillChoice(skillName: string): boolean {
   return skillName.includes('/') || CAREER_SKILL_GROUP_NAMES.has(skillName.toLowerCase());
@@ -23,15 +33,16 @@ export function isSkillGroupName(value: string): boolean {
 }
 
 type GameDataAbility = ReturnType<typeof GameData.getAbilitiesByClassAndLevel>[number];
-type GameDataMonster = ReturnType<typeof GameData.getAllMonsters>[number];
 
 export interface AbilityChoiceSlot {
   id: string;
   label: string;
   description: string;
+  kind: 'ability' | 'minion';
   costAmount: number | null;
   abilityType?: string;
   level: number;
+  minionCostAmount?: number;
 }
 
 export interface ClassSkillChoiceSlot {
@@ -48,6 +59,28 @@ export interface CompanionChoiceOption {
   level: number;
   roles: string[];
   ancestry?: string[];
+  size?: string;
+  speed?: string;
+  stability?: number;
+  signatureAbility?: string;
+}
+
+export interface SummonerMinionChoiceOption {
+  id: string;
+  name: string;
+  essenceCost: number;
+  minionsPerSummon: number;
+  size: string;
+  speed: number;
+  stamina: number | number[];
+  stability: number;
+  freeStrike: number;
+  role: string;
+  keywords: string[];
+  movementModes: string[];
+  freeStrikeDamageType: string;
+  traits: Array<{ name: string; description: string }>;
+  signatureAbilityName?: string;
 }
 
 export interface PerkChoiceSlot {
@@ -58,6 +91,13 @@ export interface PerkChoiceSlot {
   source: 'career' | 'class';
   level?: number;
   selectedPerkId: string | null;
+}
+
+export interface CharacteristicAssignmentRules {
+  fixed: Partial<HeroLogic.Characteristics>;
+  fixedNames: HeroLogic.CharacteristicName[];
+  remainingNames: HeroLogic.CharacteristicName[];
+  arrays: number[][];
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +111,8 @@ export interface CultureSelection {
   environment: string | null;
   organization: string | null;
   upbringing: string | null;
+  preset?: string | null;
+  language?: string | null;
 }
 
 /**
@@ -134,6 +176,7 @@ export interface CharacterInProgress {
 
   // Step 8: Kit
   kit: string | null;
+  secondaryKit?: string | null;
 
   // Step 9: Skills
   selectedSkills: string[];
@@ -161,6 +204,7 @@ export interface CharacterInProgress {
   // Step 13: Abilities
   selectedAbilities: string[];
   abilityChoices?: Record<string, string>;
+  summonerMinionChoices?: Record<string, string>;
   companion?: string | null;
 
   // Step 14: Personal Details
@@ -228,30 +272,199 @@ export interface WizardStepDefinition {
 }
 
 // ---------------------------------------------------------------------------
+// Characteristic Assignment Rules
+// ---------------------------------------------------------------------------
+
+function sameNumberMultiset(values: number[], target: number[]): boolean {
+  if (values.length !== target.length) return false;
+
+  const sortedValues = [...values].sort((a, b) => b - a);
+  const sortedTarget = [...target].sort((a, b) => b - a);
+
+  return sortedValues.every((value, index) => value === sortedTarget[index]);
+}
+
+/**
+ * Get class-specific characteristic assignment rules for hero creation.
+ *
+ * Draw Steel classes automatically set one or two characteristics to +2.
+ * The class then exposes arrays for only the remaining characteristics.
+ */
+export function getCharacteristicAssignmentRules(
+  heroClass: HeroLogic.HeroClass | null | undefined
+): CharacteristicAssignmentRules | null {
+  if (!heroClass) return null;
+
+  const classDef = GameData.getClass(heroClass);
+  if (!classDef) return null;
+
+  const fixed: Partial<HeroLogic.Characteristics> = {};
+  for (const [name, value] of Object.entries(classDef.startingCharacteristics)) {
+    if (typeof value === 'number') {
+      fixed[name as HeroLogic.CharacteristicName] = value;
+    }
+  }
+
+  const fixedNames = CHARACTERISTIC_ORDER.filter((name) => fixed[name] !== undefined);
+  const remainingNames = CHARACTERISTIC_ORDER.filter((name) => fixed[name] === undefined);
+  const arrays = classDef.baseStats.characteristicArrays
+    .filter((array) => array.length === remainingNames.length)
+    .map((array) => [...array]);
+
+  return {
+    fixed,
+    fixedNames,
+    remainingNames,
+    arrays,
+  };
+}
+
+/**
+ * Validate a hero creation characteristic assignment against the selected class.
+ */
+export function isValidStartingCharacteristics(
+  characteristics: HeroLogic.Characteristics | null | undefined,
+  heroClass: HeroLogic.HeroClass | null | undefined
+): boolean {
+  if (!characteristics) return false;
+
+  const rules = getCharacteristicAssignmentRules(heroClass);
+  if (!rules) return false;
+
+  for (const name of rules.fixedNames) {
+    if (characteristics[name] !== rules.fixed[name]) {
+      return false;
+    }
+  }
+
+  const remainingValues = rules.remainingNames.map((name) => characteristics[name]);
+  return rules.arrays.some((array) => sameNumberMultiset(remainingValues, array));
+}
+
+// ---------------------------------------------------------------------------
 // Slot-Driven Creation Choices
 // ---------------------------------------------------------------------------
 
-const LEVEL_ONE_ABILITY_SLOTS: Omit<AbilityChoiceSlot, 'id'>[] = [
+const ONE_SIGNATURE_CLASSES = new Set<HeroLogic.HeroClass>([
+  'beastheart',
+  'censor',
+  'fury',
+  'shadow',
+  'troubadour',
+]);
+
+const TWO_SIGNATURE_CLASSES = new Set<HeroLogic.HeroClass>([
+  'conduit',
+  'elementalist',
+  'null',
+  'talent',
+]);
+
+const SUMMONER_CIRCLE_PORTFOLIOS: Record<string, PortfolioType> = {
+  blight: 'demon',
+  graves: 'undead',
+  spring: 'fey',
+  storms: 'elemental',
+};
+
+const AUTOMATIC_ABILITY_IDS_BY_CLASS: Partial<Record<HeroLogic.HeroClass, string[]>> = {
+  summoner: ['summoner-strike', 'strike-for-me'],
+};
+
+const SIGNATURE_ABILITY_SLOT: Omit<AbilityChoiceSlot, 'id' | 'label'> = {
+  description: 'Choose one signature ability. Signature abilities are free to use.',
+  kind: 'ability',
+  abilityType: 'Signature',
+  costAmount: null,
+  level: 1,
+};
+
+const THREE_COST_ABILITY_SLOT: Omit<AbilityChoiceSlot, 'id' | 'label'> = {
+  description: 'Choose one ability that costs 3 heroic resource.',
+  kind: 'ability',
+  costAmount: 3,
+  level: 1,
+};
+
+const FIVE_COST_ABILITY_SLOT: Omit<AbilityChoiceSlot, 'id' | 'label'> = {
+  description: 'Choose one ability that costs 5 heroic resource.',
+  kind: 'ability',
+  costAmount: 5,
+  level: 1,
+};
+
+const SUMMONER_ABILITY_SLOTS: Omit<AbilityChoiceSlot, 'id'>[] = [
   {
-    label: 'Signature Ability',
-    description: 'Choose one signature ability. Signature abilities are free to use.',
-    abilityType: 'Signature',
+    label: 'Signature Minion 1',
+    description: 'Choose one 1-essence signature minion from your circle portfolio.',
+    kind: 'minion',
     costAmount: null,
+    minionCostAmount: 1,
     level: 1,
   },
   {
-    label: '3pt Ability',
-    description: 'Choose one ability that costs 3 heroic resource.',
-    costAmount: 3,
+    label: 'Signature Minion 2',
+    description: 'Choose a second 1-essence signature minion from your circle portfolio.',
+    kind: 'minion',
+    costAmount: null,
+    minionCostAmount: 1,
     level: 1,
   },
   {
-    label: '5pt Ability',
-    description: 'Choose one ability that costs 5 heroic resource.',
-    costAmount: 5,
+    label: '3-Essence Minion',
+    description: 'Choose one 3-essence minion from your circle portfolio.',
+    kind: 'minion',
+    costAmount: null,
+    minionCostAmount: 3,
     level: 1,
+  },
+  {
+    label: '5-Essence Ability',
+    ...FIVE_COST_ABILITY_SLOT,
+    description: 'Choose one ability that costs 5 essence.',
   },
 ];
+
+function createAbilitySlot(
+  heroClass: HeroLogic.HeroClass,
+  slot: Omit<AbilityChoiceSlot, 'id'>,
+  index: number,
+): AbilityChoiceSlot {
+  const suffix = slot.kind === 'minion'
+    ? `minion-${slot.minionCostAmount}-${index + 1}`
+    : slot.abilityType
+      ? `${normalizeChoiceId(slot.abilityType)}-${index + 1}`
+      : `cost-${slot.costAmount}`;
+
+  return {
+    ...slot,
+    id: `class:${heroClass}:level-${slot.level}:${suffix}`,
+  };
+}
+
+function createLevelOneAbilitySlots(heroClass: HeroLogic.HeroClass): AbilityChoiceSlot[] {
+  if (heroClass === 'summoner') {
+    return SUMMONER_ABILITY_SLOTS.map((slot, index) => createAbilitySlot(heroClass, slot, index));
+  }
+
+  const slots: Omit<AbilityChoiceSlot, 'id'>[] = [];
+
+  if (ONE_SIGNATURE_CLASSES.has(heroClass)) {
+    slots.push({ label: 'Signature Ability', ...SIGNATURE_ABILITY_SLOT });
+  } else if (TWO_SIGNATURE_CLASSES.has(heroClass)) {
+    slots.push(
+      { label: 'Signature Ability 1', ...SIGNATURE_ABILITY_SLOT },
+      { label: 'Signature Ability 2', ...SIGNATURE_ABILITY_SLOT },
+    );
+  }
+
+  slots.push(
+    { label: '3pt Ability', ...THREE_COST_ABILITY_SLOT },
+    { label: '5pt Ability', ...FIVE_COST_ABILITY_SLOT },
+  );
+
+  return slots.map((slot, index) => createAbilitySlot(heroClass, slot, index));
+}
 
 function normalizeChoiceId(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -264,15 +477,18 @@ export function getAbilityFeatureId(feature: GameDataAbility): string {
 export function getAbilityChoiceSlots(character: CharacterInProgress): AbilityChoiceSlot[] {
   if (!character.heroClass) return [];
 
-  const slots = LEVEL_ONE_ABILITY_SLOTS.map((slot) => ({
-    ...slot,
-    id: `class:${character.heroClass}:level-${slot.level}:${slot.abilityType ?? `cost-${slot.costAmount}`}`,
-  }));
+  const slots = createLevelOneAbilitySlots(character.heroClass);
 
-  return slots.filter((slot) => getAbilityOptionsForSlot(character, slot).length > 0);
+  return slots.filter((slot) => {
+    if (slot.kind === 'minion') {
+      return getSummonerMinionOptionsForSlot(character, slot).length > 0;
+    }
+    return getAbilityOptionsForSlot(character, slot).length > 0;
+  });
 }
 
 function abilityMatchesSlot(ability: GameDataAbility, slot: AbilityChoiceSlot): boolean {
+  if (slot.kind !== 'ability') return false;
   if (ability.feature_type !== 'ability') return false;
 
   const abilityType = ability.metadata.ability_type;
@@ -289,11 +505,83 @@ export function getAbilityOptionsForSlot(
   character: CharacterInProgress,
   slot: AbilityChoiceSlot
 ): GameDataAbility[] {
-  if (!character.heroClass) return [];
+  if (!character.heroClass || slot.kind !== 'ability') return [];
 
   return GameData.getAbilitiesByClassAndLevel(character.heroClass, slot.level).filter((ability) =>
     abilityMatchesSlot(ability, slot)
   );
+}
+
+function getSummonerPortfolio(character: CharacterInProgress) {
+  if (character.heroClass !== 'summoner') return null;
+  const subclassId = Array.isArray(character.subclass) ? character.subclass[0] : character.subclass;
+  const portfolioType = subclassId ? SUMMONER_CIRCLE_PORTFOLIOS[subclassId] : null;
+  return portfolioType ? portfolios[portfolioType] : null;
+}
+
+function minionTemplateToChoice(template: MinionTemplate): SummonerMinionChoiceOption {
+  return {
+    id: template.id,
+    name: template.name,
+    essenceCost: template.essenceCost,
+    minionsPerSummon: template.minionsPerSummon,
+    size: template.size,
+    speed: template.speed,
+    stamina: template.stamina,
+    stability: template.stability,
+    freeStrike: template.freeStrike,
+    role: template.role,
+    keywords: template.keywords,
+    movementModes: template.movementModes,
+    freeStrikeDamageType: template.freeStrikeDamageType,
+    traits: template.traits,
+    signatureAbilityName: template.signatureAbility?.name,
+  };
+}
+
+export function getSummonerMinionOptionsForSlot(
+  character: CharacterInProgress,
+  slot: AbilityChoiceSlot
+): SummonerMinionChoiceOption[] {
+  if (slot.kind !== 'minion') return [];
+
+  const portfolio = getSummonerPortfolio(character);
+  if (!portfolio) return [];
+
+  const minions = slot.minionCostAmount === 1
+    ? portfolio.signatureMinions
+    : portfolio.unlockedMinions.filter((minion) => minion.essenceCost === slot.minionCostAmount);
+
+  return minions.map(minionTemplateToChoice);
+}
+
+export function getSelectedChoiceIdForSlot(
+  character: CharacterInProgress,
+  slot: AbilityChoiceSlot
+): string | undefined {
+  return slot.kind === 'minion'
+    ? character.summonerMinionChoices?.[slot.id]
+    : character.abilityChoices?.[slot.id];
+}
+
+export function getSelectedSummonerMinionIds(character: CharacterInProgress): string[] {
+  const ids: string[] = [];
+  const push = (id: string | null | undefined) => {
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+
+  for (const slot of getAbilityChoiceSlots(character)) {
+    if (slot.kind === 'minion') {
+      push(getSelectedChoiceIdForSlot(character, slot));
+    }
+  }
+
+  return ids;
+}
+
+export function getAutomaticAbilityIds(character: CharacterInProgress): string[] {
+  if (!character.heroClass) return [];
+  return [...(AUTOMATIC_ABILITY_IDS_BY_CLASS[character.heroClass] ?? [])];
 }
 
 export function getSelectedAbilityIds(character: CharacterInProgress): string[] {
@@ -302,8 +590,13 @@ export function getSelectedAbilityIds(character: CharacterInProgress): string[] 
     if (id && !ids.includes(id)) ids.push(id);
   };
 
+  for (const id of getAutomaticAbilityIds(character)) {
+    push(id);
+  }
+
   for (const slot of getAbilityChoiceSlots(character)) {
-    push(character.abilityChoices?.[slot.id]);
+    if (slot.kind !== 'ability') continue;
+    push(getSelectedChoiceIdForSlot(character, slot));
   }
 
   for (const id of character.selectedAbilities ?? []) {
@@ -317,13 +610,23 @@ export function hasCompleteAbilitySelections(character: CharacterInProgress): bo
   const slots = getAbilityChoiceSlots(character);
   if (slots.length === 0) return !!character.heroClass;
 
+  const selectedIds: string[] = [];
+
   return slots.every((slot) => {
-    const selectedId = character.abilityChoices?.[slot.id];
+    const selectedId = getSelectedChoiceIdForSlot(character, slot);
     if (!selectedId) return false;
+    selectedIds.push(selectedId);
+
+    if (slot.kind === 'minion') {
+      return getSummonerMinionOptionsForSlot(character, slot).some(
+        (minion) => minion.id === selectedId
+      );
+    }
+
     return getAbilityOptionsForSlot(character, slot).some(
       (ability) => getAbilityFeatureId(ability) === selectedId
     );
-  });
+  }) && new Set(selectedIds).size === selectedIds.length;
 }
 
 export function getClassSkillChoiceSlots(character: CharacterInProgress): ClassSkillChoiceSlot[] {
@@ -406,16 +709,35 @@ export function isCompanionRequired(character: CharacterInProgress): boolean {
 }
 
 export function getCompanionOptions(): CompanionChoiceOption[] {
-  return GameData.getAllMonsters()
-    .slice()
-    .sort((a: GameDataMonster, b: GameDataMonster) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((monster) => ({
-      id: normalizeChoiceId(monster.name),
-      name: monster.name,
-      level: monster.level,
-      roles: monster.roles,
-      ancestry: monster.ancestry,
-    }));
+  return BEASTHEART_COMPANION_OPTIONS.map((companion) => ({
+    id: companion.id,
+    name: companion.name,
+    level: companion.level,
+    roles: companion.roles,
+    ancestry: companion.ancestry,
+    size: companion.size,
+    speed: companion.speed,
+    stability: companion.stability,
+    signatureAbility: companion.signatureAbility,
+  }));
+}
+
+export function getKitSelectionsNeeded(character: CharacterInProgress): number {
+  return character.heroClass === 'tactician' ? 2 : 1;
+}
+
+export function getSelectedKitIds(character: CharacterInProgress): string[] {
+  const ids: string[] = [];
+  const push = (id: string | null | undefined) => {
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+
+  push(character.kit);
+  if (character.heroClass === 'tactician') {
+    push(character.secondaryKit);
+  }
+
+  return ids;
 }
 
 // ---------------------------------------------------------------------------
@@ -454,26 +776,26 @@ export function calculateDerivedStats(character: CharacterInProgress): DerivedSt
     ? GameData.getAncestry(character.ancestry)
     : null;
 
-  // Get kit data for bonuses
-  const kit = character.kit
-    ? GameData.getKit(character.kit)
-    : null;
+  // Get kit data for bonuses. Tacticians benefit from two kits through Field Arsenal.
+  const kits = getSelectedKitIds(character)
+    .map((kitId) => GameData.getKit(kitId))
+    .filter((kit): kit is NonNullable<ReturnType<typeof GameData.getKit>> => !!kit);
 
   // Calculate base stamina from class at character's level
   const baseStamina = HeroLogic.getMaxStaminaForClass(character.heroClass, level);
 
   // Add kit stamina bonus (kit stamina is per echelon)
-  const kitStaminaBonus = (kit?.staminaPerEchelon ?? 0) * echelon;
+  const kitStaminaBonus = kits.reduce((total, kit) => total + kit.staminaPerEchelon, 0) * echelon;
 
   // Get recoveries from class
   const recoveries = HeroLogic.getMaxRecoveries(character.heroClass);
 
   // Calculate speed: ancestry base + kit bonus
   const baseSpeed = ancestry?.speed ?? 5;
-  const speedBonus = kit?.speedBonus ?? 0;
+  const speedBonus = kits.reduce((total, kit) => total + kit.speedBonus, 0);
 
   // Get stability from kit
-  const stability = kit?.stabilityBonus ?? 0;
+  const stability = kits.reduce((total, kit) => total + kit.stabilityBonus, 0);
 
   // Get size from ancestry
   const size = ancestry?.size ?? '1M';
@@ -517,6 +839,18 @@ export function calculateGrantedItems(character: CharacterInProgress): GrantedIt
     name: 'Caelian',
     source: 'Default',
   });
+
+  if (character.culture.language) {
+    const cultureLanguage =
+      GameData.getLanguage(character.culture.language) ??
+      GameData.getLanguageByName(character.culture.language);
+    const languageName = cultureLanguage?.name ?? character.culture.language;
+    languages.push({
+      id: cultureLanguage?.id ?? languageName.toLowerCase().replace(/\s+/g, '-'),
+      name: languageName,
+      source: 'Culture',
+    });
+  }
 
   // From Career - careers grant specific skills
   if (character.career) {
@@ -825,15 +1159,14 @@ export function getStepStatus(
 
     case WIZARD_STEP_IDS.CHARACTERISTICS:
       if (character.characteristics) {
-        const total = HeroLogic.getTotalCharacteristics(character.characteristics);
-        if (total === 2) return 'complete';
+        if (isValidStartingCharacteristics(character.characteristics, character.heroClass)) return 'complete';
         return 'incomplete';
       }
       if (character.subclass) return 'incomplete';
       return 'not-begun';
 
     case WIZARD_STEP_IDS.KIT:
-      if (character.kit) return 'complete';
+      if (getSelectedKitIds(character).length >= getKitSelectionsNeeded(character)) return 'complete';
       if (character.characteristics) return 'incomplete';
       return 'not-begun';
 
@@ -973,18 +1306,18 @@ export function validateStep(
     case WIZARD_STEPS.CHARACTERISTICS:
       if (!character.characteristics) {
         errors.push('Characteristics are required');
-      } else {
-        const total = HeroLogic.getTotalCharacteristics(character.characteristics);
-        // Standard point total is 2 (arrays sum to 2)
-        if (total !== 2) {
-          warnings.push(`Characteristics total ${total}, expected 2`);
-        }
+      } else if (!character.heroClass) {
+        errors.push('Class is required before assigning characteristics');
+      } else if (!isValidStartingCharacteristics(character.characteristics, character.heroClass)) {
+        errors.push('Characteristics must match the selected class fixed stats and remaining-stat array');
       }
       break;
 
     case WIZARD_STEPS.KIT:
-      if (!character.kit) {
-        errors.push('Kit is required');
+      const kitsNeeded = getKitSelectionsNeeded(character);
+      const kitsSelected = getSelectedKitIds(character).length;
+      if (kitsSelected < kitsNeeded) {
+        errors.push(kitsNeeded === 1 ? 'Kit is required' : `Select ${kitsNeeded} kits (have ${kitsSelected})`);
       }
       break;
 
@@ -1016,8 +1349,8 @@ export function validateStep(
         errors.push('Class is required before abilities');
       } else if (!hasCompleteAbilitySelections(character)) {
         const abilitySlots = getAbilityChoiceSlots(character);
-        const completeSlots = abilitySlots.filter((slot) => !!character.abilityChoices?.[slot.id]).length;
-        errors.push(`Select ${abilitySlots.length} abilities (have ${completeSlots})`);
+        const completeSlots = abilitySlots.filter((slot) => !!getSelectedChoiceIdForSlot(character, slot)).length;
+        errors.push(`Select ${abilitySlots.length} ability choices (have ${completeSlots})`);
       }
       break;
 
@@ -1127,6 +1460,8 @@ export function createEmptyCharacter(): CharacterInProgress {
       environment: null,
       organization: null,
       upbringing: null,
+      preset: null,
+      language: null,
     },
     career: null,
     incitingIncident: null,
@@ -1135,6 +1470,7 @@ export function createEmptyCharacter(): CharacterInProgress {
     complication: null,
     characteristics: null,
     kit: null,
+    secondaryKit: null,
     selectedSkills: [],
     cultureSkills: {},
     careerSkillChoices: [],
@@ -1145,6 +1481,7 @@ export function createEmptyCharacter(): CharacterInProgress {
     selectedTitles: [],
     selectedAbilities: [],
     abilityChoices: {},
+    summonerMinionChoices: {},
     companion: null,
     name: '',
     pronouns: '',

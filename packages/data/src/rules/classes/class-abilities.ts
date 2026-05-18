@@ -430,7 +430,7 @@ export function getClassAbilities(
  */
 export function getClassResourceName(heroClass: HeroClass): string {
   const resourceMap: Record<HeroClass, string> = {
-    beastheart: 'Rage',
+    beastheart: 'Ferocity',
     fury: 'Ferocity',
     summoner: 'Essence',
     elementalist: 'Essence',

@@ -785,10 +785,10 @@ describe('Beastheart Abilities Audit', () => {
   describe('Signature ability names', () => {
     const names = base.signature.map(a => a.name);
     it.each([
-      'Burning Rage',
+      'Bodyswap',
+      'Come On!',
       'Covering Fire',
-      'Scatter!',
-      'Tag Me In',
+      'Stormrage',
     ])('includes %s', (name) => {
       expect(names).toContain(name);
     });
@@ -797,10 +797,10 @@ describe('Beastheart Abilities Audit', () => {
   describe('3-Ferocity ability names', () => {
     const names = base.threeCost.map(a => a.name);
     it.each([
+      'Bring the Thunder',
       'Herd the Sheep',
-      'High and Low',
       'Hungry like the Wolf',
-      'Mighty Roar',
+      'Pushover',
     ])('includes %s', (name) => {
       expect(names).toContain(name);
     });
@@ -809,10 +809,10 @@ describe('Beastheart Abilities Audit', () => {
   describe('5-Ferocity core ability names', () => {
     const names = base.fiveCost.map(a => a.name);
     it.each([
-      'Bloodlust Strike',
-      'Bring it On!',
-      'Friendly Fire',
-      'Unfair Advantage',
+      'All of You Versus All of Me',
+      'I Feed on your Pain!',
+      'Rain of Fire',
+      'You Let Me Get Too Close',
     ])('includes %s', (name) => {
       expect(names).toContain(name);
     });
@@ -821,10 +821,10 @@ describe('Beastheart Abilities Audit', () => {
   describe('7-Ferocity ability names', () => {
     const names = base.sevenCost.map(a => a.name);
     it.each([
-      'Heart Eater',
-      'Heedless Headbutt',
-      'Primordial Jaws',
-      'Setup Strike',
+      'Death and Violence',
+      'Head to Head',
+      'Jaws of Death',
+      'Shieldbreaker',
     ])('includes %s', (name) => {
       expect(names).toContain(name);
     });
@@ -833,10 +833,10 @@ describe('Beastheart Abilities Audit', () => {
   describe('9-Ferocity core ability names', () => {
     const names = base.nineCost.map(a => a.name);
     it.each([
+      'Deadshot',
       'Dogpile',
-      "Hunter's Mercy",
-      'Massive Throw',
-      'Rend in Two',
+      'One, Two, Three, Heave',
+      'Rip Them Apart!',
     ])('includes %s', (name) => {
       expect(names).toContain(name);
     });
@@ -845,10 +845,10 @@ describe('Beastheart Abilities Audit', () => {
   describe('11-Ferocity core ability names', () => {
     const names = base.elevenCost.map(a => a.name);
     it.each([
-      'Bloodied Blade and Claw',
-      'Burn the World to Ash',
-      'Double Trouble',
       'Life-Drinking Wound',
+      'On the Razor\'s Edge',
+      'Ride or Die',
+      'Turn the World to Ash',
     ])('includes %s', (name) => {
       expect(names).toContain(name);
     });
@@ -888,24 +888,24 @@ describe('Beastheart Abilities Audit', () => {
   });
 
   describe('Power roll characteristics', () => {
-    it('Burning Rage uses might', () => {
-      const br = base.signature.find(a => a.id === 'burning-rage');
+    it('Stormrage uses might', () => {
+      const br = base.signature.find(a => a.id === 'stormrage');
       expect(br?.powerRoll?.characteristic).toBe('might');
     });
     it('Covering Fire uses intuition', () => {
       const cf = base.signature.find(a => a.id === 'covering-fire');
       expect(cf?.powerRoll?.characteristic).toBe('intuition');
     });
-    it('Tag Me In uses intuition', () => {
-      const tmi = base.signature.find(a => a.id === 'tag-me-in');
+    it('Bodyswap uses intuition', () => {
+      const tmi = base.signature.find(a => a.id === 'bodyswap');
       expect(tmi?.powerRoll?.characteristic).toBe('intuition');
     });
-    it('Scatter! uses might', () => {
-      const sc = base.signature.find(a => a.id === 'scatter');
+    it('Come On! uses might', () => {
+      const sc = base.signature.find(a => a.id === 'come-on');
       expect(sc?.powerRoll?.characteristic).toBe('might');
     });
-    it('Heedless Headbutt uses intuition', () => {
-      const hh = base.sevenCost.find(a => a.id === 'heedless-headbutt');
+    it('Head to Head uses intuition', () => {
+      const hh = base.sevenCost.find(a => a.id === 'head-to-head');
       expect(hh?.powerRoll?.characteristic).toBe('intuition');
     });
   });
@@ -983,7 +983,7 @@ describe('Beastheart Abilities Audit', () => {
   describe('Guardian 5-cost ability names', () => {
     const guardian = getBeastheartAbilities('guardian');
     const wildNatureNames = guardian.fiveCost
-      .filter(a => !['bloodlust-strike', 'bring-it-on', 'friendly-fire', 'unfair-advantage'].includes(a.id))
+      .filter(a => !['all-of-you-versus-all-of-me', 'i-feed-on-your-pain', 'rain-of-fire', 'you-let-me-get-too-close'].includes(a.id))
       .map(a => a.name);
 
     it.each([
@@ -997,7 +997,7 @@ describe('Beastheart Abilities Audit', () => {
   describe('Prowler 5-cost ability names', () => {
     const prowler = getBeastheartAbilities('prowler');
     const wildNatureNames = prowler.fiveCost
-      .filter(a => !['bloodlust-strike', 'bring-it-on', 'friendly-fire', 'unfair-advantage'].includes(a.id))
+      .filter(a => !['all-of-you-versus-all-of-me', 'i-feed-on-your-pain', 'rain-of-fire', 'you-let-me-get-too-close'].includes(a.id))
       .map(a => a.name);
 
     it.each([
@@ -1011,7 +1011,7 @@ describe('Beastheart Abilities Audit', () => {
   describe('Punisher 5-cost ability names', () => {
     const punisher = getBeastheartAbilities('punisher');
     const wildNatureNames = punisher.fiveCost
-      .filter(a => !['bloodlust-strike', 'bring-it-on', 'friendly-fire', 'unfair-advantage'].includes(a.id))
+      .filter(a => !['all-of-you-versus-all-of-me', 'i-feed-on-your-pain', 'rain-of-fire', 'you-let-me-get-too-close'].includes(a.id))
       .map(a => a.name);
 
     it.each([
@@ -1025,7 +1025,7 @@ describe('Beastheart Abilities Audit', () => {
   describe('Spark 5-cost ability names', () => {
     const spark = getBeastheartAbilities('spark');
     const wildNatureNames = spark.fiveCost
-      .filter(a => !['bloodlust-strike', 'bring-it-on', 'friendly-fire', 'unfair-advantage'].includes(a.id))
+      .filter(a => !['all-of-you-versus-all-of-me', 'i-feed-on-your-pain', 'rain-of-fire', 'you-let-me-get-too-close'].includes(a.id))
       .map(a => a.name);
 
     it.each([

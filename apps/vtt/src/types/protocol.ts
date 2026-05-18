@@ -16,6 +16,7 @@ export type ClientMessage =
   | { type: 'token_action'; action: TokenActionRequest }
   | { type: 'draw_steel_roll'; roll: DrawSteelRollRequest }
   | { type: 'use_ability'; sourceId: string; targetId: string; abilityId: string }
+  | { type: 'update_inventory'; heroId: string; inventory: InventoryItemData[] }
   | { type: 'ready'; ready: boolean }
   | { type: 'select_hero'; heroId: string }
   | { type: 'end_session' }
@@ -111,6 +112,38 @@ export interface EntityData {
   x: number;
   y: number;
   [key: string]: unknown;
+}
+
+export type InventoryItemSource = 'mcdm-treasure' | 'mcdm-imbuement' | 'custom';
+
+export type InventoryItemCategory =
+  | 'consumable'
+  | 'trinket'
+  | 'leveled'
+  | 'artifact'
+  | 'imbuement'
+  | 'material'
+  | 'mundane'
+  | 'misc';
+
+export interface InventoryItemData {
+  id: string;
+  catalogId?: string;
+  source: InventoryItemSource;
+  name: string;
+  category: InventoryItemCategory;
+  quantity: number;
+  description: string;
+  effect?: string;
+  flavorText?: string;
+  echelon?: number;
+  level?: number;
+  slot?: string;
+  keywords?: string[];
+  projectGoal?: number;
+  equipped?: boolean;
+  enhancements?: Array<{ level: number; name?: string; description: string }>;
+  notes?: string;
 }
 
 // ── Draw Steel Side-Based Combat ──

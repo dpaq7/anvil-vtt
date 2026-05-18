@@ -74,6 +74,7 @@ export interface Ancestry {
 export type EnvironmentType = 'nomadic' | 'rural' | 'secluded' | 'urban' | 'wilderness';
 export type OrganizationType = 'bureaucratic' | 'communal';
 export type UpbringingType = 'academic' | 'creative' | 'labor' | 'lawless' | 'martial' | 'noble';
+export type CultureType = 'ancestral' | 'professional' | 'bespoke';
 
 export interface CultureOption {
   type: EnvironmentType | OrganizationType | UpbringingType;
@@ -85,10 +86,11 @@ export interface Culture {
   id: string;
   name: string;
   description: string;
-  environment: CultureOption;
-  organization: CultureOption;
-  upbringing: CultureOption;
-  language: string;
+  type: CultureType;
+  environment?: CultureOption;
+  organization?: CultureOption;
+  upbringing?: CultureOption;
+  language?: string;
 }
 
 export type PerkType = 'crafting' | 'exploration' | 'interpersonal' | 'intrigue' | 'lore' | 'supernatural';

@@ -156,8 +156,8 @@ export const SidebarNavItem = forwardRef<HTMLAnchorElement, SidebarNavItemProps>
           !isColored && 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100',
           !isColored && active && 'border-l-2 border-anvil-accent bg-zinc-800 text-zinc-100',
           // Colored (light) variants - use dark text
-          isColored && 'text-zinc-800 hover:bg-black/10 hover:text-zinc-900',
-          isColored && active && 'border-l-2 border-zinc-800 bg-black/15 text-zinc-900 font-semibold',
+          isColored && 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
+          isColored && active && 'border-l-2 border-anvil-ink bg-black/15 text-anvil-ink font-semibold',
           collapsed && 'justify-center',
           className,
         )}
@@ -197,7 +197,7 @@ export function SidebarToggle({ className }: { className?: string }) {
       className={cn(
         'flex items-center justify-center border-t p-2 transition-colors',
         !isColored && 'border-zinc-800 text-zinc-500 hover:text-zinc-100',
-        isColored && 'border-black/10 text-zinc-700 hover:text-zinc-900',
+        isColored && 'border-black/10 text-anvil-ink/70 hover:text-anvil-ink',
         className,
       )}
       aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

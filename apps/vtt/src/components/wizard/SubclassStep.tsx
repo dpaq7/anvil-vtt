@@ -98,7 +98,7 @@ export function SubclassStep({ character, onChange }: Props) {
             <div>
               <h3 className="font-medium text-creator-text">Choose Your Companion</h3>
               <p className="mt-1 text-sm text-creator-text-muted">
-                Beasthearts choose a monster companion to fight beside them.
+                Beasthearts choose one bonded companion to fight beside them.
               </p>
             </div>
             {character.companion && (
@@ -112,7 +112,7 @@ export function SubclassStep({ character, onChange }: Props) {
             className="mb-3"
             value={companionSearch}
             onChange={(event) => setCompanionSearch(event.target.value)}
-            placeholder="Search monsters, roles, or ancestries..."
+            placeholder="Search companions, roles, or ancestries..."
           />
 
           <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
