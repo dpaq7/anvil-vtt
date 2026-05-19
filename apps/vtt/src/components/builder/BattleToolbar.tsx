@@ -1,6 +1,12 @@
 import { Button } from '@anvil/ui';
 
-export type BattleTool = 'select' | 'draw' | 'fog' | 'terrain' | 'eraser' | 'pan';
+export type BattleTool =
+  | 'select'
+  | 'draw'
+  | 'fog'
+  | 'terrain'
+  | 'eraser'
+  | 'pan';
 export type FogBrushMode = 'draw' | 'reveal';
 
 export interface BattleToolbarProps {
@@ -30,7 +36,14 @@ const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
 ];
 
 const PRESET_COLORS = [
-  'none', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff',
+  'none',
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ffffff',
 ];
 
 export function BattleToolbar({
@@ -88,9 +101,15 @@ export function BattleToolbar({
                     key={color}
                     type="button"
                     className={`relative h-5 w-5 rounded-full border-2 transition-transform ${
-                      drawColor === color ? 'scale-125 border-white' : 'border-zinc-600 hover:border-zinc-400'
+                      drawColor === color
+                        ? 'scale-125 border-white'
+                        : 'border-zinc-600 hover:border-zinc-400'
                     }`}
-                    style={color === 'none' ? { backgroundColor: '#27272a' } : { backgroundColor: color }}
+                    style={
+                      color === 'none'
+                        ? { backgroundColor: '#27272a' }
+                        : { backgroundColor: color }
+                    }
                     title={color === 'none' ? 'No stroke' : color}
                     onClick={() => onDrawColorChange(color)}
                   >
@@ -115,7 +134,9 @@ export function BattleToolbar({
               onChange={(e) => onDrawWidthChange(Number(e.target.value))}
               className="h-1 w-16 accent-zinc-400"
             />
-            <span className="w-4 text-center text-xs text-zinc-400">{drawWidth}</span>
+            <span className="w-4 text-center text-xs text-zinc-400">
+              {drawWidth}
+            </span>
           </label>
         </div>
       )}
@@ -138,18 +159,26 @@ export function BattleToolbar({
               Reveal
             </button>
           </div>
-          <label className="flex items-center gap-1.5">
-            <span className="text-xs text-zinc-400">Brush</span>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={fogBrushSize}
-              onChange={(e) => onFogBrushSizeChange?.(Number(e.target.value))}
-              className="h-1 w-16 accent-zinc-400"
-            />
-            <span className="w-4 text-center text-xs text-zinc-400">{fogBrushSize}</span>
-          </label>
+          {fogBrushMode === 'draw' ? (
+            <label className="flex items-center gap-1.5">
+              <span className="text-xs text-zinc-400">Brush</span>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                value={fogBrushSize}
+                onChange={(e) => onFogBrushSizeChange?.(Number(e.target.value))}
+                className="h-1 w-16 accent-zinc-400"
+              />
+              <span className="w-4 text-center text-xs text-zinc-400">
+                {fogBrushSize}
+              </span>
+            </label>
+          ) : (
+            <span className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400">
+              1 square
+            </span>
+          )}
           <span className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400">
             {fogZoneCount} zone{fogZoneCount !== 1 ? 's' : ''}
           </span>
