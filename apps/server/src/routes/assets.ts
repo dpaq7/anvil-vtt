@@ -9,10 +9,15 @@ import {
   MAX_ASSET_FILE_SIZE,
   shouldServeAssetAsAttachment,
 } from '../lib/assets.js';
+import { enforceRateLimit } from '../lib/rate-limit.js';
 
 export const assetRoutes = new Hono<AppEnv>();
 
 assetRoutes.use('/*', authMiddleware);
+
+const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024;
+const MAX_USER_ASSETS = 1000;
+const PENDING_UPLOAD_TTL_HOURS = 24;
 
 interface AssetRow {
   id: string;
@@ -26,6 +31,32 @@ interface AssetRow {
 
 function safeAttachmentName(name: string): string {
   return name.replace(/[\r\n"\\/]/g, '_').trim() || 'asset';
+}
+
+async function cleanupPendingUploads(c: Context<AppEnv>, userId: string): Promise<void> {
+  await c.env.DB.prepare(
+    `DELETE FROM assets
+     WHERE user_id = ? AND uploaded_at IS NULL AND created_at < datetime('now', ?)`,
+  )
+    .bind(userId, `-${PENDING_UPLOAD_TTL_HOURS} hours`)
+    .run();
+}
+
+async function enforceAssetQuota(c: Context<AppEnv>, userId: string, incomingBytes: number, excludingAssetId?: string): Promise<Response | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN file_size ELSE 0 END), 0) AS used_bytes,
+       COUNT(*) AS asset_count
+     FROM assets
+     WHERE user_id = ? AND (? IS NULL OR id <> ?)`,
+  )
+    .bind(userId, excludingAssetId ?? null, excludingAssetId ?? null)
+    .first<{ used_bytes: number | null; asset_count: number }>();
+  const usedBytes = row?.used_bytes ?? 0;
+  const assetCount = row?.asset_count ?? 0;
+  if (assetCount >= MAX_USER_ASSETS) return c.json({ error: 'Asset limit reached' }, 403);
+  if (usedBytes + incomingBytes > MAX_USER_STORAGE_BYTES) return c.json({ error: 'Storage quota exceeded' }, 403);
+  return null;
 }
 
 async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: string): Promise<boolean> {
@@ -88,15 +119,27 @@ function parseRange(rangeHeader: string | null, size: number): { start: number; 
 // Register an asset before uploading bytes to R2.
 assetRoutes.post('/upload', async (c) => {
   const user = c.get('user') as AuthUser;
+  const rateLimitError = await enforceRateLimit(c, {
+    namespace: 'asset-upload-register',
+    identifier: user.id,
+    limit: 60,
+    windowSeconds: 60 * 60,
+  });
+  if (rateLimitError) return rateLimitError;
+
+  await cleanupPendingUploads(c, user.id);
+
   const body = await c.req.json<{ name: string; type: string; contentType: string; size?: number }>();
 
   if (!isAllowedAssetType(body.type)) return c.json({ error: 'Invalid type' }, 400);
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
   if (!body.contentType?.trim()) return c.json({ error: 'Content type is required' }, 400);
   if (!isAllowedAssetContentType(body.type, body.contentType)) return c.json({ error: 'File type is not allowed for this asset' }, 400);
-  if (body.size !== undefined && (!Number.isFinite(body.size) || body.size <= 0 || body.size > MAX_ASSET_FILE_SIZE)) {
+  if (body.size === undefined || !Number.isFinite(body.size) || body.size <= 0 || body.size > MAX_ASSET_FILE_SIZE) {
     return c.json({ error: 'File is too large' }, 400);
   }
+  const quotaError = await enforceAssetQuota(c, user.id, body.size);
+  if (quotaError) return quotaError;
 
   const id = crypto.randomUUID();
   const ext = extensionForContentType(body.contentType);
@@ -115,6 +158,14 @@ assetRoutes.post('/upload', async (c) => {
 // Complete upload (client uploads bytes in a second request)
 assetRoutes.put('/:id/data', async (c) => {
   const user = c.get('user') as AuthUser;
+  const rateLimitError = await enforceRateLimit(c, {
+    namespace: 'asset-upload-data',
+    identifier: user.id,
+    limit: 120,
+    windowSeconds: 60 * 60,
+  });
+  if (rateLimitError) return rateLimitError;
+
   const assetId = c.req.param('id');
 
   const asset = await c.env.DB.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?')
@@ -129,6 +180,8 @@ assetRoutes.put('/:id/data', async (c) => {
   if (data.byteLength === 0) return c.json({ error: 'File is empty' }, 400);
   if (data.byteLength > MAX_ASSET_FILE_SIZE) return c.json({ error: 'File is too large' }, 400);
   if (asset.file_size !== null && asset.file_size !== data.byteLength) return c.json({ error: 'Upload size mismatch' }, 400);
+  const quotaError = await enforceAssetQuota(c, user.id, data.byteLength, assetId);
+  if (quotaError) return quotaError;
 
   await c.env.ASSETS.put(asset.storage_key, data, {
     httpMetadata: { contentType },

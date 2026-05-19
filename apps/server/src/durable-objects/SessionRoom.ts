@@ -18,6 +18,7 @@ import type {
   SessionState,
   ParticipantInfo,
   SceneRef,
+  EntityData,
   CombatAction,
   CombatState,
   TurnActionState,
@@ -140,6 +141,14 @@ const VALID_CONDITIONS = new Set<string>(ConditionLogic.getAllConditionNames());
 const MAX_ACTION_LOG_ENTRIES = 200;
 const MAX_INVENTORY_ITEMS = 160;
 const MAX_INVENTORY_TEXT_LENGTH = 2400;
+const MAX_WS_MESSAGE_LENGTH = 128 * 1024;
+const MAX_ENTITY_JSON_LENGTH = 24 * 1024;
+const MAX_PATCH_JSON_LENGTH = 24 * 1024;
+const MAX_SCENE_SHAPE_POINTS = 2048;
+const MAX_STORY_TEXT_LENGTH = 20_000;
+const MAX_APPROACH_TEXT_LENGTH = 2_000;
+const MAX_ID_LENGTH = 220;
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const VALID_INVENTORY_SOURCES = new Set(['mcdm-treasure', 'mcdm-imbuement', 'custom']);
 const VALID_INVENTORY_CATEGORIES = new Set([
   'consumable',
@@ -230,6 +239,363 @@ function normalizeLevelUpChoices(value: unknown): LevelAdvancementChoices | unde
   }
 
   return choices;
+}
+
+function safeString(value: unknown, maxLength = MAX_ID_LENGTH): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maxLength) return null;
+  return trimmed;
+}
+
+function boundedNumber(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (value < min || value > max) return null;
+  return value;
+}
+
+function boundedInteger(value: unknown, min: number, max: number): number | null {
+  const number = boundedNumber(value, min, max);
+  if (number === null || !Number.isInteger(number)) return null;
+  return number;
+}
+
+function boundedIdArray(value: unknown, maxItems = 100): string[] | null {
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const ids = value.map((item) => safeString(item));
+  if (ids.some((item) => item === null)) return null;
+  return ids as string[];
+}
+
+function jsonLength(value: unknown): number {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function hasUnsafeObjectKey(value: unknown, depth = 0): boolean {
+  if (depth > 8) return true;
+  if (Array.isArray(value)) return value.some((item) => hasUnsafeObjectKey(item, depth + 1));
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(([key, child]) => (
+    UNSAFE_OBJECT_KEYS.has(key) || key.length > 160 || hasUnsafeObjectKey(child, depth + 1)
+  ));
+}
+
+function validateEntityData(value: unknown): EntityData | null {
+  if (!isRecord(value)) return null;
+  if (jsonLength(value) > MAX_ENTITY_JSON_LENGTH) return null;
+  if (hasUnsafeObjectKey(value)) return null;
+  const id = safeString(value['id']);
+  const name = safeString(value['name'], 180);
+  const type = safeString(value['type'], 40);
+  const x = boundedNumber(value['x'], -100_000, 100_000);
+  const y = boundedNumber(value['y'], -100_000, 100_000);
+  if (!id || !name || !type || x === null || y === null) return null;
+  return value as EntityData;
+}
+
+function validateRecordPatch(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value) || jsonLength(value) > MAX_PATCH_JSON_LENGTH) return null;
+  if (hasUnsafeObjectKey(value)) return null;
+  return value;
+}
+
+function validateDrawing(value: unknown): DrawingSync | null {
+  if (!isRecord(value)) return null;
+  const id = safeString(value['id']);
+  const type = safeString(value['type'], 40);
+  const color = safeString(value['color'], 40);
+  const width = boundedNumber(value['width'], 0.25, 100);
+  const points = Array.isArray(value['points']) ? value['points'] : null;
+  if (!id || !type || !color || width === null || !points || points.length > MAX_SCENE_SHAPE_POINTS) return null;
+  if (!points.every((point) => typeof point === 'number' && Number.isFinite(point))) return null;
+  return { id, type, color, width, points };
+}
+
+function validateFog(value: unknown): FogSync | null {
+  if (!isRecord(value)) return null;
+  const id = safeString(value['id']);
+  const x = boundedNumber(value['x'], -100_000, 100_000);
+  const y = boundedNumber(value['y'], -100_000, 100_000);
+  const w = boundedNumber(value['w'], 1, 100_000);
+  const h = boundedNumber(value['h'], 1, 100_000);
+  if (!id || x === null || y === null || w === null || h === null) return null;
+  return { id, x, y, w, h };
+}
+
+function validateTerrain(value: unknown): TerrainSync | null {
+  if (!isRecord(value)) return null;
+  const id = safeString(value['id']);
+  const terrainId = safeString(value['terrainId']);
+  const name = safeString(value['name'], 180);
+  const x = boundedNumber(value['x'], -100_000, 100_000);
+  const y = boundedNumber(value['y'], -100_000, 100_000);
+  const w = boundedNumber(value['w'], 1, 100_000);
+  const h = boundedNumber(value['h'], 1, 100_000);
+  if (!id || !terrainId || !name || x === null || y === null || w === null || h === null) return null;
+  return {
+    id,
+    terrainId,
+    name,
+    x,
+    y,
+    w,
+    h,
+    ...(typeof value['color'] === 'number' && Number.isFinite(value['color']) ? { color: value['color'] } : {}),
+    ...(typeof value['hidden'] === 'boolean' ? { hidden: value['hidden'] } : {}),
+  };
+}
+
+function validateCombatAction(value: unknown): CombatAction | null {
+  if (!isRecord(value)) return null;
+  switch (value['type']) {
+    case 'START_COMBAT': {
+      const heroEntityIds = boundedIdArray(value['heroEntityIds']);
+      const villainEntityIds = boundedIdArray(value['villainEntityIds']);
+      return heroEntityIds && villainEntityIds ? { type: 'START_COMBAT', heroEntityIds, villainEntityIds } : null;
+    }
+    case 'ROLL_INITIATIVE':
+      return { type: 'ROLL_INITIATIVE' };
+    case 'END_COMBAT':
+      return { type: 'END_COMBAT' };
+    case 'CLAIM_TURN':
+    case 'SELECT_TURN':
+    case 'APPLY_DAMAGE':
+    case 'APPLY_HEALING':
+    case 'APPLY_CONDITION':
+    case 'REMOVE_CONDITION':
+    case 'CATCH_BREATH':
+    case 'DEFEND':
+      break;
+    case 'END_TURN':
+      return { type: 'END_TURN' };
+    case 'ADJUST_MALICE': {
+      const delta = boundedInteger(value['delta'], -99, 99);
+      return delta === null ? null : { type: 'ADJUST_MALICE', delta };
+    }
+    default:
+      return null;
+  }
+
+  const entityId = safeString(value['entityId']);
+  if (!entityId) return null;
+  if (value['type'] === 'APPLY_DAMAGE' || value['type'] === 'APPLY_HEALING') {
+    const amount = boundedNumber(value['amount'], 0, 100_000);
+    return amount === null ? null : { type: value['type'], entityId, amount };
+  }
+  if (value['type'] === 'APPLY_CONDITION') {
+    const condition = safeString(value['condition'], 80);
+    return condition ? { type: 'APPLY_CONDITION', entityId, condition } : null;
+  }
+  if (value['type'] === 'REMOVE_CONDITION') {
+    const conditionId = safeString(value['conditionId'], 80);
+    return conditionId ? { type: 'REMOVE_CONDITION', entityId, conditionId } : null;
+  }
+  return { type: value['type'] as 'CLAIM_TURN' | 'SELECT_TURN' | 'CATCH_BREATH' | 'DEFEND', entityId };
+}
+
+function validateTokenAction(value: unknown): TokenActionRequest | null {
+  if (!isRecord(value)) return null;
+  const kind = safeString(value['kind'], 40) as TokenActionRequest['kind'] | null;
+  if (!kind || ![
+    'ability',
+    'free-strike',
+    'grab',
+    'knockback',
+    'catch-breath',
+    'defend',
+    'stand-up',
+    'escape-grab',
+    'manual-damage',
+    'manual-heal',
+    'apply-condition',
+    'remove-condition',
+  ].includes(kind)) return null;
+
+  const characteristic = safeString(value['characteristic'], 20);
+  if (characteristic && !CHARACTERISTIC_IDS.includes(characteristic as CharacteristicId)) return null;
+  const amount = value['amount'] === undefined ? undefined : boundedNumber(value['amount'], 0, 100_000);
+  const edges = value['edges'] === undefined ? undefined : boundedInteger(value['edges'], 0, 2);
+  const banes = value['banes'] === undefined ? undefined : boundedInteger(value['banes'], 0, 2);
+  if (amount === null || edges === null || banes === null) return null;
+
+  return {
+    kind,
+    ...(safeString(value['sourceId']) ? { sourceId: safeString(value['sourceId'])! } : {}),
+    ...(safeString(value['targetId']) ? { targetId: safeString(value['targetId'])! } : {}),
+    ...(safeString(value['abilityId']) ? { abilityId: safeString(value['abilityId'])! } : {}),
+    ...(amount !== undefined ? { amount } : {}),
+    ...(safeString(value['condition'], 80) ? { condition: safeString(value['condition'], 80)! } : {}),
+    ...(edges !== undefined ? { edges } : {}),
+    ...(banes !== undefined ? { banes } : {}),
+    ...(characteristic ? { characteristic: characteristic as CharacteristicId } : {}),
+    ...(safeString(value['notes'], 1_000) ? { notes: safeString(value['notes'], 1_000)! } : {}),
+  };
+}
+
+function validateDrawSteelRoll(value: unknown): DrawSteelRollRequest | null {
+  if (!isRecord(value)) return null;
+  const kind = safeString(value['kind'], 40);
+  if (kind !== 'power' && kind !== 'heroic-resource' && kind !== 'd6') return null;
+  const modifier = value['modifier'] === undefined ? undefined : boundedInteger(value['modifier'], -100, 100);
+  if (modifier === null) return null;
+  return {
+    kind,
+    ...(safeString(value['label'], 120) ? { label: safeString(value['label'], 120)! } : {}),
+    ...(modifier !== undefined ? { modifier } : {}),
+    ...(safeString(value['sourceId']) ? { sourceId: safeString(value['sourceId'])! } : {}),
+  };
+}
+
+function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?: string } {
+  if (!isRecord(raw)) return { error: 'Message must be an object' };
+  const type = raw['type'];
+
+  switch (type) {
+    case 'request_state':
+    case 'ping':
+    case 'end_session':
+    case 'montage_reset':
+    case 'audio_pause':
+    case 'audio_stop':
+      return { msg: { type } as ClientMessage };
+
+    case 'ready':
+      return typeof raw['ready'] === 'boolean' ? { msg: { type, ready: raw['ready'] } } : { error: 'Invalid ready state' };
+    case 'select_hero': {
+      const heroId = safeString(raw['heroId']);
+      return heroId ? { msg: { type, heroId } } : { error: 'Invalid hero' };
+    }
+    case 'switch_scene': {
+      const sceneId = safeString(raw['sceneId']);
+      return sceneId ? { msg: { type, sceneId } } : { error: 'Invalid scene' };
+    }
+    case 'revert_scene': {
+      const sceneId = raw['sceneId'] === undefined ? undefined : safeString(raw['sceneId']);
+      return sceneId === null ? { error: 'Invalid scene' } : { msg: { type, ...(sceneId ? { sceneId } : {}) } };
+    }
+    case 'create_entity': {
+      const entity = validateEntityData(raw['entity']);
+      return entity ? { msg: { type, entity } } : { error: 'Invalid entity' };
+    }
+    case 'update_entity': {
+      const entityId = safeString(raw['entityId']);
+      const changes = validateRecordPatch(raw['changes']);
+      return entityId && changes ? { msg: { type, entityId, changes } } : { error: 'Invalid entity update' };
+    }
+    case 'delete_entity': {
+      const entityId = safeString(raw['entityId']);
+      return entityId ? { msg: { type, entityId } } : { error: 'Invalid entity' };
+    }
+    case 'move_token': {
+      const entityId = safeString(raw['entityId']);
+      const x = boundedNumber(raw['x'], -100_000, 100_000);
+      const y = boundedNumber(raw['y'], -100_000, 100_000);
+      return entityId && x !== null && y !== null ? { msg: { type, entityId, x, y } } : { error: 'Invalid token move' };
+    }
+    case 'combat_action': {
+      const action = validateCombatAction(raw['action']);
+      return action ? { msg: { type, action } } : { error: 'Invalid combat action' };
+    }
+    case 'token_action': {
+      const action = validateTokenAction(raw['action']);
+      return action ? { msg: { type, action } } : { error: 'Invalid token action' };
+    }
+    case 'draw_steel_roll': {
+      const roll = validateDrawSteelRoll(raw['roll']);
+      return roll ? { msg: { type, roll } } : { error: 'Invalid roll' };
+    }
+    case 'use_ability': {
+      const sourceId = safeString(raw['sourceId']);
+      const targetId = safeString(raw['targetId']);
+      const abilityId = safeString(raw['abilityId']);
+      return sourceId && targetId && abilityId ? { msg: { type, sourceId, targetId, abilityId } } : { error: 'Invalid ability request' };
+    }
+    case 'update_inventory': {
+      const heroId = safeString(raw['heroId']);
+      return heroId && Array.isArray(raw['inventory']) && raw['inventory'].length <= MAX_INVENTORY_ITEMS
+        ? { msg: { type, heroId, inventory: sanitizeInventory(raw['inventory']) } }
+        : { error: 'Invalid inventory update' };
+    }
+    case 'scene_drawing_add': {
+      const drawing = validateDrawing(raw['drawing']);
+      return drawing ? { msg: { type, drawing } } : { error: 'Invalid drawing' };
+    }
+    case 'scene_drawing_remove': {
+      const drawingId = safeString(raw['drawingId']);
+      return drawingId ? { msg: { type, drawingId } } : { error: 'Invalid drawing' };
+    }
+    case 'scene_fog_add': {
+      const fog = validateFog(raw['fog']);
+      return fog ? { msg: { type, fog } } : { error: 'Invalid fog' };
+    }
+    case 'scene_fog_remove': {
+      const fogId = safeString(raw['fogId']);
+      return fogId ? { msg: { type, fogId } } : { error: 'Invalid fog' };
+    }
+    case 'scene_terrain_add':
+    case 'scene_terrain_update': {
+      const terrain = validateTerrain(raw['terrain']);
+      return terrain ? { msg: { type, terrain } as ClientMessage } : { error: 'Invalid terrain' };
+    }
+    case 'scene_terrain_remove': {
+      const terrainId = safeString(raw['terrainId']);
+      return terrainId ? { msg: { type, terrainId } } : { error: 'Invalid terrain' };
+    }
+    case 'negotiation_argument': {
+      const skillId = safeString(raw['skillId'], 120);
+      const approachText = safeString(raw['approachText'], MAX_APPROACH_TEXT_LENGTH);
+      return skillId && approachText ? { msg: { type, skillId, approachText } } : { error: 'Invalid negotiation argument' };
+    }
+    case 'negotiation_adjust_patience':
+    case 'negotiation_adjust_interest': {
+      const delta = boundedInteger(raw['delta'], -10, 10);
+      return delta === null ? { error: 'Invalid adjustment' } : { msg: { type, delta } as ClientMessage };
+    }
+    case 'negotiation_reveal_motivation':
+    case 'negotiation_reveal_pitfall': {
+      const id = safeString(raw['id']);
+      return id ? { msg: { type, id } as ClientMessage } : { error: 'Invalid reveal target' };
+    }
+    case 'negotiation_end':
+      return raw['phase'] === 'success' || raw['phase'] === 'failure'
+        ? { msg: { type, phase: raw['phase'] } }
+        : { error: 'Invalid negotiation phase' };
+    case 'montage_roll': {
+      const skillId = safeString(raw['skillId'], 120);
+      const characteristicId = safeString(raw['characteristicId'], 20);
+      return skillId && characteristicId && CHARACTERISTIC_IDS.includes(characteristicId as CharacteristicId)
+        ? { msg: { type, skillId, characteristicId } }
+        : { error: 'Invalid montage roll' };
+    }
+    case 'montage_adjust_successes':
+    case 'montage_adjust_failures': {
+      const delta = boundedInteger(raw['delta'], -10, 10);
+      return delta === null ? { error: 'Invalid montage adjustment' } : { msg: { type, delta } as ClientMessage };
+    }
+    case 'respite_choose_activity':
+    case 'respite_complete_activity': {
+      const activityId = safeString(raw['activityId']);
+      return activityId ? { msg: { type, activityId } as ClientMessage } : { error: 'Invalid respite activity' };
+    }
+    case 'audio_play': {
+      const audioAssetId = safeString(raw['audioAssetId']);
+      return audioAssetId && typeof raw['loop'] === 'boolean'
+        ? { msg: { type, audioAssetId, loop: raw['loop'] } }
+        : { error: 'Invalid audio request' };
+    }
+    case 'story_update': {
+      const readAloudText = typeof raw['readAloudText'] === 'string' && raw['readAloudText'].length <= MAX_STORY_TEXT_LENGTH
+        ? raw['readAloudText']
+        : null;
+      return readAloudText !== null ? { msg: { type, readAloudText } } : { error: 'Invalid story text' };
+    }
+    default:
+      return { error: 'Unsupported message type' };
+  }
 }
 
 function inventoryString(value: unknown, maxLength = MAX_INVENTORY_TEXT_LENGTH): string | undefined {
@@ -469,6 +835,20 @@ export class SessionRoom extends DurableObject<Env> {
     return connections;
   }
 
+  private async refreshMetaFromParticipant(meta: ConnectionMeta): Promise<ConnectionMeta> {
+    const row = await this.env.DB.prepare(
+      'SELECT hero_id, status FROM session_participants WHERE game_session_id = ? AND user_id = ?',
+    )
+      .bind(meta.sessionId, meta.userId)
+      .first<{ hero_id: string | null; status: string }>();
+    if (!row) return meta;
+    return {
+      ...meta,
+      heroId: row.hero_id,
+      ready: row.status === 'ready',
+    };
+  }
+
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
@@ -500,7 +880,7 @@ export class SessionRoom extends DurableObject<Env> {
     return new Response('Not found', { status: 404 });
   }
 
-  private handleWebSocket(request: Request, url: URL): Response {
+  private async handleWebSocket(request: Request, url: URL): Promise<Response> {
     const userId = url.searchParams.get('userId');
     const username = url.searchParams.get('username');
     const avatarUrl = url.searchParams.get('avatarUrl');
@@ -536,7 +916,7 @@ export class SessionRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, encodeTags(meta));
 
     // Broadcast updated participant list
-    this.broadcastParticipants();
+    await this.broadcastParticipants();
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -544,7 +924,7 @@ export class SessionRoom extends DurableObject<Env> {
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') return;
 
-    const meta = this.getMetaForSocket(ws);
+    let meta = this.getMetaForSocket(ws);
     if (!meta) return;
 
     // Recover sessionId after hibernation wake (in-memory fields are lost)
@@ -555,10 +935,21 @@ export class SessionRoom extends DurableObject<Env> {
 
     // Ensure session state is hydrated (guards against concurrent calls after hibernation)
     await this.ensureHydrated();
+    meta = await this.refreshMetaFromParticipant(meta);
 
     let msg: ClientMessage;
+    if (message.length > MAX_WS_MESSAGE_LENGTH) {
+      this.sendTo(ws, { type: 'error', code: 'MESSAGE_TOO_LARGE', message: 'Message is too large' });
+      return;
+    }
+
     try {
-      msg = JSON.parse(message) as ClientMessage;
+      const parsed = parseClientMessagePayload(JSON.parse(message));
+      if (!parsed.msg) {
+        this.sendTo(ws, { type: 'error', code: 'INVALID_MESSAGE', message: parsed.error ?? 'Invalid message' });
+        return;
+      }
+      msg = parsed.msg;
     } catch {
       this.sendTo(ws, { type: 'error', code: 'PARSE_ERROR', message: 'Invalid JSON' });
       return;
@@ -582,7 +973,7 @@ export class SessionRoom extends DurableObject<Env> {
           .bind(msg.ready ? 'ready' : 'joined', msg.ready ? 1 : 0, meta.sessionId, meta.userId)
           .run();
         this.updateTag(ws, { ...meta, ready: msg.ready });
-        this.broadcastParticipants();
+        await this.broadcastParticipants();
         break;
 
       case 'select_hero': {
@@ -618,7 +1009,7 @@ export class SessionRoom extends DurableObject<Env> {
         }
 
         this.updateTag(ws, { ...meta, heroId: msg.heroId });
-        this.broadcastParticipants();
+        await this.broadcastParticipants();
         break;
       }
 
@@ -940,23 +1331,17 @@ export class SessionRoom extends DurableObject<Env> {
 
   override async webSocketClose(_ws: WebSocket): Promise<void> {
     await this.persistActiveSceneSnapshot();
-    // No Map to clean up — tags are on the socket itself
-    this.broadcastParticipants();
+    await this.broadcastParticipants();
   }
 
   override async webSocketError(_ws: WebSocket): Promise<void> {
     await this.persistActiveSceneSnapshot();
-    this.broadcastParticipants();
+    await this.broadcastParticipants();
   }
 
   /**
-   * Update a socket's tag (e.g. when ready state or heroId changes).
-   * Cloudflare doesn't have a setTag API, so we close and note the change
-   * isn't critical — 'ready' and 'heroId' are transient session state.
-   * Instead we'll use ctx.setState for mutable per-socket data if needed.
-   *
-   * For now, ready/heroId are best-effort: they work within a single DO lifetime
-   * but may reset on hibernation wake. This is acceptable for these fields.
+   * Cache mutable per-socket metadata for the current DO lifetime.
+   * Durable participant fields are refreshed from D1 after hibernation wake.
    */
   private updateTag(ws: WebSocket, meta: ConnectionMeta): void {
     this.mutableConnectionMeta.set(ws, meta);
@@ -965,7 +1350,7 @@ export class SessionRoom extends DurableObject<Env> {
   private async sendState(ws: WebSocket): Promise<void> {
     await this.ensureHydrated();
     if (this.sessionState) {
-      this.sessionState.participants = this.getParticipantList();
+      this.sessionState.participants = await this.getParticipantList();
       this.sendTo(ws, { type: 'state', state: this.sessionState });
     }
   }
@@ -1034,7 +1419,7 @@ export class SessionRoom extends DurableObject<Env> {
       activeSceneId,
       entities: activeScene ? this.createLiveEntitiesForScene(activeScene, heroEntities) : heroEntities,
       combat: activeScene?.snapshot?.combat ?? null,
-      participants: this.getParticipantList(),
+      participants: await this.getParticipantList(),
       actionLog: activeScene?.snapshot?.actionLog ?? [],
       negotiation: null,
       montage: null,
@@ -1374,10 +1759,12 @@ export class SessionRoom extends DurableObject<Env> {
     ].includes(msg.type);
   }
 
-  private getParticipantList(): ParticipantInfo[] {
+  private async getParticipantList(): Promise<ParticipantInfo[]> {
     const participants: ParticipantInfo[] = [];
     const seen = new Set<string>();
-    for (const { meta } of this.getConnections()) {
+    for (const { ws, meta: connectionMeta } of this.getConnections()) {
+      const meta = await this.refreshMetaFromParticipant(connectionMeta);
+      this.mutableConnectionMeta.set(ws, meta);
       if (seen.has(meta.userId)) continue;
       seen.add(meta.userId);
       participants.push({
@@ -1393,8 +1780,8 @@ export class SessionRoom extends DurableObject<Env> {
     return participants;
   }
 
-  private broadcastParticipants(): void {
-    this.broadcast({ type: 'participant_update', participants: this.getParticipantList() });
+  private async broadcastParticipants(): Promise<void> {
+    this.broadcast({ type: 'participant_update', participants: await this.getParticipantList() });
   }
 
   private async handleEndSession(): Promise<void> {

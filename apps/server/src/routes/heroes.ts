@@ -3,7 +3,8 @@ import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { isAllowedAssetContentType } from '../lib/assets.js';
-import { HeroLogic, GameData } from '@anvil/data';
+import { HeroLogic, GameData, WizardLogic, PERKS, classPerkAtLevel, getAvailablePerkCategories } from '@anvil/data';
+import type { CharacterInProgress, Characteristics, LevelUpChoice } from '@anvil/data';
 import type { HeroSummary } from '@anvil/types';
 
 export const heroRoutes = new Hono<AppEnv>();
@@ -16,10 +17,15 @@ interface HeroRow {
   id: string;
   name: string;
   ancestry: string | null;
+  culture?: string | null;
+  career?: string | null;
   hero_class: string | null;
   subclass: string | null;
   level: number;
+  characteristics?: string | null;
   kit: string | null;
+  skills?: string | null;
+  abilities?: string | null;
   portrait_asset_id: string | null;
   portrait_url: string | null;
   data: string;
@@ -33,6 +39,231 @@ function portraitUrlForAsset(assetId: string): string {
 
 function portraitUrlForHero(row: Pick<HeroRow, 'portrait_asset_id' | 'portrait_url'>): string | null {
   return row.portrait_asset_id ? portraitUrlForAsset(row.portrait_asset_id) : row.portrait_url;
+}
+
+function parseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function normalizeCharacteristics(value: unknown): Characteristics | null {
+  if (!isRecord(value)) return null;
+  const entries = ['might', 'agility', 'reason', 'intuition', 'presence'] as const;
+  const result: Partial<Characteristics> = {};
+  for (const key of entries) {
+    const raw = value[key];
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+    result[key] = raw;
+  }
+  return result as Characteristics;
+}
+
+function normalizeLevelUpChoices(value: unknown): Record<number, LevelUpChoice[]> {
+  if (!isRecord(value)) return {};
+  const choices: Record<number, LevelUpChoice[]> = {};
+  for (const [key, rawChoices] of Object.entries(value)) {
+    const level = Number(key);
+    if (!Number.isInteger(level) || level < 2 || level > 10 || !Array.isArray(rawChoices)) continue;
+    choices[level] = rawChoices.flatMap((choice): LevelUpChoice[] => {
+      if (!isRecord(choice)) return [];
+      const featureId = stringValue(choice['featureId']);
+      const choiceId = stringValue(choice['choiceId']);
+      if (!featureId || !choiceId) return [];
+      return [{
+        featureId,
+        choiceId,
+        category: stringValue(choice['category']) ?? undefined,
+      }];
+    });
+  }
+  return choices;
+}
+
+function unique(values: string[]): string[] {
+  return values.filter((value, index, all) => value && all.indexOf(value) === index);
+}
+
+function titleCaseId(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function resolveSkillName(choiceId: string): string {
+  const skill = GameData.getSkill(choiceId) ?? GameData.getAllSkills().find((candidate) => {
+    const normalized = candidate.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return normalized === choiceId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  });
+  return skill?.name ?? titleCaseId(choiceId);
+}
+
+function buildCharacterFromPayload(input: {
+  name?: unknown;
+  level?: unknown;
+  ancestry?: unknown;
+  culture?: unknown;
+  career?: unknown;
+  heroClass?: unknown;
+  subclass?: unknown;
+  characteristics?: unknown;
+  kit?: unknown;
+  portraitUrl?: unknown;
+  data?: Record<string, unknown>;
+}): CharacterInProgress {
+  const data = input.data ?? {};
+  const character = WizardLogic.createEmptyCharacter();
+  character.name = stringValue(input.name) ?? '';
+  character.level = typeof input.level === 'number' && Number.isInteger(input.level) ? input.level : 1;
+  character.ancestry = stringValue(input.ancestry);
+  character.culture = isRecord(data['culture'])
+    ? {
+        environment: stringValue(data['culture']['environment']),
+        organization: stringValue(data['culture']['organization']),
+        upbringing: stringValue(data['culture']['upbringing']),
+        preset: stringValue(data['culture']['preset']),
+        language: stringValue(data['culture']['language']),
+      }
+    : parseJson(input.culture as string | null | undefined, character.culture);
+  character.career = stringValue(input.career);
+  const heroClass = stringValue(input.heroClass);
+  character.heroClass = heroClass && HeroLogic.isValidHeroClass(heroClass) ? heroClass : null;
+  const subclass = data['subclass'] ?? input.subclass;
+  character.subclass = Array.isArray(subclass) ? stringArray(subclass) : stringValue(subclass);
+  character.characteristics = normalizeCharacteristics(input.characteristics);
+  character.kit = stringValue(input.kit);
+  character.secondaryKit = stringValue(data['secondaryKit']);
+  character.cultureSkills = isRecord(data['cultureSkills'])
+    ? {
+        environment: stringValue(data['cultureSkills']['environment']) ?? undefined,
+        organization: stringValue(data['cultureSkills']['organization']) ?? undefined,
+        upbringing: stringValue(data['cultureSkills']['upbringing']) ?? undefined,
+      }
+    : {};
+  character.careerSkillChoices = stringArray(data['careerSkillChoices']);
+  character.classSkillChoices = stringArray(data['classSkillChoices']);
+  character.ancestryTraits = stringArray(data['ancestryTraits']);
+  character.careerPerk = stringValue(data['careerPerk']);
+  character.selectedPerks = stringArray(data['selectedPerks']).filter((perkId) => perkId !== character.careerPerk);
+  character.selectedLanguages = stringArray(data['selectedLanguages']);
+  character.selectedTitles = Array.isArray(data['selectedTitles']) ? data['selectedTitles'] as CharacterInProgress['selectedTitles'] : [];
+  character.selectedAbilities = stringArray(data['selectedAbilities']);
+  character.abilityChoices = isRecord(data['abilityChoices'])
+    ? Object.fromEntries(Object.entries(data['abilityChoices']).filter(([, value]) => typeof value === 'string')) as Record<string, string>
+    : {};
+  character.summonerMinionChoices = isRecord(data['summonerMinionChoices'])
+    ? Object.fromEntries(Object.entries(data['summonerMinionChoices']).filter(([, value]) => typeof value === 'string')) as Record<string, string>
+    : {};
+  character.companion = stringValue(data['companion']);
+  character.complication = isRecord(data['complication'])
+    ? {
+        id: stringValue(data['complication']['id']) ?? 'custom',
+        name: stringValue(data['complication']['name']) ?? 'Complication',
+        description: stringValue(data['complication']['description']) ?? undefined,
+      }
+    : null;
+  character.incitingIncident = stringValue(data['incitingIncident']);
+  character.pronouns = stringValue(data['pronouns']) ?? '';
+  character.backstory = stringValue(data['backstory']) ?? '';
+  character.appearance = stringValue(data['appearance']) ?? '';
+  character.portraitUrl = stringValue(input.portraitUrl);
+  character.levelUpChoices = normalizeLevelUpChoices(data['levelUpChoices']);
+  return character;
+}
+
+function validatePerkSelections(character: CharacterInProgress): string | null {
+  for (const slot of WizardLogic.getPerkChoiceSlots(character)) {
+    if (!slot.selectedPerkId) return `Select ${slot.label} perk`;
+    const perk = PERKS.find((candidate) => candidate.id === slot.selectedPerkId);
+    if (!perk) return `Invalid perk for ${slot.label}`;
+    if (!slot.categories.includes(perk.category)) return `Invalid perk category for ${slot.label}`;
+  }
+  return null;
+}
+
+function validateCreatedCharacter(character: CharacterInProgress): string | null {
+  if (!Number.isInteger(character.level) || character.level < 1 || character.level > 10) return 'Level must be 1-10';
+  if (!WizardLogic.isCharacterComplete(character)) return 'Hero creation choices are incomplete';
+  return validatePerkSelections(character);
+}
+
+function sanitizeHeroDataForCreation(character: CharacterInProgress, rawData: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...rawData,
+    heroClass: character.heroClass,
+    subclass: character.subclass,
+    culture: character.culture,
+    kit: character.kit,
+    secondaryKit: character.secondaryKit,
+    cultureSkills: character.cultureSkills,
+    careerSkillChoices: character.careerSkillChoices,
+    classSkillChoices: character.classSkillChoices,
+    ancestryTraits: character.ancestryTraits,
+    incitingIncident: character.incitingIncident,
+    careerPerk: character.careerPerk,
+    selectedLanguages: character.selectedLanguages,
+    selectedPerks: WizardLogic.getSelectedPerkIds(character),
+    selectedTitles: character.selectedTitles,
+    abilityChoices: character.abilityChoices,
+    summonerMinionChoices: character.summonerMinionChoices,
+    companion: character.companion,
+    pronouns: character.pronouns,
+    backstory: character.backstory,
+    appearance: character.appearance,
+    levelUpChoices: character.levelUpChoices,
+  };
+}
+
+function buildCharacterFromHero(row: HeroRow & Record<string, unknown>, data: Record<string, unknown>, level: number): CharacterInProgress {
+  return buildCharacterFromPayload({
+    name: row.name,
+    level,
+    ancestry: row.ancestry,
+    culture: row.culture,
+    career: row.career,
+    heroClass: row.hero_class,
+    subclass: row.subclass,
+    characteristics: parseJson(row.characteristics ?? null, {}),
+    kit: row.kit,
+    portraitUrl: row.portrait_url,
+    data,
+  });
+}
+
+function levelUpChoiceMap(features: ReturnType<typeof WizardLogic.getLevelUpFeatures>, choices: LevelUpChoice[]): LevelUpChoice[] | null {
+  const normalized: LevelUpChoice[] = [];
+  for (const feature of features.filter((item) => item.type === 'choice' && (item.choices?.length ?? 0) > 0)) {
+    const selected = choices.find((choice) => choice.featureId === feature.id);
+    if (!selected || !feature.choices?.some((option) => option.id === selected.choiceId)) return null;
+    normalized.push({
+      featureId: feature.id,
+      choiceId: selected.choiceId,
+      category: feature.category,
+    });
+  }
+  return normalized;
+}
+
+function selectedPerksFromData(data: Record<string, unknown>): string[] {
+  return unique(stringArray(data['selectedPerks']));
 }
 
 async function validateOwnedPortraitAsset(
@@ -179,11 +410,20 @@ heroRoutes.post('/', async (c) => {
     data?: Record<string, unknown>;
   }>();
 
+  const rawData = isRecord(body.data) ? body.data : {};
+  const character = buildCharacterFromPayload({ ...body, data: rawData });
+  const creationError = validateCreatedCharacter(character);
+  if (creationError) return c.json({ error: creationError }, 400);
+
   const id = crypto.randomUUID();
   const portraitAssetId = body.portraitAssetId ?? null;
   const portraitError = await validateOwnedPortraitAsset(c, portraitAssetId, user);
   if (portraitError) return portraitError;
   const portraitUrl = portraitAssetId ? portraitUrlForAsset(portraitAssetId) : body.portraitUrl ?? null;
+  const heroData = sanitizeHeroDataForCreation(character, rawData);
+  const skills = WizardLogic.getSelectedSkillNames(character);
+  const abilities = WizardLogic.getSelectedAbilityIds(character);
+  const subclass = Array.isArray(character.subclass) ? character.subclass.join(',') : character.subclass;
 
   await c.env.DB.prepare(
     `INSERT INTO heroes (id, user_id, name, ancestry, culture, career, hero_class, subclass, level, characteristics, kit, skills, abilities, portrait_asset_id, portrait_url, data)
@@ -192,24 +432,91 @@ heroRoutes.post('/', async (c) => {
     .bind(
       id,
       user.id,
-      body.name,
-      body.ancestry ?? null,
-      body.culture ?? null,
-      body.career ?? null,
-      body.heroClass ?? null,
-      body.subclass ?? null,
-      body.level ?? 1,
-      JSON.stringify(body.characteristics ?? {}),
-      body.kit ?? null,
-      JSON.stringify(body.skills ?? []),
-      JSON.stringify(body.abilities ?? []),
+      character.name,
+      character.ancestry,
+      JSON.stringify(character.culture),
+      character.career,
+      character.heroClass,
+      subclass,
+      character.level,
+      JSON.stringify(character.characteristics ?? {}),
+      character.kit,
+      JSON.stringify(skills),
+      JSON.stringify(abilities),
       portraitAssetId,
       portraitUrl,
-      JSON.stringify(body.data ?? {}),
+      JSON.stringify(heroData),
     )
     .run();
 
   return c.json({ id }, 201);
+});
+
+// Advance hero by one level. XP and rule choices are validated server-side.
+heroRoutes.post('/:id/advance', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const heroId = c.req.param('id');
+  const row = await c.env.DB.prepare(
+    `SELECT * FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+  )
+    .bind(heroId, user.id)
+    .first<HeroRow & Record<string, unknown>>();
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (!row.hero_class || !HeroLogic.isValidHeroClass(row.hero_class)) return c.json({ error: 'Hero class is required' }, 400);
+  if (row.level >= 10) return c.json({ error: 'Hero is already maximum level' }, 400);
+
+  const body = await c.req.json<{ choices?: LevelUpChoice[]; perkId?: string | null }>();
+  const data = parseJson<Record<string, unknown>>(row.data, {});
+  const xp = typeof data['xp'] === 'number' && Number.isFinite(data['xp']) ? data['xp'] : 0;
+  if (!HeroLogic.canAdvanceLevel(row.level, xp)) return c.json({ error: 'Not enough XP to advance' }, 400);
+
+  const nextLevel = row.level + 1;
+  const existingChoices = normalizeLevelUpChoices(data['levelUpChoices']);
+  const validationCharacter = buildCharacterFromHero(row, { ...data, levelUpChoices: existingChoices }, nextLevel);
+  const features = WizardLogic.getLevelUpFeatures(validationCharacter, nextLevel);
+  const normalizedChoices = levelUpChoiceMap(features, Array.isArray(body.choices) ? body.choices : []);
+  if (!normalizedChoices) return c.json({ error: 'Invalid level-up choices' }, 400);
+
+  const nextChoices = { ...existingChoices, [nextLevel]: normalizedChoices };
+  const nextCharacter = buildCharacterFromHero(row, { ...data, levelUpChoices: nextChoices }, nextLevel);
+  const errors = WizardLogic.getLevelUpValidationErrors(nextCharacter, nextLevel);
+  if (errors.length > 0) return c.json({ error: errors[0] }, 400);
+
+  const selectedPerks = selectedPerksFromData(data);
+  if (classPerkAtLevel(row.hero_class, nextLevel)) {
+    const perkId = stringValue(body.perkId);
+    if (!perkId) return c.json({ error: 'Select a perk for this level' }, 400);
+    const perk = PERKS.find((candidate) => candidate.id === perkId);
+    const categories = getAvailablePerkCategories(row.hero_class, nextLevel);
+    if (!perk || !categories.includes(perk.category)) return c.json({ error: 'Invalid perk for this level' }, 400);
+    if (selectedPerks.includes(perkId)) return c.json({ error: 'Perk is already selected' }, 400);
+    selectedPerks.push(perkId);
+  }
+
+  const gainedAbilities = normalizedChoices
+    .filter((choice) => choice.category === 'ability')
+    .map((choice) => choice.choiceId);
+  const gainedSkills = normalizedChoices
+    .filter((choice) => choice.category === 'skill')
+    .map((choice) => resolveSkillName(choice.choiceId));
+  const automaticSkills = row.hero_class === 'beastheart' && nextLevel >= 9 ? ['Nature'] : [];
+  const nextAbilities = unique([...parseJson<string[]>(row.abilities ?? null, []), ...gainedAbilities]);
+  const nextSkills = unique([...parseJson<string[]>(row.skills ?? null, []), ...automaticSkills, ...gainedSkills]);
+  const nextData = {
+    ...data,
+    levelUpChoices: nextChoices,
+    selectedPerks,
+  };
+
+  await c.env.DB.prepare(
+    `UPDATE heroes
+     SET level = ?, abilities = ?, skills = ?, data = ?, updated_at = datetime('now'), version = version + 1
+     WHERE id = ? AND user_id = ?`,
+  )
+    .bind(nextLevel, JSON.stringify(nextAbilities), JSON.stringify(nextSkills), JSON.stringify(nextData), heroId, user.id)
+    .run();
+
+  return c.json({ ok: true, level: nextLevel, abilities: nextAbilities, skills: nextSkills, data: nextData });
 });
 
 // Update hero
@@ -218,10 +525,10 @@ heroRoutes.put('/:id', async (c) => {
   const heroId = c.req.param('id');
 
   const existing = await c.env.DB.prepare(
-    `SELECT id, portrait_asset_id FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    `SELECT id, portrait_asset_id, data FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
   )
     .bind(heroId, user.id)
-    .first<{ id: string; portrait_asset_id: string | null }>();
+    .first<{ id: string; portrait_asset_id: string | null; data: string | null }>();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const body = await c.req.json<{
@@ -241,6 +548,21 @@ heroRoutes.put('/:id', async (c) => {
     data?: Record<string, unknown>;
   }>();
 
+  if (
+    body.level !== undefined
+    || body.skills !== undefined
+    || body.abilities !== undefined
+    || body.heroClass !== undefined
+    || body.subclass !== undefined
+    || body.characteristics !== undefined
+    || body.kit !== undefined
+    || body.ancestry !== undefined
+    || body.culture !== undefined
+    || body.career !== undefined
+  ) {
+    return c.json({ error: 'Use the validated hero creation or advancement flow for rule fields' }, 400);
+  }
+
   if (body.portraitAssetId !== undefined) {
     const portraitError = await validateOwnedPortraitAsset(c, body.portraitAssetId, user);
     if (portraitError) return portraitError;
@@ -250,16 +572,6 @@ heroRoutes.put('/:id', async (c) => {
   const vals: unknown[] = [];
 
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
-  if (body.ancestry !== undefined) { sets.push('ancestry = ?'); vals.push(body.ancestry); }
-  if (body.culture !== undefined) { sets.push('culture = ?'); vals.push(body.culture); }
-  if (body.career !== undefined) { sets.push('career = ?'); vals.push(body.career); }
-  if (body.heroClass !== undefined) { sets.push('hero_class = ?'); vals.push(body.heroClass); }
-  if (body.subclass !== undefined) { sets.push('subclass = ?'); vals.push(body.subclass); }
-  if (body.level !== undefined) { sets.push('level = ?'); vals.push(body.level); }
-  if (body.characteristics !== undefined) { sets.push('characteristics = ?'); vals.push(JSON.stringify(body.characteristics)); }
-  if (body.kit !== undefined) { sets.push('kit = ?'); vals.push(body.kit); }
-  if (body.skills !== undefined) { sets.push('skills = ?'); vals.push(JSON.stringify(body.skills)); }
-  if (body.abilities !== undefined) { sets.push('abilities = ?'); vals.push(JSON.stringify(body.abilities)); }
   if (body.portraitAssetId !== undefined) {
     const portraitAssetId = body.portraitAssetId ?? null;
     sets.push('portrait_asset_id = ?');
@@ -270,7 +582,19 @@ heroRoutes.put('/:id', async (c) => {
     sets.push('portrait_url = ?');
     vals.push(body.portraitUrl);
   }
-  if (body.data !== undefined) { sets.push('data = ?'); vals.push(JSON.stringify(body.data)); }
+  if (body.data !== undefined) {
+    const inventory = body.data['inventory'];
+    if (inventory !== undefined) {
+      if (!Array.isArray(inventory) || JSON.stringify(inventory).length > 128 * 1024) {
+        return c.json({ error: 'Invalid inventory update' }, 400);
+      }
+      const existingData = parseJson<Record<string, unknown>>(existing.data, {});
+      sets.push('data = ?');
+      vals.push(JSON.stringify({ ...existingData, inventory }));
+    } else {
+      return c.json({ error: 'Only inventory data can be updated directly' }, 400);
+    }
+  }
 
   if (sets.length === 0) return c.json({ error: 'No fields to update' }, 400);
 

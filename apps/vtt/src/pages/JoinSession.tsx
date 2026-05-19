@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@anvil/ui';
 import { api } from '../lib/api.js';
+import { ROOM_CODE_LENGTH, normalizeRoomCodeInput } from '../lib/room-code.js';
 import { useAuthStore } from '../stores/authStore.js';
 import type { HeroSummary } from '@anvil/types';
 
@@ -19,7 +20,7 @@ export function JoinSession() {
   const user = useAuthStore((s) => s.user);
   const loading = useAuthStore((s) => s.loading);
 
-  const [code, setCode] = useState(paramCode ?? '');
+  const [code, setCode] = useState(normalizeRoomCodeInput(paramCode ?? ''));
   const [session, setSession] = useState<SessionLookup | null>(null);
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
@@ -36,7 +37,8 @@ export function JoinSession() {
 
   // Auto-lookup when code param present
   useEffect(() => {
-    if (paramCode) lookup(paramCode);
+    const normalizedParam = normalizeRoomCodeInput(paramCode ?? '');
+    if (normalizedParam.length === ROOM_CODE_LENGTH) lookup(normalizedParam);
   }, [paramCode]);
 
   // Load heroes
@@ -45,9 +47,11 @@ export function JoinSession() {
   }, []);
 
   const lookup = async (roomCode: string) => {
+    const normalizedCode = normalizeRoomCodeInput(roomCode);
+    setCode(normalizedCode);
     setError(null);
     try {
-      const data = await api.get<{ session: SessionLookup }>(`/api/sessions/by-code/${roomCode.toUpperCase()}`);
+      const data = await api.get<{ session: SessionLookup }>(`/api/sessions/by-code/${encodeURIComponent(normalizedCode)}`);
       setSession(data.session);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Invalid room code');
@@ -84,13 +88,13 @@ export function JoinSession() {
                 <p className="mb-1 text-sm text-zinc-400">Room Code</p>
                 <Input
                   value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="Enter 6-character code"
-                  maxLength={6}
+                  onChange={(e) => setCode(normalizeRoomCodeInput(e.target.value))}
+                  placeholder="Enter 10-character code"
+                  maxLength={ROOM_CODE_LENGTH}
                   className="font-mono text-lg tracking-widest"
                 />
               </div>
-              <Button onClick={() => lookup(code)} disabled={code.length < 6}>
+              <Button onClick={() => lookup(code)} disabled={code.length < ROOM_CODE_LENGTH}>
                 Find Session
               </Button>
             </>

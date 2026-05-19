@@ -46,7 +46,6 @@ import type {
 } from '@anvil/data';
 import type { SceneImportDocument } from '@anvil/types';
 import { api } from '../lib/api.js';
-import { generateRoomCode } from '../lib/room-code.js';
 import { TreeSidebar } from '../components/builder/TreeSidebar.js';
 import { CardGrid } from '../components/builder/CardGrid.js';
 import { SceneWorkspace } from '../components/builder/SceneWorkspace.js';
@@ -696,8 +695,7 @@ export function CampaignBuilder() {
     if (!selectedId || selectedType !== 'session') return;
     const session = sessions.find((s) => s.id === selectedId);
     if (session?.status && session.status !== 'draft') return;
-    const roomCode = generateRoomCode();
-    await api.put(`/api/sessions/${selectedId}/go-live`, { roomCode });
+    await api.put(`/api/sessions/${selectedId}/go-live`, {});
     navigate(`/app/session/${selectedId}/lobby`);
   };
 
@@ -763,9 +761,7 @@ export function CampaignBuilder() {
 
       if (session.status && session.status !== 'draft') return;
 
-      const roomCode = generateRoomCode();
       await api.put(`/api/sessions/${session.id}/go-live`, {
-        roomCode,
         sceneId: scene.id,
       });
       navigate(`/app/session/${session.id}/lobby`);

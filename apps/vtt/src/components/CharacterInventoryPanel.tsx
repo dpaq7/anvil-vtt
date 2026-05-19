@@ -12,12 +12,12 @@ import { Badge, Button, Input, cn } from '@anvil/ui';
 import {
   addCatalogItemToInventory,
   canEquipInventoryItem,
-  CharacterInventoryItem,
   INVENTORY_CATEGORIES,
   INVENTORY_CATEGORY_LABELS,
   inventoryMetaLine,
   MCDM_INVENTORY_CATALOG,
 } from '../lib/inventory.js';
+import type { CharacterInventoryItem } from '../lib/inventory.js';
 
 interface CharacterInventoryPanelProps {
   inventory: CharacterInventoryItem[];

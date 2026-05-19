@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@anvil/ui';
 import { api } from '../lib/api.js';
-import { generateRoomCode } from '../lib/room-code.js';
 import { useAuthStore } from '../stores/authStore.js';
 import { CampaignCard } from '../components/sessions/CampaignCard.js';
 import { SessionLauncher } from '../components/sessions/SessionLauncher.js';
@@ -53,8 +52,7 @@ export function LivePage() {
   /** Director: Go Live on a session. */
   const handleGoLive = async (sessionId: string, sceneId: string | null) => {
     try {
-      const roomCode = generateRoomCode();
-      await api.put(`/api/sessions/${sessionId}/go-live`, { roomCode, sceneId });
+      await api.put(`/api/sessions/${sessionId}/go-live`, { sceneId });
       navigate(`/app/session/${sessionId}/lobby`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to go live');
