@@ -781,6 +781,10 @@ export function CampaignBuilder() {
     selectedType === 'scene'
       ? (scenes.find((s) => s.id === selectedId) ?? null)
       : null;
+  const showMainActionBar =
+    selectedType === 'campaign' ||
+    selectedType === 'module' ||
+    selectedType === 'session';
   const showInitiativeTracker = selectedScene?.type === 'battle';
   const selectedSceneData = useMemo<Record<string, unknown>>(() => {
     if (!selectedScene || selectedScene.type !== 'battle') return {};
@@ -1140,16 +1144,27 @@ export function CampaignBuilder() {
 
         <TabsContent
           value="structure"
-          className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto`}
+          className={`${RAIL_TAB_CONTENT_CLASS} flex flex-col`}
         >
-          <TreeSidebar
-            nodes={buildTree()}
-            selectedId={selectedId}
-            onSelect={(id, type) => {
-              setSelectedId(id);
-              setSelectedType(type);
-            }}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <TreeSidebar
+              nodes={buildTree()}
+              selectedId={selectedId}
+              onSelect={(id, type) => {
+                setSelectedId(id);
+                setSelectedType(type);
+              }}
+            />
+          </div>
+          {campaignId ? (
+            <div className="shrink-0 border-t border-zinc-800 bg-zinc-950/40 p-2">
+              <SceneImportDialog
+                buttonLabel="Import Scenes"
+                buttonClassName="w-full justify-start"
+                onImport={handleSceneImport}
+              />
+            </div>
+          ) : null}
         </TabsContent>
 
         {showInitiativeTracker ? (
@@ -1399,14 +1414,8 @@ export function CampaignBuilder() {
       )}
       {/* Main Content */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {!focusMode && (
+        {!focusMode && showMainActionBar && (
           <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 p-4">
-            {campaignId && (
-              <SceneImportDialog
-                buttonLabel="Import Scenes"
-                onImport={handleSceneImport}
-              />
-            )}
             {selectedType === 'campaign' && (
               <Dialog open={addModuleOpen} onOpenChange={setAddModuleOpen}>
                 <DialogTrigger asChild>

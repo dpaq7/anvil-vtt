@@ -602,6 +602,22 @@ export function BattleWorkspace({
     notes: (data['notes'] as string) ?? '',
     creatureGroups: (data['creatureGroups'] as string) ?? '',
   };
+  const sceneSfxAudioIds = useMemo(
+    () =>
+      Array.from({ length: 4 }, (_, index) => {
+        const rawList = data['audioSfx'];
+        if (Array.isArray(rawList)) {
+          const value = rawList[index];
+          return typeof value === 'string' && value ? value : null;
+        }
+
+        const legacyValue = data[`audioSfx${index + 1}`];
+        return typeof legacyValue === 'string' && legacyValue
+          ? legacyValue
+          : null;
+      }),
+    [data],
+  );
   const rightRailTabs = useMemo<
     Array<{ value: BuilderRightRailTab; label: string; count?: number }>
   >(
@@ -1145,18 +1161,19 @@ export function BattleWorkspace({
           fogBrushSize={fogBrushSize}
           onFogBrushSizeChange={setFogBrushSize}
           onClearFog={() => changeWithUndo({ ...data, fog: [] })}
-        />
-
-        {/* Viewport controls (zoom +/-, fit) */}
-        <ViewportControls
-          zoom={zoom}
-          onZoomIn={() => viewportRef.current?.zoomIn()}
-          onZoomOut={() => viewportRef.current?.zoomOut()}
-          onFitToMap={() =>
-            viewportRef.current?.fitToRect(
-              effectiveCols * effectiveCellSize,
-              effectiveRows * effectiveCellSize,
-            )
+          viewportControls={
+            <ViewportControls
+              zoom={zoom}
+              orientation="horizontal"
+              onZoomIn={() => viewportRef.current?.zoomIn()}
+              onZoomOut={() => viewportRef.current?.zoomOut()}
+              onFitToMap={() =>
+                viewportRef.current?.fitToRect(
+                  effectiveCols * effectiveCellSize,
+                  effectiveRows * effectiveCellSize,
+                )
+              }
+            />
           }
         />
 
@@ -1298,10 +1315,21 @@ export function BattleWorkspace({
                 >
                   <SceneAudioPanel
                     campaignId={campaignId}
-                    audioId={(data['audioMusic'] as string) ?? null}
-                    onAudioChange={(id) =>
+                    multitrack
+                    musicAudioId={(data['audioMusic'] as string) ?? null}
+                    ambientAudioId={(data['audioAmbient'] as string) ?? null}
+                    sfxAudioIds={sceneSfxAudioIds}
+                    onMusicAudioChange={(id) =>
                       onChange({ ...data, audioMusic: id ?? undefined })
                     }
+                    onAmbientAudioChange={(id) =>
+                      onChange({ ...data, audioAmbient: id ?? undefined })
+                    }
+                    onSfxAudioChange={(slotIndex, id) => {
+                      const nextSfxIds = [...sceneSfxAudioIds];
+                      nextSfxIds[slotIndex] = id;
+                      onChange({ ...data, audioSfx: nextSfxIds });
+                    }}
                     hideLabel
                   />
                 </RightRailSection>
@@ -1738,7 +1766,7 @@ export function BattleWorkspace({
                         Select to draw
                       </span>
                       <span className="text-xs text-zinc-500">
-                        Drag map boxes or drop cards
+                        Select an asset to draw on the game map
                       </span>
                     </div>
                     <select

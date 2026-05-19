@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button } from '@anvil/ui';
 
 export type BattleTool =
@@ -24,6 +25,7 @@ export interface BattleToolbarProps {
   fogBrushSize?: number;
   onFogBrushSizeChange?: (size: number) => void;
   onClearFog?: () => void;
+  viewportControls?: ReactNode;
 }
 
 const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
@@ -61,6 +63,7 @@ export function BattleToolbar({
   fogBrushSize = 1,
   onFogBrushSizeChange,
   onClearFog,
+  viewportControls,
 }: BattleToolbarProps) {
   return (
     <div className="absolute left-4 top-4 z-10 flex flex-col gap-2">
@@ -88,6 +91,12 @@ export function BattleToolbar({
         >
           <span className="text-xs">Grid</span>
         </Button>
+        {viewportControls ? (
+          <>
+            <div className="mx-1 w-px bg-zinc-700" />
+            {viewportControls}
+          </>
+        ) : null}
       </div>
 
       {/* Draw config — shown when draw or eraser tool is active */}
