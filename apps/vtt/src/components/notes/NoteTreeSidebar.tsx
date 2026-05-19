@@ -623,11 +623,11 @@ export function NoteTreeSidebar({
 
   return (
     <div className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
-      {/* Campaign selector */}
+      {/* Notebook selector */}
       <div className="border-b border-zinc-800 p-2">
         <Select value={selectedCampaignId ?? ''} onValueChange={onCampaignChange}>
           <SelectTrigger className="h-8 text-sm">
-            <SelectValue placeholder="Select campaign" />
+            <SelectValue placeholder="Select notebook" />
           </SelectTrigger>
           <SelectContent>
             {campaigns.map((c) => (

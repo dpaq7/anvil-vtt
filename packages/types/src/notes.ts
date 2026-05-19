@@ -1,8 +1,8 @@
-/** Notes — per-campaign, per-user notebooks with hierarchical folders */
+/** Notes — per-user notebooks with hierarchical folders, scoped to a campaign or personal notebook */
 
 export interface NoteFolder {
   id: string;
-  campaignId: string;
+  campaignId: string; // Campaign id, or the personal notebook id for personal notes.
   userId: string;
   parentFolderId: string | null;
   name: string;
@@ -14,7 +14,7 @@ export interface NoteFolder {
 
 export interface Note {
   id: string;
-  campaignId: string;
+  campaignId: string; // Campaign id, or the personal notebook id for personal notes.
   userId: string;
   folderId: string;
   title: string;

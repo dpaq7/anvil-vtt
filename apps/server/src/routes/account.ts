@@ -55,6 +55,8 @@ const TABLE_COLUMNS = {
   monster_portraits: ['id', 'campaign_id', 'monster_name', 'asset_id', 'created_at', 'updated_at'],
   note_folders: ['id', 'campaign_id', 'user_id', 'parent_folder_id', 'name', 'is_auto_generated', 'sort_order', 'created_at', 'updated_at'],
   notes: ['id', 'campaign_id', 'user_id', 'folder_id', 'title', 'content', 'sort_order', 'created_at', 'updated_at'],
+  personal_note_folders: ['id', 'user_id', 'parent_folder_id', 'name', 'is_auto_generated', 'sort_order', 'created_at', 'updated_at'],
+  personal_notes: ['id', 'user_id', 'folder_id', 'title', 'content', 'sort_order', 'created_at', 'updated_at'],
 } as const;
 
 type BackupTableName = keyof typeof TABLE_COLUMNS;
@@ -109,6 +111,8 @@ const RESTORE_ORDER: BackupTableName[] = [
   'monster_portraits',
   'note_folders',
   'notes',
+  'personal_note_folders',
+  'personal_notes',
 ];
 
 function safeFileName(value: string) {
@@ -227,6 +231,16 @@ async function buildArchive(c: Context<AppEnv>, user: AuthUser): Promise<Account
     .filter((row) => row['user_id'] === user.id);
   tables.notes = (await rowsWhereIn(db, 'notes', 'campaign_id', campaignIds))
     .filter((row) => row['user_id'] === user.id);
+  tables.personal_note_folders = await allRows(
+    db,
+    'SELECT * FROM personal_note_folders WHERE user_id = ? ORDER BY sort_order',
+    [user.id],
+  );
+  tables.personal_notes = await allRows(
+    db,
+    'SELECT * FROM personal_notes WHERE user_id = ? ORDER BY sort_order',
+    [user.id],
+  );
 
   const sessionIds = stringIds(tables.game_sessions, 'id');
   tables.scenes = await rowsWhereIn(db, 'scenes', 'game_session_id', sessionIds);
@@ -411,6 +425,8 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
   const sourceMonsterPortraits = rowsWithSourceIds(rawTables.monster_portraits ?? []);
   const sourceNoteFolders = rowsWithSourceIds(rawTables.note_folders ?? []);
   const sourceNotes = rowsWithSourceIds(rawTables.notes ?? []);
+  const sourcePersonalNoteFolders = rowsWithSourceIds(rawTables.personal_note_folders ?? []);
+  const sourcePersonalNotes = rowsWithSourceIds(rawTables.personal_notes ?? []);
 
   const assetIdMap = createIdMap(sourceAssets);
   const heroIdMap = createIdMap(sourceHeroes);
@@ -428,6 +444,8 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
   const monsterPortraitIdMap = createIdMap(sourceMonsterPortraits);
   const noteFolderIdMap = createIdMap(sourceNoteFolders);
   const noteIdMap = createIdMap(sourceNotes);
+  const personalNoteFolderIdMap = createIdMap(sourcePersonalNoteFolders);
+  const personalNoteIdMap = createIdMap(sourcePersonalNotes);
 
   const assetContentTypes = new Map<string, string>();
   const assets = sourceAssets.map((row) => {
@@ -529,6 +547,14 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
     }));
   const noteFolderIds = new Set(stringIds(noteFolders, 'id'));
 
+  const personalNoteFolders = sourcePersonalNoteFolders
+    .map((row) => pickRow('personal_note_folders', row, {
+      id: mappedId(personalNoteFolderIdMap, row['id'])!,
+      user_id: user.id,
+      parent_folder_id: mappedId(personalNoteFolderIdMap, row['parent_folder_id']),
+    }));
+  const personalNoteFolderIds = new Set(stringIds(personalNoteFolders, 'id'));
+
   const restoredTables: BackupTables = {
     assets,
     heroes,
@@ -616,7 +642,15 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
         campaign_id: mappedId(campaignIdMap, row['campaign_id']),
         user_id: user.id,
         folder_id: mappedId(noteFolderIdMap, row['folder_id']),
-    })),
+      })),
+    personal_note_folders: personalNoteFolders,
+    personal_notes: sourcePersonalNotes
+      .filter((row) => mappedId(personalNoteFolderIdMap, row['folder_id']) && personalNoteFolderIds.has(mappedId(personalNoteFolderIdMap, row['folder_id'])!))
+      .map((row) => pickRow('personal_notes', row, {
+        id: mappedId(personalNoteIdMap, row['id'])!,
+        user_id: user.id,
+        folder_id: mappedId(personalNoteFolderIdMap, row['folder_id']),
+      })),
   };
 
   const assetStorageKeys = new Map<string, string>();
@@ -671,6 +705,21 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
           : null;
         statements.push(
           c.env.DB.prepare('UPDATE note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
+            .bind(parentId, row['id'], user.id),
+        );
+      }
+      continue;
+    }
+    if (table === 'personal_note_folders') {
+      const rows = restoredTables.personal_note_folders ?? [];
+      statements.push(...prepareInsertRows(c.env.DB, 'personal_note_folders', rows.map((row) => ({ ...row, parent_folder_id: null }))));
+      for (const row of rows) {
+        if (typeof row['id'] !== 'string') continue;
+        const parentId = typeof row['parent_folder_id'] === 'string' && personalNoteFolderIds.has(row['parent_folder_id'])
+          ? row['parent_folder_id']
+          : null;
+        statements.push(
+          c.env.DB.prepare('UPDATE personal_note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
             .bind(parentId, row['id'], user.id),
         );
       }
@@ -781,6 +830,8 @@ accountRoutes.delete('/', async (c) => {
   await deleteWhereIn(db, 'notes', 'campaign_id', campaignIds);
   await db.prepare('DELETE FROM note_folders WHERE user_id = ?').bind(user.id).run();
   await deleteWhereIn(db, 'note_folders', 'campaign_id', campaignIds);
+  await db.prepare('DELETE FROM personal_notes WHERE user_id = ?').bind(user.id).run();
+  await db.prepare('DELETE FROM personal_note_folders WHERE user_id = ?').bind(user.id).run();
 
   await deleteWhereIn(db, 'monster_portraits', 'campaign_id', campaignIds);
   await deleteWhereIn(db, 'activity_cards', 'campaign_id', campaignIds);

@@ -3,6 +3,7 @@ import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-do
 import {
   CircleUserRound,
   Download,
+  LogOut,
   Moon,
   Settings,
   Sun,
@@ -182,7 +183,10 @@ function ThemeToggle() {
 function AccountMenu() {
   const { collapsed } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const [loggingOut, setLoggingOut] = useState(false);
   const active = location.pathname === '/app/account';
   const initials = (user?.username ?? 'Account')
     .split(/\s+/)
@@ -190,6 +194,17 @@ function AccountMenu() {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/', { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -246,6 +261,18 @@ function AccountMenu() {
             <Download className="size-4" />
             Data
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={loggingOut}
+          onSelect={(event) => {
+            event.preventDefault();
+            void handleLogout();
+          }}
+          className="gap-2 text-red-300 focus:text-red-200"
+        >
+          <LogOut className="size-4" />
+          {loggingOut ? 'Logging out...' : 'Logout'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

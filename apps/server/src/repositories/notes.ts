@@ -1,8 +1,14 @@
 import type { Note, NoteFolder } from '@anvil/types';
 
+export const PERSONAL_NOTEBOOK_ID = 'personal';
+
+export type NoteScope =
+  | { kind: 'campaign'; campaignId: string }
+  | { kind: 'personal' };
+
 export interface NoteFolderRow {
   id: string;
-  campaign_id: string;
+  campaign_id?: string | null;
   user_id: string;
   parent_folder_id: string | null;
   name: string;
@@ -14,7 +20,7 @@ export interface NoteFolderRow {
 
 export interface NoteRow {
   id: string;
-  campaign_id: string;
+  campaign_id?: string | null;
   user_id: string;
   folder_id: string;
   title: string;
@@ -24,10 +30,36 @@ export interface NoteRow {
   updated_at: string;
 }
 
-export function rowToFolder(row: NoteFolderRow): NoteFolder {
+export function campaignNoteScope(campaignId: string): NoteScope {
+  return { kind: 'campaign', campaignId };
+}
+
+export const personalNoteScope: NoteScope = { kind: 'personal' };
+
+export function noteScopeId(scope: NoteScope): string {
+  return scope.kind === 'campaign' ? scope.campaignId : PERSONAL_NOTEBOOK_ID;
+}
+
+export function noteFolderTable(scope: NoteScope): 'note_folders' | 'personal_note_folders' {
+  return scope.kind === 'campaign' ? 'note_folders' : 'personal_note_folders';
+}
+
+export function noteTable(scope: NoteScope): 'notes' | 'personal_notes' {
+  return scope.kind === 'campaign' ? 'notes' : 'personal_notes';
+}
+
+export function noteScopeWhere(scope: NoteScope): string {
+  return scope.kind === 'campaign' ? 'campaign_id = ? AND user_id = ?' : 'user_id = ?';
+}
+
+export function noteScopeBinds(scope: NoteScope, userId: string): unknown[] {
+  return scope.kind === 'campaign' ? [scope.campaignId, userId] : [userId];
+}
+
+export function rowToFolder(row: NoteFolderRow, scope: NoteScope): NoteFolder {
   return {
     id: row.id,
-    campaignId: row.campaign_id,
+    campaignId: row.campaign_id ?? noteScopeId(scope),
     userId: row.user_id,
     parentFolderId: row.parent_folder_id,
     name: row.name,
@@ -38,10 +70,10 @@ export function rowToFolder(row: NoteFolderRow): NoteFolder {
   };
 }
 
-export function rowToNote(row: NoteRow): Note {
+export function rowToNote(row: NoteRow, scope: NoteScope): Note {
   return {
     id: row.id,
-    campaignId: row.campaign_id,
+    campaignId: row.campaign_id ?? noteScopeId(scope),
     userId: row.user_id,
     folderId: row.folder_id,
     title: row.title,
@@ -54,65 +86,87 @@ export function rowToNote(row: NoteRow): Note {
 
 export async function ensureAutoNoteFolders(
   db: D1Database,
-  campaignId: string,
+  scope: NoteScope,
   userId: string,
 ): Promise<void> {
-  const existing = await db
-    .prepare(
-      'SELECT COUNT(*) as count FROM note_folders WHERE campaign_id = ? AND user_id = ? AND is_auto_generated = 1',
+  const table = noteFolderTable(scope);
+  const scopeWhere = noteScopeWhere(scope);
+  const scopeBinds = noteScopeBinds(scope, userId);
+  const folders = scope.kind === 'campaign'
+    ? [
+        { name: 'Session Notes', sortOrder: 0 },
+        { name: 'World Notes', sortOrder: 1 },
+      ]
+    : [
+        { name: 'Personal Notes', sortOrder: 0 },
+        { name: 'Character Ideas', sortOrder: 1 },
+      ];
+
+  const stmts: D1PreparedStatement[] = [];
+  for (const folder of folders) {
+    const existing = await db.prepare(
+      `SELECT id FROM ${table}
+       WHERE ${scopeWhere} AND is_auto_generated = 1 AND name = ?`,
     )
-    .bind(campaignId, userId)
-    .first<{ count: number }>();
+      .bind(...scopeBinds, folder.name)
+      .first<{ id: string }>();
+    if (existing) continue;
 
-  if (existing && existing.count >= 2) return;
-
-  const folders = [
-    { name: 'Session Notes', sortOrder: 0 },
-    { name: 'World Notes', sortOrder: 1 },
-  ];
-
-  const stmts = folders.map((folder) =>
-    db
-      .prepare(
-        `INSERT OR IGNORE INTO note_folders (id, campaign_id, user_id, name, is_auto_generated, sort_order)
-         VALUES (?, ?, ?, ?, 1, ?)`,
-      )
-      .bind(crypto.randomUUID(), campaignId, userId, folder.name, folder.sortOrder),
-  );
+    if (scope.kind === 'campaign') {
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO note_folders (id, campaign_id, user_id, name, is_auto_generated, sort_order)
+             VALUES (?, ?, ?, ?, 1, ?)`,
+          )
+          .bind(crypto.randomUUID(), scope.campaignId, userId, folder.name, folder.sortOrder),
+      );
+    } else {
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO personal_note_folders (id, user_id, name, is_auto_generated, sort_order)
+             VALUES (?, ?, ?, 1, ?)`,
+          )
+          .bind(crypto.randomUUID(), userId, folder.name, folder.sortOrder),
+      );
+    }
+  }
+  if (stmts.length === 0) return;
   await db.batch(stmts);
 }
 
 export async function getOwnedNoteFolder(
   db: D1Database,
-  campaignId: string,
+  scope: NoteScope,
   userId: string,
   folderId: string,
 ): Promise<NoteFolderRow | null> {
-  return db.prepare('SELECT * FROM note_folders WHERE id = ? AND campaign_id = ? AND user_id = ?')
-    .bind(folderId, campaignId, userId)
+  return db.prepare(`SELECT * FROM ${noteFolderTable(scope)} WHERE id = ? AND ${noteScopeWhere(scope)}`)
+    .bind(folderId, ...noteScopeBinds(scope, userId))
     .first<NoteFolderRow>();
 }
 
 export async function getOwnedNote(
   db: D1Database,
-  campaignId: string,
+  scope: NoteScope,
   userId: string,
   noteId: string,
 ): Promise<NoteRow | null> {
-  return db.prepare('SELECT * FROM notes WHERE id = ? AND campaign_id = ? AND user_id = ?')
-    .bind(noteId, campaignId, userId)
+  return db.prepare(`SELECT * FROM ${noteTable(scope)} WHERE id = ? AND ${noteScopeWhere(scope)}`)
+    .bind(noteId, ...noteScopeBinds(scope, userId))
     .first<NoteRow>();
 }
 
 export async function assertOwnedNoteFolder(
   db: D1Database,
-  campaignId: string,
+  scope: NoteScope,
   userId: string,
   folderId: string | null | undefined,
 ): Promise<boolean> {
   if (!folderId) return false;
-  const row = await db.prepare('SELECT id FROM note_folders WHERE id = ? AND campaign_id = ? AND user_id = ?')
-    .bind(folderId, campaignId, userId)
+  const row = await db.prepare(`SELECT id FROM ${noteFolderTable(scope)} WHERE id = ? AND ${noteScopeWhere(scope)}`)
+    .bind(folderId, ...noteScopeBinds(scope, userId))
     .first<{ id: string }>();
   return row !== null;
 }
