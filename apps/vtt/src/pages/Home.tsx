@@ -44,9 +44,11 @@ import type { HeroSummary, Note } from '@anvil/types';
 import { api } from '../lib/api.js';
 import { useAuthStore } from '../stores/authStore.js';
 import type { CampaignData, CampaignSession } from '../components/sessions/types.js';
+import { PERSONAL_NOTEBOOK_ID } from '../stores/notesStore.js';
 
 const MAX_NOTE_CAMPAIGNS = 8;
 const MAX_LIST_ITEMS = 5;
+const PERSONAL_NOTEBOOK_NAME = 'Personal Notes';
 
 const DASHBOARD_BACKGROUNDS = {
   director: '/dashboard/director-flow-background.png',
@@ -289,7 +291,7 @@ const DASHBOARD_ONBOARDING_STEPS: Record<DashboardRoleKey, OnboardingStep[]> = {
       id: 'notes-section',
       target: 'dashboard-section-notes',
       title: 'Notebook updates',
-      description: 'Recent session and campaign notes are easy to reopen from this area.',
+      description: 'Recent personal, session, and campaign notes are easy to reopen from this area.',
       placement: 'left',
     },
     {
@@ -1164,12 +1166,18 @@ function useDashboardData() {
         ]);
 
         const noteCampaigns = campaigns.slice(0, MAX_NOTE_CAMPAIGNS);
-        const noteResults = await Promise.allSettled(
-          noteCampaigns.map(async (campaign) => {
+        const noteResults = await Promise.allSettled([
+          api.get<{ notes: Note[] }>('/api/notes/personal/notes')
+            .then(({ notes }) => notes.map((note) => ({
+              ...note,
+              campaignId: PERSONAL_NOTEBOOK_ID,
+              campaignName: PERSONAL_NOTEBOOK_NAME,
+            }))),
+          ...noteCampaigns.map(async (campaign) => {
             const { notes } = await api.get<{ notes: Note[] }>(`/api/campaigns/${campaign.id}/notes`);
             return notes.map((note) => ({ ...note, campaignName: campaign.name }));
           }),
-        );
+        ]);
 
         const notes = noteResults
           .flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
@@ -1350,7 +1358,7 @@ export function Home() {
             id: 'player-notes',
             label: 'Notes',
             value: data.notes.length,
-            detail: 'Campaign notes',
+            detail: 'Personal and campaign notes',
             icon: NotebookText,
             tone: 'rose',
           },
@@ -1435,7 +1443,7 @@ export function Home() {
             <EmptyState
               icon={FileText}
               title="No notes yet"
-              detail={isDirector ? 'Capture prep notes for a campaign from the Notes view.' : 'Create session or world notes once you have joined a campaign.'}
+              detail={isDirector ? 'Capture personal or campaign notes from the Notes view.' : 'Capture personal notes now; campaign notes appear after you join a table.'}
               action={{ label: 'Open Notes', to: '/app/notes', icon: NotebookText }}
             />
           }
@@ -1548,8 +1556,8 @@ export function Home() {
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
               {isDirector
-                ? 'Prep status, active tables, campaign notes, player roster, and recent asset work.'
-                : 'Your live tables, characters, campaign notes, and recent uploads in one place.'}
+                ? 'Prep status, active tables, notes, player roster, and recent asset work.'
+                : 'Your live tables, characters, notes, and recent uploads in one place.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2" data-onboarding="dashboard-actions">
