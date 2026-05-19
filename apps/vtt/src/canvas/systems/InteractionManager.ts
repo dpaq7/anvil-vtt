@@ -5,23 +5,47 @@ import type { TerrainLayer, TerrainZoneData } from '../layers/TerrainLayer.js';
 import type { FogLayer } from '../layers/FogLayer.js';
 import { Quadtree } from './Quadtree.js';
 
-export type ActiveTool = 'select' | 'draw' | 'fog' | 'terrain' | 'eraser' | 'pan';
+export type ActiveTool =
+  | 'select'
+  | 'draw'
+  | 'fog'
+  | 'terrain'
+  | 'eraser'
+  | 'pan';
+
+const ERASER_CURSOR =
+  'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27%3E%3Cpath fill=%27%23f8fafc%27 stroke=%27%230f172a%27 stroke-width=%271.5%27 stroke-linejoin=%27round%27 d=%27M15.7 3.8 21 9.1 11.1 19H5.8L3 16.2z%27/%3E%3Cpath fill=%27none%27 stroke=%27%230f172a%27 stroke-width=%271.5%27 stroke-linecap=%27round%27 d=%27M12.1 7.4l5.3 5.3M5.8 19H21%27/%3E%3C/svg%3E") 4 20, auto';
 
 export interface InteractionCallbacks {
   onTokenSelect: (entityId: string | null) => void;
   onTokenMove: (entityId: string, gridX: number, gridY: number) => void;
   onMultiTokenSelect?: (entityIds: string[]) => void;
-  onMultiTokenMove?: (moves: Array<{ entityId: string; gridX: number; gridY: number }>) => void;
+  onMultiTokenMove?: (
+    moves: Array<{ entityId: string; gridX: number; gridY: number }>,
+  ) => void;
   onDrawingAdd?: (points: number[], color: string, width: number) => void;
   onDrawingRemove?: (drawingId: string) => void;
   onTerrainAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onTerrainUpdate?: (terrain: TerrainZoneData) => void;
   onTerrainRemove?: (terrainId: string) => void;
-  onTerrainRightClick?: (terrainId: string | null, screenX: number, screenY: number) => void;
+  onTerrainRightClick?: (
+    terrainId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
-  onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
-  onTokenRightClick?: (entityId: string | null, screenX: number, screenY: number) => void;
+  onFogRevealCell?: (gridX: number, gridY: number) => void;
+  onTokenHover?: (
+    entityId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
+  onTokenRightClick?: (
+    entityId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
 }
 
 export class InteractionManager {
@@ -92,7 +116,11 @@ export class InteractionManager {
   }
 
   /** Attach optional layers for builder mode */
-  setBuilderLayers(drawing: DrawingLayer | null, terrain: TerrainLayer | null, fog: FogLayer | null = null): void {
+  setBuilderLayers(
+    drawing: DrawingLayer | null,
+    terrain: TerrainLayer | null,
+    fog: FogLayer | null = null,
+  ): void {
     this.drawingLayer = drawing;
     this.terrainLayer = terrain;
     this.fogLayer = fog;
@@ -108,6 +136,7 @@ export class InteractionManager {
     this._activeTool = tool;
     // Toggle left-click panning in ViewportSystem
     this.viewport.setLeftClickPanEnabled(tool === 'pan');
+    this.canvas.style.cursor = tool === 'eraser' ? 'default' : '';
   }
 
   /** Update cell size (e.g. when background image changes aspect ratio). */
@@ -174,6 +203,7 @@ export class InteractionManager {
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
     this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
+    this.canvas.addEventListener('pointerleave', this.onPointerLeave);
     this.canvas.addEventListener('contextmenu', this.onContextMenu);
   }
 
@@ -181,14 +211,19 @@ export class InteractionManager {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+    this.canvas.style.cursor = '';
   }
 
   rebuildIndex(): void {
     this.tokenLayer.buildIndex(this.quadtree);
   }
 
-  private clampGrid(gridX: number, gridY: number): { gridX: number; gridY: number } {
+  private clampGrid(
+    gridX: number,
+    gridY: number,
+  ): { gridX: number; gridY: number } {
     return {
       gridX: Math.max(0, Math.min(this.gridBounds.cols - 1, gridX)),
       gridY: Math.max(0, Math.min(this.gridBounds.rows - 1, gridY)),
@@ -207,12 +242,22 @@ export class InteractionManager {
     };
   }
 
-  private screenToGrid(clientX: number, clientY: number): { gridX: number; gridY: number } {
-    const { gridX, gridY } = this.viewport.screenToGrid(clientX, clientY, this.cellSize);
+  private screenToGrid(
+    clientX: number,
+    clientY: number,
+  ): { gridX: number; gridY: number } {
+    const { gridX, gridY } = this.viewport.screenToGrid(
+      clientX,
+      clientY,
+      this.cellSize,
+    );
     return this.clampGrid(gridX, gridY);
   }
 
-  private screenToWorld(clientX: number, clientY: number): { worldX: number; worldY: number } {
+  private screenToWorld(
+    clientX: number,
+    clientY: number,
+  ): { worldX: number; worldY: number } {
     const rect = this.canvas.getBoundingClientRect();
     const pan = this.viewport.getPan();
     const zoom = this.viewport.getZoom();
@@ -260,11 +305,15 @@ export class InteractionManager {
       case 'fog':
         this.handleFogMove(e);
         break;
-      case 'eraser': {
-        const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
-        this.handleEraserDown(e, gridX, gridY);
+      case 'eraser':
+        this.handleEraserMove(e);
         break;
-      }
+    }
+  };
+
+  private onPointerLeave = (): void => {
+    if (this._activeTool === 'eraser') {
+      this.canvas.style.cursor = 'default';
     }
   };
 
@@ -288,7 +337,11 @@ export class InteractionManager {
 
   // --- Select tool ---
 
-  private handleSelectDown(e: PointerEvent, gridX: number, gridY: number): void {
+  private handleSelectDown(
+    e: PointerEvent,
+    gridX: number,
+    gridY: number,
+  ): void {
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
     const additiveSelection = e.ctrlKey || e.metaKey || e.shiftKey;
 
@@ -331,7 +384,10 @@ export class InteractionManager {
     } else {
       if (this.isDirector && this.terrainLayer) {
         const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
-        const resizeId = this.terrainLayer.getResizeHandleAtWorld(worldX, worldY);
+        const resizeId = this.terrainLayer.getResizeHandleAtWorld(
+          worldX,
+          worldY,
+        );
         if (resizeId) {
           const zone = this.terrainLayer.getZone(resizeId);
           if (zone) {
@@ -404,8 +460,10 @@ export class InteractionManager {
       }
       if (this.dragOriginGrid) {
         this.tokenLayer.showGroupDistanceLabel(
-          this.dragOriginGrid.gridX, this.dragOriginGrid.gridY,
-          gridX, gridY,
+          this.dragOriginGrid.gridX,
+          this.dragOriginGrid.gridY,
+          gridX,
+          gridY,
         );
       }
       return;
@@ -416,7 +474,11 @@ export class InteractionManager {
       const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       this.tokenLayer.moveToken(this.dragEntityId, gridX, gridY);
       if (this.dragOriginGrid) {
-        this.tokenLayer.showDistanceLabel(this.dragEntityId, this.dragOriginGrid.gridX, this.dragOriginGrid.gridY);
+        this.tokenLayer.showDistanceLabel(
+          this.dragEntityId,
+          this.dragOriginGrid.gridX,
+          this.dragOriginGrid.gridY,
+        );
       }
       return;
     }
@@ -480,9 +542,14 @@ export class InteractionManager {
     }
 
     // Group drag finished
-    if (this.groupDragging && this.groupDragAnchorGrid && this.groupDragLastGrid) {
+    if (
+      this.groupDragging &&
+      this.groupDragAnchorGrid &&
+      this.groupDragLastGrid
+    ) {
       // Emit final positions for all selected tokens
-      const moves: Array<{ entityId: string; gridX: number; gridY: number }> = [];
+      const moves: Array<{ entityId: string; gridX: number; gridY: number }> =
+        [];
       for (const id of this.selectedIds) {
         const pos = this.tokenLayer.getTokenPosition(id);
         if (pos) {
@@ -554,7 +621,11 @@ export class InteractionManager {
     const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
     this.drawPoints.push(worldX, worldY);
     // Live-render the in-progress stroke
-    this.drawingLayer?.previewStroke(this.drawPoints, this.drawColor, this.drawWidth);
+    this.drawingLayer?.previewStroke(
+      this.drawPoints,
+      this.drawColor,
+      this.drawWidth,
+    );
   }
 
   private handleDrawUp(): void {
@@ -563,29 +634,54 @@ export class InteractionManager {
     // Remove the preview before committing the final stroke
     this.drawingLayer?.clearPreview();
     if (this.drawPoints.length >= 4) {
-      this.callbacks.onDrawingAdd?.(this.drawPoints, this.drawColor, this.drawWidth);
+      this.callbacks.onDrawingAdd?.(
+        this.drawPoints,
+        this.drawColor,
+        this.drawWidth,
+      );
     }
     this.drawPoints = [];
   }
 
   // --- Eraser tool ---
 
-  private handleEraserDown(e: PointerEvent, gridX: number, gridY: number): void {
-    // Try drawings first, then terrain, then fog
+  private getErasableTarget(
+    e: PointerEvent,
+    gridX: number,
+    gridY: number,
+  ): { type: 'drawing' | 'terrain'; id: string } | null {
     if (this.drawingLayer) {
       const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
       const drawingId = this.drawingLayer.getDrawingAt(worldX, worldY);
-      if (drawingId) {
-        this.callbacks.onDrawingRemove?.(drawingId);
-        return;
-      }
+      if (drawingId) return { type: 'drawing', id: drawingId };
     }
+
     if (this.terrainLayer) {
       const terrainId = this.terrainLayer.getZoneAt(gridX, gridY);
-      if (terrainId) {
-        this.callbacks.onTerrainRemove?.(terrainId);
-        return;
-      }
+      if (terrainId) return { type: 'terrain', id: terrainId };
+    }
+
+    return null;
+  }
+
+  private handleEraserMove(e: PointerEvent): void {
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+    const target = this.getErasableTarget(e, gridX, gridY);
+    this.canvas.style.cursor = target ? ERASER_CURSOR : 'default';
+  }
+
+  private handleEraserDown(
+    e: PointerEvent,
+    gridX: number,
+    gridY: number,
+  ): void {
+    const target = this.getErasableTarget(e, gridX, gridY);
+    if (target?.type === 'drawing') {
+      this.callbacks.onDrawingRemove?.(target.id);
+      return;
+    }
+    if (target?.type === 'terrain') {
+      this.callbacks.onTerrainRemove?.(target.id);
     }
     // Fog reveal is handled by the Fog tool's Reveal brush so this eraser
     // remains available for drawings and terrain annotations.
@@ -621,8 +717,14 @@ export class InteractionManager {
 
   // --- Fog tool ---
 
-  private getFogBrushRect(gridX: number, gridY: number): { x: number; y: number; w: number; h: number } {
-    const size = Math.max(1, Math.min(this.fogBrushSize, this.gridBounds.cols, this.gridBounds.rows));
+  private getFogBrushRect(
+    gridX: number,
+    gridY: number,
+  ): { x: number; y: number; w: number; h: number } {
+    const size = Math.max(
+      1,
+      Math.min(this.fogBrushSize, this.gridBounds.cols, this.gridBounds.rows),
+    );
     const half = Math.floor(size / 2);
     const x = Math.max(0, Math.min(this.gridBounds.cols - size, gridX - half));
     const y = Math.max(0, Math.min(this.gridBounds.rows - size, gridY - half));
@@ -631,14 +733,16 @@ export class InteractionManager {
 
   private applyFogBrush(gridX: number, gridY: number): void {
     const rect = this.getFogBrushRect(gridX, gridY);
-    const key = `${this.fogMode}:${rect.x}:${rect.y}:${rect.w}:${rect.h}`;
+    const key =
+      this.fogMode === 'reveal'
+        ? `${this.fogMode}:${gridX}:${gridY}:1:1`
+        : `${this.fogMode}:${rect.x}:${rect.y}:${rect.w}:${rect.h}`;
     if (key === this.fogBrushLastKey) return;
     this.fogBrushLastKey = key;
 
     if (this.fogMode === 'reveal') {
-      const ids = this.fogLayer?.getZonesInRect(rect.x, rect.y, rect.w, rect.h) ?? [];
-      for (const id of ids) this.callbacks.onFogRemove?.(id);
-      this.fogLayer?.previewZone(rect.x, rect.y, rect.w, rect.h);
+      this.callbacks.onFogRevealCell?.(gridX, gridY);
+      this.fogLayer?.previewZone(gridX, gridY, 1, 1);
       return;
     }
 
@@ -672,13 +776,21 @@ export class InteractionManager {
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
     if (entityId) {
       // Position the context menu at the token's right edge (gridX + 1) for consistent placement
-      const { screenX, screenY } = this.viewport.gridToScreen(gridX + 1, gridY, this.cellSize);
+      const { screenX, screenY } = this.viewport.gridToScreen(
+        gridX + 1,
+        gridY,
+        this.cellSize,
+      );
       this.callbacks.onTokenRightClick?.(entityId, screenX, screenY);
       this.callbacks.onTerrainRightClick?.(null, 0, 0);
     } else if (this.terrainLayer) {
       const terrainId = this.terrainLayer.getZoneAt(gridX, gridY);
       if (terrainId) {
-        const { screenX, screenY } = this.viewport.gridToScreen(gridX + 1, gridY, this.cellSize);
+        const { screenX, screenY } = this.viewport.gridToScreen(
+          gridX + 1,
+          gridY,
+          this.cellSize,
+        );
         this.callbacks.onTokenRightClick?.(null, 0, 0);
         this.callbacks.onTerrainRightClick?.(terrainId, screenX, screenY);
       } else {
