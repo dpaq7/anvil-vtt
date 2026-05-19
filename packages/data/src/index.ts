@@ -79,6 +79,8 @@ export type {
   HealthStatus,
   Characteristics,
   CharacteristicName,
+  LevelAdvancementChoice,
+  LevelAdvancementChoices,
   // Wizard Logic
   CharacterInProgress,
   CultureSelection,
@@ -89,6 +91,8 @@ export type {
   GrantedItems,
   StepValidationResult,
   LevelUpChoice,
+  LevelUpFeatureChoiceOption,
+  LevelUpFeatureView,
   StepStatus,
   WizardStepDefinition,
   AbilityChoiceSlot,

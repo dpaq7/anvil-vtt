@@ -84,6 +84,8 @@ async function deleteOwnedAssetIfUnreferenced(
 function hydrateHeroSummary(row: HeroRow): HeroSummary {
   const heroClass = row.hero_class;
   const level = row.level;
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(row.data || '{}'); } catch { /* empty */ }
 
   // Resolve ancestry name from compendium
   const ancestryDef = row.ancestry ? GameData.getAncestry(row.ancestry) : null;
@@ -95,16 +97,18 @@ function hydrateHeroSummary(row: HeroRow): HeroSummary {
 
   if (heroClass && HeroLogic.isValidHeroClass(heroClass)) {
     const kitDef = row.kit ? GameData.getKit(row.kit) : null;
-    staminaMax = kitDef
-      ? HeroLogic.getMaxStaminaWithKit(heroClass, level, kitDef.staminaPerEchelon)
-      : HeroLogic.getMaxStaminaForClass(heroClass, level);
+    const levelUpChoices = typeof data['levelUpChoices'] === 'object'
+      ? data['levelUpChoices'] as Parameters<typeof HeroLogic.getMaxStaminaWithAdvancements>[3]
+      : undefined;
+    staminaMax = HeroLogic.getMaxStaminaWithAdvancements(
+      heroClass,
+      level,
+      kitDef?.staminaPerEchelon ?? 0,
+      levelUpChoices,
+    );
     recoveriesMax = HeroLogic.getMaxRecoveries(heroClass);
     recoveryValue = HeroLogic.getRecoveryValue(staminaMax);
   }
-
-  // Parse data blob for runtime state
-  let data: Record<string, unknown> = {};
-  try { data = JSON.parse(row.data || '{}'); } catch { /* empty */ }
 
   return {
     id: row.id,

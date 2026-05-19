@@ -374,15 +374,15 @@ function onboardingStorageKey(userId: string | undefined, roleKey: DashboardRole
 function hasOnboardingDismissal(storageKey: string) {
   try {
     const value = localStorage.getItem(storageKey);
-    return value === 'completed' || value === 'never';
+    return value === 'never';
   } catch {
     return false;
   }
 }
 
-function writeOnboardingDismissal(storageKey: string, value: 'completed' | 'never') {
+function writeOnboardingDismissal(storageKey: string) {
   try {
-    localStorage.setItem(storageKey, value);
+    localStorage.setItem(storageKey, 'never');
   } catch {
     /* noop */
   }
@@ -686,7 +686,7 @@ function EmptyState({ icon: Icon, title, detail, action }: {
 }) {
   return (
     <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-6 text-center shadow-lg shadow-black/20 backdrop-blur-sm">
-      <Icon className="size-7 text-zinc-600" />
+      <Icon className="size-7 text-zinc-500" />
       <p className="mt-3 text-sm font-semibold text-zinc-300">{title}</p>
       <p className="mt-1 max-w-sm text-xs leading-5 text-zinc-500">{detail}</p>
       {action && (
@@ -722,7 +722,7 @@ function SectionHeader({
         <h2 className="mt-1 text-base font-semibold text-zinc-100">{title}</h2>
       </div>
       {to && (
-        <Link to={to} className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-300 hover:text-cyan-200">
+        <Link to={to} className="dashboard-accent-link inline-flex items-center gap-1 text-xs font-semibold">
           Open
           <ArrowRight size={13} />
         </Link>
@@ -734,10 +734,10 @@ function SectionHeader({
 function StatStripItem({ stat }: { stat: StatConfig }) {
   const Icon = stat.icon;
   const toneClass = {
-    cyan: 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200',
-    amber: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
-    green: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200',
-    rose: 'border-rose-400/30 bg-rose-400/10 text-rose-200',
+    cyan: 'dashboard-tone-cyan',
+    amber: 'dashboard-tone-amber',
+    green: 'dashboard-tone-green',
+    rose: 'dashboard-tone-rose',
   }[stat.tone];
 
   return (
@@ -826,12 +826,12 @@ function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRoleKey; u
   }, [activeStep, expand, updateTargetRect]);
 
   const skipOnboarding = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey, 'never');
+    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     setPhase('hidden');
   }, [neverShowAgain, storageKey]);
 
   const startTour = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey, 'never');
+    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     expand();
     setStepIndex(0);
     setTargetRect(null);
@@ -839,7 +839,7 @@ function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRoleKey; u
   }, [expand, neverShowAgain, storageKey]);
 
   const finishTour = useCallback(() => {
-    writeOnboardingDismissal(storageKey, neverShowAgain ? 'never' : 'completed');
+    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     setPhase('hidden');
   }, [neverShowAgain, storageKey]);
 
@@ -1024,7 +1024,7 @@ function CampaignCard({ campaign, isDirector }: { campaign: CampaignData; isDire
             </p>
           </div>
           {liveSession && (
-            <Badge className="shrink-0 border-emerald-400/20 bg-emerald-400/10 text-emerald-300">
+            <Badge className="dashboard-tone-green shrink-0">
               {liveSession.status}
             </Badge>
           )}
@@ -1052,16 +1052,16 @@ function CampaignCard({ campaign, isDirector }: { campaign: CampaignData; isDire
 
 function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirector: boolean }) {
   return (
-    <Card className="border-emerald-400/20 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className="dashboard-border-green bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
       <CardContent className="flex items-center justify-between gap-4 p-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <PlayCircle size={16} className="text-emerald-300" />
+            <PlayCircle size={16} className="dashboard-text-green" />
             <p className="truncate text-sm font-semibold text-zinc-100">{table.session.name}</p>
           </div>
           <p className="mt-1 truncate text-xs text-zinc-500">{table.campaign.name}</p>
           {table.session.room_code && (
-            <p className="mt-2 font-mono text-xs text-emerald-200">{table.session.room_code}</p>
+            <p className="dashboard-text-green mt-2 font-mono text-xs">{table.session.room_code}</p>
           )}
         </div>
         <Button asChild size="sm" variant="secondary" className="shrink-0">
@@ -1079,7 +1079,7 @@ function CharacterCard({ character }: { character: RecentCharacter }) {
   return (
     <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
       <CardContent className="flex items-center gap-3 p-4">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-amber-300/20 bg-amber-300/10 text-sm font-semibold text-amber-200">
+        <div className="dashboard-tone-amber flex size-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold">
           {initials(character.name)}
         </div>
         <div className="min-w-0 flex-1">
@@ -1122,7 +1122,7 @@ function NoteCard({ note }: { note: DashboardNote }) {
 function AssetCard({ asset, canOpenAssets }: { asset: AssetItem; canOpenAssets: boolean }) {
   const content = (
     <CardContent className="flex items-center gap-3 p-4">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+      <div className="dashboard-tone-cyan flex size-10 shrink-0 items-center justify-center rounded-lg border">
         <ImageIcon size={17} />
       </div>
       <div className="min-w-0 flex-1">
@@ -1512,7 +1512,7 @@ export function Home() {
   }
 
   return (
-    <div className="relative isolate min-h-full overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="anvil-dashboard relative isolate min-h-full overflow-hidden bg-zinc-950 text-zinc-100">
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 z-0 bg-cover bg-bottom bg-no-repeat opacity-80"

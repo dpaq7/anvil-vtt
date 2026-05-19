@@ -7,6 +7,8 @@ import {
   BookOpen,
   Brain,
   BriefcaseBusiness,
+  CheckCircle2,
+  Circle,
   CircleGauge,
   Dumbbell,
   Feather,
@@ -33,13 +35,27 @@ import {
   PERKS,
   PERK_CATEGORY_INFO,
   TITLES,
+  WizardLogic,
+  classPerkAtLevel,
+  getAvailablePerkCategories,
 } from "@anvil/data";
 import type {
   CharacteristicName,
   Characteristics,
   HeroLogic as HeroLogicTypes,
+  LevelUpChoice,
 } from "@anvil/data";
-import { Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@anvil/ui";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  cn,
+} from "@anvil/ui";
 import { CharacterInventoryPanel } from "../components/CharacterInventoryPanel.js";
 import { AbilityBlock } from "../components/drawsteel/AbilityBlock.js";
 import { drawSteelAbilityFromLike } from "../components/drawsteel/abilityData.js";
@@ -261,6 +277,30 @@ function stringArray(value: unknown): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+function normalizeLevelUpChoices(
+  value: unknown,
+): HeroLogicTypes.LevelAdvancementChoices {
+  if (!isRecord(value)) return {};
+
+  const choices: HeroLogicTypes.LevelAdvancementChoices = {};
+  for (const [key, rawChoices] of Object.entries(value)) {
+    const level = Number(key);
+    if (!Number.isInteger(level) || level < 2 || level > 10) continue;
+    if (!Array.isArray(rawChoices)) continue;
+
+    choices[level] = rawChoices.filter((choice): choice is LevelUpChoice => {
+      return (
+        isRecord(choice) &&
+        typeof choice["featureId"] === "string" &&
+        typeof choice["choiceId"] === "string" &&
+        (choice["category"] === undefined || typeof choice["category"] === "string")
+      );
+    });
+  }
+
+  return choices;
 }
 
 function titleCaseId(id: string): string {
@@ -674,6 +714,7 @@ function resolveFeature(
 function resolveClassFeatures(
   heroClass: HeroLogicTypes.HeroClass | null,
   level: number,
+  subclass: string | string[] | null = null,
 ): ResolvedFeature[] {
   if (!heroClass) return [];
 
@@ -690,6 +731,26 @@ function resolveClassFeatures(
       if (!resolved || seen.has(resolved.id)) continue;
       seen.add(resolved.id);
       features.push(resolved);
+    }
+
+    const hasGeneratedLevelFeatures = features.some(
+      (feature) => feature.level === featureLevel,
+    );
+    if (!hasGeneratedLevelFeatures && featureLevel >= 2) {
+      const character = WizardLogic.createEmptyCharacter();
+      character.heroClass = heroClass;
+      character.level = level;
+      character.subclass = subclass;
+      for (const feature of WizardLogic.getLevelUpFeatures(character, featureLevel)) {
+        if (seen.has(feature.id)) continue;
+        seen.add(feature.id);
+        features.push({
+          id: feature.id,
+          name: feature.name,
+          level: featureLevel,
+          description: feature.description,
+        });
+      }
     }
   }
 
@@ -912,6 +973,10 @@ export function HeroSheet() {
   const [hero, setHero] = useState<HeroRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingInventory, setSavingInventory] = useState(false);
+  const [levelUpOpen, setLevelUpOpen] = useState(false);
+  const [levelUpChoices, setLevelUpChoices] = useState<LevelUpChoice[]>([]);
+  const [levelUpPerkId, setLevelUpPerkId] = useState("");
+  const [savingLevelUp, setSavingLevelUp] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -924,15 +989,25 @@ export function HeroSheet() {
   const sheet = useMemo(() => {
     if (!hero) return null;
 
-    const chars = normalizeCharacteristics(
+    const data: Record<string, unknown> = parseJson(hero.data, {});
+    const heroClass = resolveHeroClass(hero, data);
+    const baseChars = normalizeCharacteristics(
       parseJson<Partial<Characteristics>>(hero.characteristics, {}),
     );
+    const levelUpChoices = normalizeLevelUpChoices(data["levelUpChoices"]);
+    const chars = heroClass
+      ? HeroLogic.applyLevelAdvancementCharacteristics(
+          heroClass,
+          hero.level,
+          baseChars,
+          levelUpChoices,
+        )
+      : baseChars;
     const skills = unique(
       parseJson<string[]>(hero.skills, [])
         .map((skill) => skill.trim())
         .filter(Boolean),
     );
-    const data: Record<string, unknown> = parseJson(hero.data, {});
     const abilityChoiceIds = isRecord(data["abilityChoices"])
       ? Object.values(data["abilityChoices"]).filter(
           (value): value is string => typeof value === "string",
@@ -947,7 +1022,6 @@ export function HeroSheet() {
         .map((ability) => ability.trim())
         .filter(Boolean),
     );
-    const heroClass = resolveHeroClass(hero, data);
     const subclassIds = normalizeSubclassValue(
       hero.subclass ?? (data["subclass"] as string | string[] | null),
     );
@@ -1013,7 +1087,11 @@ export function HeroSheet() {
           : null;
     const resolvedSkills = skills.map(resolveSkill);
     const groupedSkills = groupSkills(resolvedSkills);
-    const classFeatures = resolveClassFeatures(heroClass, hero.level);
+    const classFeatures = resolveClassFeatures(
+      heroClass,
+      hero.level,
+      subclassIds.length > 1 ? subclassIds : subclassIds[0] ?? null,
+    );
     const languages = resolveLanguages(data, hero.career);
     const perks = resolvePerks(data);
     const titles = resolveTitles(data);
@@ -1050,10 +1128,11 @@ export function HeroSheet() {
     let echelon: number | null = null;
 
     if (heroClass && HeroLogic.isValidHeroClass(heroClass)) {
-      maxStamina = HeroLogic.getMaxStaminaWithKit(
+      maxStamina = HeroLogic.getMaxStaminaWithAdvancements(
         heroClass,
         hero.level,
         kits.reduce((total, entry) => total + entry.staminaPerEchelon, 0),
+        levelUpChoices,
       );
       recoveryValue = HeroLogic.getRecoveryValue(maxStamina);
       maxRecoveries = HeroLogic.getMaxRecoveries(heroClass);
@@ -1082,6 +1161,7 @@ export function HeroSheet() {
 
     return {
       abilities: abilityDisplays,
+      abilityIds: abilities,
       ancestry,
       ancestryName,
       ancestryTraits,
@@ -1100,6 +1180,7 @@ export function HeroSheet() {
       cultureFallback,
       data,
       echelon,
+      heroClass,
       heroicResource,
       inventory,
       kit,
@@ -1114,16 +1195,20 @@ export function HeroSheet() {
       resolvedSkills,
       groupedSkills,
       selectedClassAbilities,
+      selectedPerkIds: stringArray(data["selectedPerks"]),
       shownAbilities,
       size,
+      skillNames: skills,
       speed,
       stability,
       staminaCurrent,
+      subclassIds,
       subclassNames,
       titles,
       victories,
       xp,
       incitingIncident,
+      levelUpChoices,
     };
   }, [hero]);
 
@@ -1138,6 +1223,146 @@ export function HeroSheet() {
   ]
     .filter(Boolean)
     .join(" / ");
+
+  const nextLevel = hero.level < 10 ? hero.level + 1 : null;
+  const nextLevelXP = nextLevel ? HeroLogic.getMinXPForLevel(nextLevel) : null;
+  const xpNeeded =
+    nextLevel !== null
+      ? HeroLogic.getXPNeededForNextLevel(hero.level, sheet.xp)
+      : null;
+  const canAdvance =
+    nextLevel !== null && HeroLogic.canAdvanceLevel(hero.level, sheet.xp);
+
+  const buildLevelUpCharacter = (
+    choices: LevelUpChoice[],
+  ): ReturnType<typeof WizardLogic.createEmptyCharacter> => {
+    const character = WizardLogic.createEmptyCharacter();
+    character.level = nextLevel ?? hero.level;
+    character.heroClass = sheet.heroClass;
+    character.subclass =
+      sheet.subclassIds.length > 1
+        ? sheet.subclassIds
+        : sheet.subclassIds[0] ?? null;
+    character.levelUpChoices = {
+      ...sheet.levelUpChoices,
+      ...(nextLevel ? { [nextLevel]: choices } : {}),
+    };
+    return character;
+  };
+
+  const targetLevelFeatures =
+    nextLevel !== null
+      ? WizardLogic.getLevelUpFeatures(
+          buildLevelUpCharacter(levelUpChoices),
+          nextLevel,
+        )
+      : [];
+  const levelUpValidationErrors =
+    nextLevel !== null
+      ? WizardLogic.getLevelUpValidationErrors(
+          buildLevelUpCharacter(levelUpChoices),
+          nextLevel,
+        )
+      : [];
+  const gainsPerk =
+    Boolean(sheet.heroClass && nextLevel && classPerkAtLevel(sheet.heroClass, nextLevel));
+  const perkOptions =
+    sheet.heroClass && nextLevel && gainsPerk
+      ? PERKS.filter((perk) => {
+          const categories = getAvailablePerkCategories(sheet.heroClass!, nextLevel);
+          return (
+            categories.includes(perk.category) &&
+            (!sheet.selectedPerkIds.includes(perk.id) || perk.id === levelUpPerkId)
+          );
+        })
+      : [];
+
+  const openLevelUpDialog = () => {
+    if (!nextLevel || !canAdvance) return;
+    setLevelUpChoices(sheet.levelUpChoices[nextLevel] ?? []);
+    setLevelUpPerkId("");
+    setLevelUpOpen(true);
+  };
+
+  const setLevelUpChoice = (
+    featureId: string,
+    choiceId: string,
+    category?: string,
+  ) => {
+    setLevelUpChoices((current) => [
+      ...current.filter((choice) => choice.featureId !== featureId),
+      { featureId, choiceId, category },
+    ]);
+  };
+
+  const handleAdvanceLevel = async () => {
+    if (!hero || !sheet || !nextLevel || !canAdvance || savingLevelUp) return;
+
+    const validationCharacter = buildLevelUpCharacter(levelUpChoices);
+    const errors = WizardLogic.getLevelUpValidationErrors(
+      validationCharacter,
+      nextLevel,
+    );
+    if (errors.length > 0) {
+      toast.error(errors[0]);
+      return;
+    }
+    if (gainsPerk && !levelUpPerkId) {
+      toast.error("Select a perk for this level.");
+      return;
+    }
+
+    const nextLevelUpChoices = {
+      ...sheet.levelUpChoices,
+      [nextLevel]: levelUpChoices,
+    };
+    const gainedAbilities = levelUpChoices
+      .filter((choice) => choice.category === "ability")
+      .map((choice) => choice.choiceId);
+    const gainedSkills = levelUpChoices
+      .filter((choice) => choice.category === "skill")
+      .map((choice) => resolveSkill(choice.choiceId).name);
+    const automaticSkills =
+      sheet.heroClass === "beastheart" && nextLevel >= 9 ? ["Nature"] : [];
+    const nextAbilities = unique([...sheet.abilityIds, ...gainedAbilities]);
+    const nextSkills = unique([
+      ...sheet.skillNames,
+      ...automaticSkills,
+      ...gainedSkills,
+    ]);
+    const nextSelectedPerks = unique([
+      ...sheet.selectedPerkIds,
+      ...(levelUpPerkId ? [levelUpPerkId] : []),
+    ]);
+    const nextData = {
+      ...sheet.data,
+      levelUpChoices: nextLevelUpChoices,
+      selectedPerks: nextSelectedPerks,
+    };
+
+    setSavingLevelUp(true);
+    try {
+      await api.put(`/api/heroes/${hero.id}`, {
+        level: nextLevel,
+        abilities: nextAbilities,
+        skills: nextSkills,
+        data: nextData,
+      });
+      setHero({
+        ...hero,
+        level: nextLevel,
+        abilities: JSON.stringify(nextAbilities),
+        skills: JSON.stringify(nextSkills),
+        data: JSON.stringify(nextData),
+      });
+      setLevelUpOpen(false);
+      toast.success(`Advanced to level ${nextLevel}.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Level up failed");
+    } finally {
+      setSavingLevelUp(false);
+    }
+  };
 
   const handleInventoryChange = async (inventory: CharacterInventoryItem[]) => {
     if (!hero || !sheet || savingInventory) return;
@@ -1224,6 +1449,29 @@ export function HeroSheet() {
                   value={`${sheet.victories} / ${sheet.xp}`}
                   tone="cyan"
                 />
+                <div className="sm:col-span-2">
+                  {nextLevel ? (
+                    <Button
+                      type="button"
+                      className="h-10 w-full"
+                      variant={canAdvance ? "default" : "outline"}
+                      disabled={!canAdvance}
+                      onClick={openLevelUpDialog}
+                    >
+                      <Star className="size-4" />
+                      Advance to Level {nextLevel}
+                    </Button>
+                  ) : (
+                    <div className="rounded-md border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                      Maximum Level
+                    </div>
+                  )}
+                  {nextLevel && !canAdvance && (
+                    <p className="mt-1 text-center text-[11px] text-zinc-500">
+                      {xpNeeded} XP needed. Level {nextLevel} requires {nextLevelXP} XP.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2081,6 +2329,147 @@ export function HeroSheet() {
           </main>
         </div>
       </div>
+
+      <Dialog open={levelUpOpen} onOpenChange={setLevelUpOpen}>
+        <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+          <DialogTitle>Advance to Level {nextLevel ?? hero.level}</DialogTitle>
+          <div className="mt-4 grid gap-5">
+            <div className="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950/45 p-3 text-sm text-zinc-300">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="font-semibold text-zinc-100">
+                  {hero.name} gains level {nextLevel ?? hero.level}
+                </span>
+                <span className="text-xs uppercase tracking-[0.14em] text-cyan-200/80">
+                  {sheet.xp} XP
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Automatic features are gained immediately. Choose each required option before advancing.
+              </p>
+            </div>
+
+            <div className="grid gap-4">
+              {targetLevelFeatures.length > 0 ? (
+                targetLevelFeatures.map((feature) => {
+                  const selectedChoice = levelUpChoices.find(
+                    (choice) => choice.featureId === feature.id,
+                  )?.choiceId;
+                  const hasChoices =
+                    feature.type === "choice" && (feature.choices?.length ?? 0) > 0;
+
+                  return (
+                    <div
+                      key={feature.id}
+                      className="rounded-md border border-zinc-800 bg-zinc-950/45 p-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5">
+                          {!hasChoices || selectedChoice ? (
+                            <CheckCircle2 className="size-4 text-cyan-300" />
+                          ) : (
+                            <Circle className="size-4 text-zinc-500" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-zinc-100">
+                            {feature.name}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-zinc-400">
+                            {feature.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {hasChoices && feature.choices && (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {feature.choices.map((choice) => {
+                            const isSelected = selectedChoice === choice.id;
+                            return (
+                              <button
+                                key={choice.id}
+                                type="button"
+                                className={cn(
+                                  "rounded-md border p-3 text-left transition",
+                                  isSelected
+                                    ? "border-cyan-400/70 bg-cyan-400/10"
+                                    : "border-zinc-800 bg-zinc-900/70 hover:border-cyan-700/70 hover:bg-zinc-900",
+                                )}
+                                onClick={() =>
+                                  setLevelUpChoice(
+                                    feature.id,
+                                    choice.id,
+                                    feature.category,
+                                  )
+                                }
+                              >
+                                <span className="block text-sm font-semibold text-zinc-100">
+                                  {choice.name}
+                                </span>
+                                <span className="mt-1 block whitespace-pre-wrap text-xs leading-5 text-zinc-500">
+                                  {choice.description}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <EmptyText>No level-up choices are required for this level.</EmptyText>
+              )}
+            </div>
+
+            {gainsPerk && (
+              <div className="rounded-md border border-zinc-800 bg-zinc-950/45 p-3">
+                <label className="text-sm font-semibold text-zinc-100">
+                  Level {nextLevel} Perk
+                </label>
+                <select
+                  value={levelUpPerkId}
+                  onChange={(event) => setLevelUpPerkId(event.target.value)}
+                  className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                >
+                  <option value="">Select a perk...</option>
+                  {perkOptions.map((perk) => (
+                    <option key={perk.id} value={perk.id}>
+                      {perk.name} ({PERK_CATEGORY_INFO[perk.category].name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {levelUpValidationErrors.length > 0 && (
+              <div className="rounded-md border border-amber-700/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+                {levelUpValidationErrors[0]}
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLevelUpOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  savingLevelUp ||
+                  levelUpValidationErrors.length > 0 ||
+                  (gainsPerk && !levelUpPerkId)
+                }
+                onClick={handleAdvanceLevel}
+              >
+                {savingLevelUp ? "Advancing..." : `Advance to Level ${nextLevel ?? hero.level}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
