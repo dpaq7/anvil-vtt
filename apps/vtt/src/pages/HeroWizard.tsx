@@ -21,6 +21,21 @@ import { AbilitiesStep } from '../components/wizard/AbilitiesStep.js';
 import { PersonalStep } from '../components/wizard/PersonalStep.js';
 import { ReviewStep } from '../components/wizard/ReviewStep.js';
 import { api } from '../lib/api.js';
+import { uploadFile } from '../stores/assetsStore.js';
+
+const MAX_PORTRAIT_UPLOAD_BYTES = 2 * 1024 * 1024;
+const ALLOWED_PORTRAIT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+async function uploadPortraitDataUrl(dataUrl: string): Promise<string> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  if (!ALLOWED_PORTRAIT_TYPES.has(blob.type)) throw new Error('Choose a PNG, JPEG, WEBP, or GIF portrait.');
+  if (blob.size > MAX_PORTRAIT_UPLOAD_BYTES) throw new Error('Choose a portrait under 2 MB.');
+
+  const extension = blob.type.split('/')[1] ?? 'png';
+  const file = new File([blob], `hero-portrait.${extension}`, { type: blob.type });
+  return uploadFile(file, 'portrait');
+}
 
 export function HeroWizard() {
   const navigate = useNavigate();
@@ -52,6 +67,13 @@ export function HeroWizard() {
 
     setSaving(true);
     try {
+      let portraitAssetId: string | null = null;
+      let portraitUrl = character.portraitUrl;
+      if (portraitUrl?.startsWith('data:')) {
+        portraitAssetId = await uploadPortraitDataUrl(portraitUrl);
+        portraitUrl = null;
+      }
+
       const result = await api.post<{ id: string }>('/api/heroes', {
         name: character.name,
         level: character.level,
@@ -64,7 +86,8 @@ export function HeroWizard() {
         kit: character.kit,
         skills: WizardLogic.getSelectedSkillNames(character),
         abilities: WizardLogic.getSelectedAbilityIds(character),
-        portraitUrl: character.portraitUrl,
+        portraitAssetId,
+        portraitUrl,
         data: {
           heroClass: character.heroClass,
           subclass: character.subclass,

@@ -9,15 +9,12 @@ import {
   MAX_ASSET_FILE_SIZE,
   shouldServeAssetAsAttachment,
 } from '../lib/assets.js';
-import { enforceRateLimit } from '../lib/rate-limit.js';
+import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES, PENDING_UPLOAD_TTL_HOURS } from '../lib/quotas.js';
+import { assetRateLimits } from '../security/rate-limits.js';
 
 export const assetRoutes = new Hono<AppEnv>();
 
 assetRoutes.use('/*', authMiddleware);
-
-const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024;
-const MAX_USER_ASSETS = 1000;
-const PENDING_UPLOAD_TTL_HOURS = 24;
 
 interface AssetRow {
   id: string;
@@ -119,12 +116,7 @@ function parseRange(rangeHeader: string | null, size: number): { start: number; 
 // Register an asset before uploading bytes to R2.
 assetRoutes.post('/upload', async (c) => {
   const user = c.get('user') as AuthUser;
-  const rateLimitError = await enforceRateLimit(c, {
-    namespace: 'asset-upload-register',
-    identifier: user.id,
-    limit: 60,
-    windowSeconds: 60 * 60,
-  });
+  const rateLimitError = await assetRateLimits.uploadRegister(c, user.id);
   if (rateLimitError) return rateLimitError;
 
   await cleanupPendingUploads(c, user.id);
@@ -158,12 +150,7 @@ assetRoutes.post('/upload', async (c) => {
 // Complete upload (client uploads bytes in a second request)
 assetRoutes.put('/:id/data', async (c) => {
   const user = c.get('user') as AuthUser;
-  const rateLimitError = await enforceRateLimit(c, {
-    namespace: 'asset-upload-data',
-    identifier: user.id,
-    limit: 120,
-    windowSeconds: 60 * 60,
-  });
+  const rateLimitError = await assetRateLimits.uploadData(c, user.id);
   if (rateLimitError) return rateLimitError;
 
   const assetId = c.req.param('id');

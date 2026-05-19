@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
+import { assetDataUrl, validateOwnedPortraitAsset } from '../security/assets.js';
 import type { MonsterPortrait } from '@anvil/types';
 
 export const monsterPortraitRoutes = new Hono<AppEnv>();
@@ -17,40 +18,13 @@ interface PortraitRow {
   updated_at: string;
 }
 
-async function getCampaignRole(c: Context<AppEnv>, campaignId: string, userId: string): Promise<string | null> {
-  const row = await c.env.DB.prepare(
-    `SELECT cm.role FROM campaign_members cm
-     JOIN campaigns c ON c.id = cm.campaign_id
-     WHERE cm.campaign_id = ? AND cm.user_id = ? AND c.deleted_at IS NULL`,
-  ).bind(campaignId, userId).first<{ role: string }>();
-  return row?.role ?? null;
-}
-
-async function requireCampaignMember(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
-}
-
-async function requireCampaignDirector(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) === 'director' ? null : c.json({ error: 'Forbidden' }, 403);
-}
-
-async function validateOwnedPortraitAsset(c: Context<AppEnv>, assetId: string, user: AuthUser): Promise<Response | null> {
-  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
-    .bind(assetId, user.id)
-    .first<{ type: string; content_type: string | null }>();
-  if (!asset) return c.json({ error: 'Asset not found' }, 404);
-  if (asset.type !== 'portrait') return c.json({ error: 'Asset must be a portrait' }, 400);
-  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('image/')) return c.json({ error: 'Asset must be an image' }, 400);
-  return null;
-}
-
 function rowToPortrait(row: PortraitRow): MonsterPortrait {
   return {
     id: row.id,
     campaignId: row.campaign_id,
     monsterName: row.monster_name,
     assetId: row.asset_id,
-    portraitUrl: `/api/assets/${row.asset_id}/data`,
+    portraitUrl: assetDataUrl(row.asset_id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

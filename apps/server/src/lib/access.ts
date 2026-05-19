@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
+import { auditSecurityEvent } from '../security/audit.js';
 
 type CampaignRole = 'director' | 'player';
 
@@ -29,7 +30,9 @@ export async function requireCampaignMember(
   campaignId: string,
   user: AuthUser,
 ): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
+  if (await getCampaignRole(c, campaignId, user.id)) return null;
+  auditSecurityEvent(c, { type: 'campaign_access_denied', userId: user.id, subjectId: campaignId });
+  return c.json({ error: 'Forbidden' }, 403);
 }
 
 export async function requireCampaignDirector(
@@ -37,7 +40,9 @@ export async function requireCampaignDirector(
   campaignId: string,
   user: AuthUser,
 ): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) === 'director' ? null : c.json({ error: 'Forbidden' }, 403);
+  if ((await getCampaignRole(c, campaignId, user.id)) === 'director') return null;
+  auditSecurityEvent(c, { type: 'campaign_director_denied', userId: user.id, subjectId: campaignId });
+  return c.json({ error: 'Forbidden' }, 403);
 }
 
 async function getSessionAccess(c: Context<AppEnv>, sessionId: string): Promise<AccessRow | null> {
@@ -59,7 +64,9 @@ export async function requireSessionMember(
   const access = await getSessionAccess(c, sessionId);
   if (!access) return c.json({ error: 'Not found' }, 404);
   if (access.director_id === user.id) return null;
-  return (await getCampaignRole(c, access.campaign_id, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
+  if (await getCampaignRole(c, access.campaign_id, user.id)) return null;
+  auditSecurityEvent(c, { type: 'session_access_denied', userId: user.id, subjectId: sessionId });
+  return c.json({ error: 'Forbidden' }, 403);
 }
 
 export async function requireSessionDirector(
@@ -69,7 +76,9 @@ export async function requireSessionDirector(
 ): Promise<Response | null> {
   const access = await getSessionAccess(c, sessionId);
   if (!access) return c.json({ error: 'Not found' }, 404);
-  return access.director_id === user.id ? null : c.json({ error: 'Forbidden' }, 403);
+  if (access.director_id === user.id) return null;
+  auditSecurityEvent(c, { type: 'session_director_denied', userId: user.id, subjectId: sessionId });
+  return c.json({ error: 'Forbidden' }, 403);
 }
 
 async function getSceneAccess(c: Context<AppEnv>, sceneId: string): Promise<AccessRow | null> {
@@ -92,7 +101,9 @@ export async function requireSceneMember(
   const access = await getSceneAccess(c, sceneId);
   if (!access) return c.json({ error: 'Not found' }, 404);
   if (access.director_id === user.id) return null;
-  return (await getCampaignRole(c, access.campaign_id, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
+  if (await getCampaignRole(c, access.campaign_id, user.id)) return null;
+  auditSecurityEvent(c, { type: 'scene_access_denied', userId: user.id, subjectId: sceneId });
+  return c.json({ error: 'Forbidden' }, 403);
 }
 
 export async function requireSceneDirector(
@@ -102,5 +113,7 @@ export async function requireSceneDirector(
 ): Promise<Response | null> {
   const access = await getSceneAccess(c, sceneId);
   if (!access) return c.json({ error: 'Not found' }, 404);
-  return access.director_id === user.id ? null : c.json({ error: 'Forbidden' }, 403);
+  if (access.director_id === user.id) return null;
+  auditSecurityEvent(c, { type: 'scene_director_denied', userId: user.id, subjectId: sceneId });
+  return c.json({ error: 'Forbidden' }, 403);
 }

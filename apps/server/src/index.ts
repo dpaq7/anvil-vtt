@@ -22,12 +22,11 @@ import { gameSessionRoutes } from './routes/game-sessions.js';
 import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 import { sceneImportRoutes } from './routes/scene-imports.js';
 import { bugReportRoutes } from './routes/bug-reports.js';
-import { csrfMiddleware } from './middleware/auth.js';
-import { securityHeadersMiddleware } from './middleware/security.js';
+import { applyGlobalSecurity } from './security/index.js';
 
 const app = new Hono<AppEnv>();
 
-app.use('*', securityHeadersMiddleware);
+applyGlobalSecurity(app);
 
 // CORS
 app.use(
@@ -42,8 +41,6 @@ app.use(
     allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   }),
 );
-
-app.use('/api/*', csrfMiddleware);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));

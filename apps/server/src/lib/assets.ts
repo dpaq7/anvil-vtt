@@ -1,4 +1,6 @@
-export const MAX_ASSET_FILE_SIZE = 50 * 1024 * 1024;
+import { ASSET_LIMITS } from '../policy/limits.js';
+
+export const MAX_ASSET_FILE_SIZE = ASSET_LIMITS.maxFileBytes;
 
 export const VALID_ASSET_TYPES = ['map', 'token', 'portrait', 'handout', 'audio', 'other'] as const;
 

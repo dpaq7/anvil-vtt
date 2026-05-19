@@ -8,6 +8,7 @@ interface Props {
 }
 
 const MAX_PORTRAIT_BYTES = 2 * 1024 * 1024;
+const ALLOWED_PORTRAIT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export function PersonalStep({ character, onChange }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -18,8 +19,8 @@ export function PersonalStep({ character, onChange }: Props) {
 
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Choose an image file.');
+    if (!ALLOWED_PORTRAIT_TYPES.has(file.type)) {
+      setUploadError('Choose a PNG, JPEG, WEBP, or GIF image.');
       return;
     }
 
@@ -97,7 +98,7 @@ export function PersonalStep({ character, onChange }: Props) {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <label className="cursor-pointer rounded-md border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900">
             Upload image
-            <input type="file" accept="image/*" className="sr-only" onChange={handlePortraitUpload} />
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only" onChange={handlePortraitUpload} />
           </label>
           {character.portraitUrl ? (
             <button

@@ -8,6 +8,7 @@ import {
   isAllowedAssetType,
   MAX_ASSET_FILE_SIZE,
 } from '../lib/assets.js';
+import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES } from '../lib/quotas.js';
 
 export const accountRoutes = new Hono<AppEnv>();
 
@@ -16,11 +17,19 @@ accountRoutes.use('/*', authMiddleware);
 const BACKUP_FORMAT = 'anvil.account-backup';
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_SIZE = 100 * 1024 * 1024;
-const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024;
-const MAX_USER_ASSETS = 1000;
 
 type DbValue = string | number | null;
 type DbRow = Record<string, DbValue>;
+
+interface AccountStorageUsage {
+  usedBytes: number;
+  limitBytes: number;
+  usedPercent: number;
+  assetCount: number;
+  assetLimit: number;
+  uploadedAssetCount: number;
+  pendingAssetCount: number;
+}
 
 const TABLE_COLUMNS = {
   assets: ['id', 'user_id', 'name', 'type', 'storage_key', 'thumbnail_key', 'width', 'height', 'tags', 'created_at', 'content_type', 'file_size', 'uploaded_at'],
@@ -162,6 +171,37 @@ function tableCounts(tables: BackupTables) {
   return Object.fromEntries(
     (Object.keys(TABLE_COLUMNS) as BackupTableName[]).map((table) => [table, tables[table]?.length ?? 0]),
   );
+}
+
+async function getAccountStorageUsage(db: D1Database, userId: string): Promise<AccountStorageUsage> {
+  const row = await db.prepare(
+    `SELECT
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN file_size ELSE 0 END), 0) AS used_bytes,
+       COUNT(*) AS asset_count,
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS uploaded_asset_count,
+       COALESCE(SUM(CASE WHEN uploaded_at IS NULL THEN 1 ELSE 0 END), 0) AS pending_asset_count
+     FROM assets
+     WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{
+      used_bytes: number | null;
+      asset_count: number | null;
+      uploaded_asset_count: number | null;
+      pending_asset_count: number | null;
+    }>();
+
+  const usedBytes = row?.used_bytes ?? 0;
+  const usedPercent = MAX_USER_STORAGE_BYTES > 0 ? (usedBytes / MAX_USER_STORAGE_BYTES) * 100 : 0;
+  return {
+    usedBytes,
+    limitBytes: MAX_USER_STORAGE_BYTES,
+    usedPercent: Math.min(100, Math.max(0, usedPercent)),
+    assetCount: row?.asset_count ?? 0,
+    assetLimit: MAX_USER_ASSETS,
+    uploadedAssetCount: row?.uploaded_asset_count ?? 0,
+    pendingAssetCount: row?.pending_asset_count ?? 0,
+  };
 }
 
 async function buildArchive(c: Context<AppEnv>, user: AuthUser): Promise<AccountBackupArchive> {
@@ -610,20 +650,12 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
     restoredFileData.push({ storageKey, contentType, data });
   }
 
-  const existingAssetStats = await c.env.DB.prepare(
-    `SELECT
-       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN file_size ELSE 0 END), 0) AS used_bytes,
-       COUNT(*) AS asset_count
-     FROM assets
-     WHERE user_id = ?`,
-  )
-    .bind(user.id)
-    .first<{ used_bytes: number | null; asset_count: number }>();
+  const existingAssetStats = await getAccountStorageUsage(c.env.DB, user.id);
   const restoredBytes = restoredFileData.reduce((total, file) => total + file.data.byteLength, 0);
-  if ((existingAssetStats?.asset_count ?? 0) + assets.length > MAX_USER_ASSETS) {
+  if (existingAssetStats.assetCount + assets.length > MAX_USER_ASSETS) {
     throw new RestoreValidationError('Restoring this backup would exceed the account asset limit');
   }
-  if ((existingAssetStats?.used_bytes ?? 0) + restoredBytes > MAX_USER_STORAGE_BYTES) {
+  if (existingAssetStats.usedBytes + restoredBytes > MAX_USER_STORAGE_BYTES) {
     throw new RestoreValidationError('Restoring this backup would exceed the account storage quota');
   }
 
@@ -661,6 +693,11 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
 
   return { ...tableCounts(restoredTables), files: restoredFileData.length };
 }
+
+accountRoutes.get('/storage', async (c) => {
+  const user = c.get('user') as AuthUser;
+  return c.json(await getAccountStorageUsage(c.env.DB, user.id));
+});
 
 accountRoutes.get('/backup', async (c) => {
   const user = c.get('user') as AuthUser;

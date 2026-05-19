@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { enforceRateLimit } from '../lib/rate-limit.js';
+import { sessionRateLimits } from '../security/rate-limits.js';
 
 export const sessionRoutes = new Hono<AppEnv>();
 
@@ -99,28 +99,17 @@ async function enforceSessionAdmissionLimit(
   c: Context<AppEnv>,
   namespace: string,
   user: AuthUser,
-  limit = 20,
 ): Promise<Response | null> {
-  const byIp = await enforceRateLimit(c, {
-    namespace: `${namespace}:ip`,
-    limit,
-    windowSeconds: 10 * 60,
-  });
-  if (byIp) return byIp;
-
-  return enforceRateLimit(c, {
-    namespace: `${namespace}:user`,
-    identifier: user.id,
-    limit,
-    windowSeconds: 10 * 60,
-  });
+  return namespace === 'room-code-lookup'
+    ? sessionRateLimits.roomCodeLookup(c, user.id)
+    : sessionRateLimits.roomCodeJoin(c, user.id);
 }
 
 // Lookup session by room code. Auth is required by the router middleware, but campaign membership is not:
 // a valid live room code is the session-level invitation for players to join.
 sessionRoutes.get('/sessions/by-code/:code', async (c) => {
   const user = c.get('user') as AuthUser;
-  const rateLimitError = await enforceSessionAdmissionLimit(c, 'room-code-lookup', user, 30);
+  const rateLimitError = await enforceSessionAdmissionLimit(c, 'room-code-lookup', user);
   if (rateLimitError) return rateLimitError;
 
   const code = normalizeRoomCode(c.req.param('code'));
@@ -408,7 +397,7 @@ sessionRoutes.post('/sessions/:id/end', async (c) => {
 // Join session
 sessionRoutes.post('/sessions/:id/join', async (c) => {
   const user = c.get('user') as AuthUser;
-  const rateLimitError = await enforceSessionAdmissionLimit(c, 'session-join', user, 30);
+  const rateLimitError = await enforceSessionAdmissionLimit(c, 'session-join', user);
   if (rateLimitError) return rateLimitError;
 
   const sessionId = c.req.param('id');

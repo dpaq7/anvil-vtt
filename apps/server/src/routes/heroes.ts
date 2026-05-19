@@ -1,11 +1,19 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { isAllowedAssetContentType } from '../lib/assets.js';
 import { HeroLogic, GameData, WizardLogic, PERKS, classPerkAtLevel, getAvailablePerkCategories } from '@anvil/data';
 import type { CharacterInProgress, Characteristics, LevelUpChoice } from '@anvil/data';
 import type { HeroSummary } from '@anvil/types';
+import { HERO_LIMITS } from '../policy/limits.js';
+import { deleteOwnedAssetIfUnreferenced } from '../repositories/assets.js';
+import { validateOwnedPortraitAsset } from '../security/assets.js';
+import { jsonError, readJsonBody } from '../security/request.js';
+import {
+  calculateHeroVitals,
+  normalizeExternalPortraitUrl,
+  portraitUrlForAsset,
+  validateHeroCreationRules,
+} from '../services/hero-rules.js';
 
 export const heroRoutes = new Hono<AppEnv>();
 
@@ -31,10 +39,6 @@ interface HeroRow {
   data: string;
   created_at: string;
   updated_at: string;
-}
-
-function portraitUrlForAsset(assetId: string): string {
-  return `/api/assets/${assetId}/data`;
 }
 
 function portraitUrlForHero(row: Pick<HeroRow, 'portrait_asset_id' | 'portrait_url'>): string | null {
@@ -189,20 +193,8 @@ function buildCharacterFromPayload(input: {
   return character;
 }
 
-function validatePerkSelections(character: CharacterInProgress): string | null {
-  for (const slot of WizardLogic.getPerkChoiceSlots(character)) {
-    if (!slot.selectedPerkId) return `Select ${slot.label} perk`;
-    const perk = PERKS.find((candidate) => candidate.id === slot.selectedPerkId);
-    if (!perk) return `Invalid perk for ${slot.label}`;
-    if (!slot.categories.includes(perk.category)) return `Invalid perk category for ${slot.label}`;
-  }
-  return null;
-}
-
 function validateCreatedCharacter(character: CharacterInProgress): string | null {
-  if (!Number.isInteger(character.level) || character.level < 1 || character.level > 10) return 'Level must be 1-10';
-  if (!WizardLogic.isCharacterComplete(character)) return 'Hero creation choices are incomplete';
-  return validatePerkSelections(character);
+  return validateHeroCreationRules(character);
 }
 
 function sanitizeHeroDataForCreation(character: CharacterInProgress, rawData: Record<string, unknown>): Record<string, unknown> {
@@ -266,52 +258,6 @@ function selectedPerksFromData(data: Record<string, unknown>): string[] {
   return unique(stringArray(data['selectedPerks']));
 }
 
-async function validateOwnedPortraitAsset(
-  c: Context<AppEnv>,
-  assetId: string | null | undefined,
-  user: AuthUser,
-): Promise<Response | null> {
-  if (assetId == null) return null;
-
-  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
-    .bind(assetId, user.id)
-    .first<{ type: string; content_type: string | null }>();
-  if (!asset) return c.json({ error: 'Asset not found' }, 404);
-  if (asset.type !== 'portrait') return c.json({ error: 'Asset must be a portrait' }, 400);
-  if (asset.content_type && !isAllowedAssetContentType('portrait', asset.content_type)) {
-    return c.json({ error: 'Asset must be an image' }, 400);
-  }
-  return null;
-}
-
-async function deleteOwnedAssetIfUnreferenced(
-  c: Context<AppEnv>,
-  assetId: string,
-  userId: string,
-): Promise<void> {
-  const linked = await c.env.DB.prepare(
-    `SELECT 1 WHERE
-      EXISTS (SELECT 1 FROM maps WHERE asset_id = ?)
-      OR EXISTS (SELECT 1 FROM audio_assets WHERE asset_id = ?)
-      OR EXISTS (SELECT 1 FROM custom_terrain WHERE asset_id = ?)
-      OR EXISTS (SELECT 1 FROM monster_portraits WHERE asset_id = ?)
-      OR EXISTS (SELECT 1 FROM npcs WHERE portrait_asset_id = ?)
-      OR EXISTS (SELECT 1 FROM heroes WHERE portrait_asset_id = ? AND deleted_at IS NULL)
-     LIMIT 1`,
-  )
-    .bind(assetId, assetId, assetId, assetId, assetId, assetId)
-    .first<{ 1: number }>();
-  if (linked) return;
-
-  const asset = await c.env.DB.prepare('SELECT storage_key FROM assets WHERE id = ? AND user_id = ?')
-    .bind(assetId, userId)
-    .first<{ storage_key: string }>();
-  if (!asset) return;
-
-  await c.env.ASSETS.delete(asset.storage_key);
-  await c.env.DB.prepare('DELETE FROM assets WHERE id = ?').bind(assetId).run();
-}
-
 function hydrateHeroSummary(row: HeroRow): HeroSummary {
   const heroClass = row.hero_class;
   const level = row.level;
@@ -321,25 +267,12 @@ function hydrateHeroSummary(row: HeroRow): HeroSummary {
   // Resolve ancestry name from compendium
   const ancestryDef = row.ancestry ? GameData.getAncestry(row.ancestry) : null;
 
-  // Compute stamina/recovery from class + level + kit
-  let staminaMax: number | null = null;
-  let recoveriesMax: number | null = null;
-  let recoveryValue: number | null = null;
-
-  if (heroClass && HeroLogic.isValidHeroClass(heroClass)) {
-    const kitDef = row.kit ? GameData.getKit(row.kit) : null;
-    const levelUpChoices = typeof data['levelUpChoices'] === 'object'
-      ? data['levelUpChoices'] as Parameters<typeof HeroLogic.getMaxStaminaWithAdvancements>[3]
-      : undefined;
-    staminaMax = HeroLogic.getMaxStaminaWithAdvancements(
-      heroClass,
-      level,
-      kitDef?.staminaPerEchelon ?? 0,
-      levelUpChoices,
-    );
-    recoveriesMax = HeroLogic.getMaxRecoveries(heroClass);
-    recoveryValue = HeroLogic.getRecoveryValue(staminaMax);
-  }
+  const { staminaMax, recoveriesMax, recoveryValue } = calculateHeroVitals({
+    heroClass,
+    level,
+    kit: row.kit,
+    data,
+  });
 
   return {
     id: row.id,
@@ -393,7 +326,7 @@ heroRoutes.get('/:id', async (c) => {
 // Create hero
 heroRoutes.post('/', async (c) => {
   const user = c.get('user') as AuthUser;
-  const body = await c.req.json<{
+  const raw = await readJsonBody<{
     name: string;
     ancestry?: string;
     culture?: string;
@@ -408,7 +341,9 @@ heroRoutes.post('/', async (c) => {
     portraitAssetId?: string | null;
     portraitUrl?: string | null;
     data?: Record<string, unknown>;
-  }>();
+  }>(c, { maxBytes: HERO_LIMITS.jsonBodyBytes, label: 'Hero' });
+  if (!raw.ok) return jsonError(c, raw);
+  const body = raw.value;
 
   const rawData = isRecord(body.data) ? body.data : {};
   const character = buildCharacterFromPayload({ ...body, data: rawData });
@@ -419,7 +354,8 @@ heroRoutes.post('/', async (c) => {
   const portraitAssetId = body.portraitAssetId ?? null;
   const portraitError = await validateOwnedPortraitAsset(c, portraitAssetId, user);
   if (portraitError) return portraitError;
-  const portraitUrl = portraitAssetId ? portraitUrlForAsset(portraitAssetId) : body.portraitUrl ?? null;
+  const portraitUrl = portraitAssetId ? portraitUrlForAsset(portraitAssetId) : normalizeExternalPortraitUrl(body.portraitUrl);
+  if (!portraitAssetId && body.portraitUrl && !portraitUrl) return c.json({ error: 'Portrait URL must be a valid HTTPS URL' }, 400);
   const heroData = sanitizeHeroDataForCreation(character, rawData);
   const skills = WizardLogic.getSelectedSkillNames(character);
   const abilities = WizardLogic.getSelectedAbilityIds(character);
@@ -465,7 +401,12 @@ heroRoutes.post('/:id/advance', async (c) => {
   if (!row.hero_class || !HeroLogic.isValidHeroClass(row.hero_class)) return c.json({ error: 'Hero class is required' }, 400);
   if (row.level >= 10) return c.json({ error: 'Hero is already maximum level' }, 400);
 
-  const body = await c.req.json<{ choices?: LevelUpChoice[]; perkId?: string | null }>();
+  const raw = await readJsonBody<{ choices?: LevelUpChoice[]; perkId?: string | null }>(
+    c,
+    { maxBytes: HERO_LIMITS.jsonBodyBytes, label: 'Advancement' },
+  );
+  if (!raw.ok) return jsonError(c, raw);
+  const body = raw.value;
   const data = parseJson<Record<string, unknown>>(row.data, {});
   const xp = typeof data['xp'] === 'number' && Number.isFinite(data['xp']) ? data['xp'] : 0;
   if (!HeroLogic.canAdvanceLevel(row.level, xp)) return c.json({ error: 'Not enough XP to advance' }, 400);
@@ -531,7 +472,7 @@ heroRoutes.put('/:id', async (c) => {
     .first<{ id: string; portrait_asset_id: string | null; data: string | null }>();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  const body = await c.req.json<{
+  const raw = await readJsonBody<{
     name?: string;
     ancestry?: string;
     culture?: string;
@@ -546,7 +487,9 @@ heroRoutes.put('/:id', async (c) => {
     portraitAssetId?: string | null;
     portraitUrl?: string | null;
     data?: Record<string, unknown>;
-  }>();
+  }>(c, { maxBytes: HERO_LIMITS.jsonBodyBytes, label: 'Hero update' });
+  if (!raw.ok) return jsonError(c, raw);
+  const body = raw.value;
 
   if (
     body.level !== undefined
@@ -577,15 +520,19 @@ heroRoutes.put('/:id', async (c) => {
     sets.push('portrait_asset_id = ?');
     vals.push(portraitAssetId);
     sets.push('portrait_url = ?');
-    vals.push(portraitAssetId ? portraitUrlForAsset(portraitAssetId) : body.portraitUrl ?? null);
+    const portraitUrl = portraitAssetId ? portraitUrlForAsset(portraitAssetId) : normalizeExternalPortraitUrl(body.portraitUrl);
+    if (!portraitAssetId && body.portraitUrl && !portraitUrl) return c.json({ error: 'Portrait URL must be a valid HTTPS URL' }, 400);
+    vals.push(portraitUrl);
   } else if (body.portraitUrl !== undefined) {
+    const portraitUrl = normalizeExternalPortraitUrl(body.portraitUrl);
+    if (body.portraitUrl && !portraitUrl) return c.json({ error: 'Portrait URL must be a valid HTTPS URL' }, 400);
     sets.push('portrait_url = ?');
-    vals.push(body.portraitUrl);
+    vals.push(portraitUrl);
   }
   if (body.data !== undefined) {
     const inventory = body.data['inventory'];
     if (inventory !== undefined) {
-      if (!Array.isArray(inventory) || JSON.stringify(inventory).length > 128 * 1024) {
+      if (!Array.isArray(inventory) || JSON.stringify(inventory).length > HERO_LIMITS.inventoryBytes) {
         return c.json({ error: 'Invalid inventory update' }, 400);
       }
       const existingData = parseJson<Record<string, unknown>>(existing.data, {});
@@ -613,7 +560,7 @@ heroRoutes.put('/:id', async (c) => {
     && existing.portrait_asset_id
     && existing.portrait_asset_id !== (body.portraitAssetId ?? null)
   ) {
-    await deleteOwnedAssetIfUnreferenced(c, existing.portrait_asset_id, user.id);
+    await deleteOwnedAssetIfUnreferenced(c.env.DB, c.env.ASSETS, existing.portrait_asset_id, user.id);
   }
 
   return c.json({ ok: true });
@@ -636,7 +583,7 @@ heroRoutes.delete('/:id', async (c) => {
     .bind(heroId, user.id)
     .run();
   if (existing.portrait_asset_id) {
-    await deleteOwnedAssetIfUnreferenced(c, existing.portrait_asset_id, user.id);
+    await deleteOwnedAssetIfUnreferenced(c.env.DB, c.env.ASSETS, existing.portrait_asset_id, user.id);
   }
   return c.json({ ok: true });
 });
