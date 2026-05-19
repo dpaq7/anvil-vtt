@@ -374,15 +374,15 @@ function onboardingStorageKey(userId: string | undefined, roleKey: DashboardRole
 function hasOnboardingDismissal(storageKey: string) {
   try {
     const value = localStorage.getItem(storageKey);
-    return value === 'completed' || value === 'never';
+    return value === 'never';
   } catch {
     return false;
   }
 }
 
-function writeOnboardingDismissal(storageKey: string, value: 'completed' | 'never') {
+function writeOnboardingDismissal(storageKey: string) {
   try {
-    localStorage.setItem(storageKey, value);
+    localStorage.setItem(storageKey, 'never');
   } catch {
     /* noop */
   }
@@ -826,12 +826,12 @@ function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRoleKey; u
   }, [activeStep, expand, updateTargetRect]);
 
   const skipOnboarding = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey, 'never');
+    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     setPhase('hidden');
   }, [neverShowAgain, storageKey]);
 
   const startTour = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey, 'never');
+    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     expand();
     setStepIndex(0);
     setTargetRect(null);
@@ -839,7 +839,7 @@ function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRoleKey; u
   }, [expand, neverShowAgain, storageKey]);
 
   const finishTour = useCallback(() => {
-    writeOnboardingDismissal(storageKey, neverShowAgain ? 'never' : 'completed');
+    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     setPhase('hidden');
   }, [neverShowAgain, storageKey]);
 
