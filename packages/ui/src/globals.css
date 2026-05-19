@@ -138,3 +138,75 @@ body {
     rgba(246, 241, 232, 0.72) 100%
   );
 }
+
+.anvil-dashboard {
+  --dashboard-cyan-border: rgb(34 211 238 / 0.3);
+  --dashboard-cyan-bg: rgb(34 211 238 / 0.1);
+  --dashboard-cyan-fg: #a5f3fc;
+  --dashboard-cyan-hover: #cffafe;
+  --dashboard-amber-border: rgb(251 191 36 / 0.3);
+  --dashboard-amber-bg: rgb(251 191 36 / 0.1);
+  --dashboard-amber-fg: #fde68a;
+  --dashboard-green-border: rgb(52 211 153 / 0.3);
+  --dashboard-green-bg: rgb(52 211 153 / 0.1);
+  --dashboard-green-fg: #a7f3d0;
+  --dashboard-rose-border: rgb(251 113 133 / 0.3);
+  --dashboard-rose-bg: rgb(251 113 133 / 0.1);
+  --dashboard-rose-fg: #fecdd3;
+}
+
+[data-theme="light"] .anvil-dashboard {
+  --dashboard-cyan-border: rgb(14 116 144 / 0.35);
+  --dashboard-cyan-bg: rgb(8 145 178 / 0.12);
+  --dashboard-cyan-fg: #155e75;
+  --dashboard-cyan-hover: #0e7490;
+  --dashboard-amber-border: rgb(180 83 9 / 0.35);
+  --dashboard-amber-bg: rgb(217 119 6 / 0.12);
+  --dashboard-amber-fg: #92400e;
+  --dashboard-green-border: rgb(4 120 87 / 0.35);
+  --dashboard-green-bg: rgb(5 150 105 / 0.12);
+  --dashboard-green-fg: #047857;
+  --dashboard-rose-border: rgb(190 18 60 / 0.35);
+  --dashboard-rose-bg: rgb(225 29 72 / 0.12);
+  --dashboard-rose-fg: #be123c;
+}
+
+.dashboard-accent-link {
+  color: var(--dashboard-cyan-fg);
+}
+
+.dashboard-accent-link:hover {
+  color: var(--dashboard-cyan-hover);
+}
+
+.dashboard-tone-cyan {
+  border-color: var(--dashboard-cyan-border);
+  background-color: var(--dashboard-cyan-bg);
+  color: var(--dashboard-cyan-fg);
+}
+
+.dashboard-tone-amber {
+  border-color: var(--dashboard-amber-border);
+  background-color: var(--dashboard-amber-bg);
+  color: var(--dashboard-amber-fg);
+}
+
+.dashboard-tone-green {
+  border-color: var(--dashboard-green-border);
+  background-color: var(--dashboard-green-bg);
+  color: var(--dashboard-green-fg);
+}
+
+.dashboard-tone-rose {
+  border-color: var(--dashboard-rose-border);
+  background-color: var(--dashboard-rose-bg);
+  color: var(--dashboard-rose-fg);
+}
+
+.dashboard-border-green {
+  border-color: var(--dashboard-green-border);
+}
+
+.dashboard-text-green {
+  color: var(--dashboard-green-fg);
+}
