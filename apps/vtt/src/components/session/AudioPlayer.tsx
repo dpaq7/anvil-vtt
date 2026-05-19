@@ -8,6 +8,12 @@ export interface AudioPlayerProps {
   track: AudioAsset | null;
   /** Called when the user clicks the clear/remove button */
   onClear?: () => void;
+  /** Optional controlled channel volume. */
+  volume?: number;
+  /** Called when the inline volume control changes. */
+  onVolumeChange?: (volume: number) => void;
+  /** Hide the inline volume control when a parent mixer owns volume. */
+  showVolumeControl?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -17,16 +23,23 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
+export function AudioPlayer({
+  track,
+  onClear,
+  volume: controlledVolume,
+  onVolumeChange,
+  showVolumeControl = true,
+}: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.5);
+  const [localVolume, setLocalVolume] = useState(0.5);
   const [loop, setLoop] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const volume = controlledVolume ?? localVolume;
 
   // Keep mutable refs for values captured by the Audio event handlers so
   // we don't need to tear down the Audio element when they change.
@@ -53,7 +66,9 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
     setError(null);
 
     // Derive the URL from the asset ID when audioUrl isn't populated
-    const url = track?.audioUrl ?? (track?.assetId ? `/api/assets/${track.assetId}/data` : null);
+    const url =
+      track?.audioUrl ??
+      (track?.assetId ? `/api/assets/${track.assetId}/data` : null);
     if (!url) return;
 
     const audio = new Audio();
@@ -131,7 +146,11 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
             setPlaying(false);
             // AbortError happens when play is interrupted by pause/src change — not a real error
             if (err.name !== 'AbortError') {
-              setError(err.name === 'NotAllowedError' ? 'Click to enable audio' : 'Playback failed');
+              setError(
+                err.name === 'NotAllowedError'
+                  ? 'Click to enable audio'
+                  : 'Playback failed',
+              );
             }
           });
       }
@@ -140,6 +159,14 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
   const toggleLoop = useCallback(() => setLoop((l) => !l), []);
+  const setVolume = useCallback(
+    (nextVolume: number) => {
+      const clamped = Math.max(0, Math.min(1, nextVolume));
+      if (controlledVolume === undefined) setLocalVolume(clamped);
+      onVolumeChange?.(clamped);
+    },
+    [controlledVolume, onVolumeChange],
+  );
 
   if (!track) {
     return (
@@ -182,7 +209,10 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
             const audio = audioRef.current;
             if (!audio || !Number.isFinite(duration) || duration <= 0) return;
             const rect = e.currentTarget.getBoundingClientRect();
-            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const pct = Math.max(
+              0,
+              Math.min(1, (e.clientX - rect.left) / rect.width),
+            );
             audio.currentTime = pct * duration;
           }}
         >
@@ -197,9 +227,7 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
       </div>
 
       {/* Error message */}
-      {error && (
-        <p className="text-[10px] text-red-400">{error}</p>
-      )}
+      {error && <p className="text-[10px] text-red-400">{error}</p>}
 
       {/* Controls row */}
       <div className="flex items-center gap-1">
@@ -210,7 +238,11 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
           className={`size-7 p-0 ${!ready && !playing ? 'opacity-50' : ''}`}
           onClick={togglePlay}
         >
-          {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+          {playing ? (
+            <Pause className="size-3.5" />
+          ) : (
+            <Play className="size-3.5" />
+          )}
         </Button>
 
         {/* Loop toggle */}
@@ -224,24 +256,36 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
           <Repeat className="size-3.5" />
         </Button>
 
-        {/* Mute toggle */}
-        <button onClick={toggleMute} className="p-0.5 text-zinc-500 hover:text-zinc-300" title={muted ? 'Unmute' : 'Mute'}>
-          {muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
-        </button>
+        {showVolumeControl ? (
+          <>
+            {/* Mute toggle */}
+            <button
+              onClick={toggleMute}
+              className="p-0.5 text-zinc-500 hover:text-zinc-300"
+              title={muted ? 'Unmute' : 'Mute'}
+            >
+              {muted ? (
+                <VolumeX className="size-3.5" />
+              ) : (
+                <Volume2 className="size-3.5" />
+              )}
+            </button>
 
-        {/* Volume slider */}
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={muted ? 0 : volume}
-          onChange={(e) => {
-            setVolume(Number(e.target.value));
-            if (muted) setMuted(false);
-          }}
-          className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-zinc-700 accent-purple-500 [&::-webkit-slider-thumb]:size-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400"
-        />
+            {/* Volume slider */}
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={muted ? 0 : volume}
+              onChange={(e) => {
+                setVolume(Number(e.target.value));
+                if (muted) setMuted(false);
+              }}
+              className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-zinc-700 accent-purple-500 [&::-webkit-slider-thumb]:size-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400"
+            />
+          </>
+        ) : null}
       </div>
     </div>
   );
