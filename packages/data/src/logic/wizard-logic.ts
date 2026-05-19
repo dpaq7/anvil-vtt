@@ -143,6 +143,21 @@ export interface LevelUpChoice {
   category?: string;
 }
 
+export interface LevelUpFeatureChoiceOption {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface LevelUpFeatureView {
+  id: string;
+  name: string;
+  description: string;
+  type: 'automatic' | 'choice';
+  choices?: LevelUpFeatureChoiceOption[];
+  category?: string;
+}
+
 /**
  * Character in progress during wizard steps.
  * Contains nullable fields as selections are made step by step.
@@ -603,6 +618,10 @@ export function getSelectedAbilityIds(character: CharacterInProgress): string[] 
     push(id);
   }
 
+  for (const choice of getLevelUpChoicesByCategory(character, 'ability')) {
+    push(choice.choiceId);
+  }
+
   return ids;
 }
 
@@ -781,11 +800,13 @@ export function calculateDerivedStats(character: CharacterInProgress): DerivedSt
     .map((kitId) => GameData.getKit(kitId))
     .filter((kit): kit is NonNullable<ReturnType<typeof GameData.getKit>> => !!kit);
 
-  // Calculate base stamina from class at character's level
-  const baseStamina = HeroLogic.getMaxStaminaForClass(character.heroClass, level);
-
   // Add kit stamina bonus (kit stamina is per echelon)
   const kitStaminaBonus = kits.reduce((total, kit) => total + kit.staminaPerEchelon, 0) * echelon;
+  const levelUpStaminaBonus = HeroLogic.getLevelAdvancementStaminaBonus(
+    character.heroClass,
+    level,
+    character.levelUpChoices,
+  );
 
   // Get recoveries from class
   const recoveries = HeroLogic.getMaxRecoveries(character.heroClass);
@@ -801,7 +822,7 @@ export function calculateDerivedStats(character: CharacterInProgress): DerivedSt
   const size = ancestry?.size ?? '1M';
 
   return {
-    stamina: baseStamina + kitStaminaBonus,
+    stamina: HeroLogic.getMaxStaminaForClass(character.heroClass, level) + kitStaminaBonus + levelUpStaminaBonus,
     speed: baseSpeed + speedBonus,
     stability,
     size,
@@ -982,7 +1003,483 @@ export function getSelectedSkillNames(character: CharacterInProgress): string[] 
     push(choice);
   }
 
+  for (const skillName of getAutomaticLevelUpSkillNames(character)) {
+    push(skillName);
+  }
+
+  for (const choice of getLevelUpChoicesByCategory(character, 'skill')) {
+    push(resolveSkillChoiceName(choice.choiceId));
+  }
+
   return names;
+}
+
+// ---------------------------------------------------------------------------
+// Level-Up Feature Choices
+// ---------------------------------------------------------------------------
+
+type GameDataFeature = ReturnType<typeof GameData.getAllFeatures>[number];
+type GameDataSkill = ReturnType<typeof GameData.getAllSkills>[number];
+type EffectWithNestedFeatures = {
+  effect?: string;
+  name?: string;
+  features?: GameDataFeature[];
+  tier1?: string;
+  tier2?: string;
+  tier3?: string;
+};
+
+const ORDINAL_LEVEL = /^(\d+)(st|nd|rd|th)-level\s+/i;
+
+const SUMMONER_WARD_CHOICES: LevelUpFeatureChoiceOption[] = [
+  {
+    id: 'conjured-ward',
+    name: 'Conjured Ward',
+    description: 'You gain a +3 bonus to Stamina, increasing by +3 at levels 4, 7, and 10.',
+  },
+  {
+    id: 'emergency-ward',
+    name: 'Emergency Ward',
+    description: 'The first time each round you take damage, shift 1 and summon a signature minion into the square you left.',
+  },
+  {
+    id: 'howling-ward',
+    name: 'Howling Ward',
+    description: 'Enemies that start their turn adjacent to you take damage equal to your Reason.',
+  },
+  {
+    id: 'snare-ward',
+    name: 'Snare Ward',
+    description: 'When an adjacent creature damages you, pull that creature toward one of your minions within Summoner Range.',
+  },
+];
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripSubclassPrefix(name: string): string {
+  return name
+    .replace(/^College of the\s+/i, '')
+    .replace(/^College of\s+/i, '')
+    .replace(/^Domain of\s+/i, '')
+    .replace(/^The\s+/i, '')
+    .trim();
+}
+
+function featureId(feature: GameDataFeature): string {
+  return feature.metadata?.scc?.[0] ?? feature.metadata?.item_id ?? normalizeChoiceId(feature.name);
+}
+
+function effectText(effect: EffectWithNestedFeatures): string {
+  const parts = [
+    effect.effect ? (effect.name ? `${effect.name}: ${effect.effect}` : effect.effect) : effect.name,
+    effect.tier1 ? `<=11: ${effect.tier1}` : null,
+    effect.tier2 ? `12-16: ${effect.tier2}` : null,
+    effect.tier3 ? `17+: ${effect.tier3}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join('\n');
+}
+
+function featureDescription(feature: GameDataFeature): string {
+  const text = ((feature.effects ?? []) as EffectWithNestedFeatures[])
+    .map(effectText)
+    .filter(Boolean)
+    .join('\n\n');
+
+  return text || feature.name;
+}
+
+function nestedChoiceFeatures(feature: GameDataFeature): GameDataFeature[] {
+  return ((feature.effects ?? []) as EffectWithNestedFeatures[])
+    .flatMap((effect) => effect.features ?? []);
+}
+
+function getSubclassTokens(
+  heroClass: HeroLogic.HeroClass,
+  subclass: string | string[] | null
+): string[] {
+  if (!subclass) return [];
+  const ids = Array.isArray(subclass) ? subclass : [subclass];
+  return ids.flatMap((id) => {
+    const option = GameData.getSubclass(heroClass, id);
+    const name = option?.name ?? id;
+    return [id.replace(/-/g, ' '), name, stripSubclassPrefix(name)].map(normalizeText);
+  });
+}
+
+function featureMatchesSubclass(
+  feature: GameDataFeature,
+  heroClass: HeroLogic.HeroClass,
+  subclass: string | string[] | null
+): boolean {
+  const selectedTokens = getSubclassTokens(heroClass, subclass);
+  if (selectedTokens.length === 0) return true;
+
+  const metadataSubclass = feature.metadata?.subclass;
+  if (metadataSubclass) {
+    return selectedTokens.includes(normalizeText(metadataSubclass));
+  }
+
+  const featureName = normalizeText(feature.name.replace(ORDINAL_LEVEL, ''));
+  if (selectedTokens.some((token) => token && featureName.includes(token))) {
+    return true;
+  }
+
+  const allSubclassMarkers = GameData.getSubclasses(heroClass).flatMap((option) => [
+    normalizeText(option.id.replace(/-/g, ' ')),
+    normalizeText(stripSubclassPrefix(option.name)),
+  ]);
+  const referencesAnotherSubclass = allSubclassMarkers.some(
+    (marker) => marker && featureName.includes(marker)
+  );
+
+  return !referencesAnotherSubclass;
+}
+
+function skillDescription(skill: GameDataSkill): string {
+  const skillRecord = skill as GameDataSkill & { description?: string; use?: string; group?: string };
+  return skillRecord.description ?? skillRecord.use ?? skill.name;
+}
+
+function skillChoiceOptions(group?: string): LevelUpFeatureChoiceOption[] {
+  return GameData.getAllSkills()
+    .filter((skill) => !group || (skill as GameDataSkill & { group?: string }).group === group)
+    .map((skill) => ({
+      id: skill.name,
+      name: skill.name,
+      description: skillDescription(skill),
+    }));
+}
+
+function characteristicChoiceOptions(heroClass: HeroLogic.HeroClass): LevelUpFeatureChoiceOption[] {
+  const fixed = new Set(HeroLogic.getAdvancementFixedCharacteristics(heroClass));
+  if (fixed.size !== 1) return [];
+
+  return CHARACTERISTIC_ORDER
+    .filter((name) => !fixed.has(name))
+    .map((name) => ({
+      id: name,
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      description: `Increase ${name} by 1.`,
+    }));
+}
+
+function abilityChoicesByCost(
+  heroClass: HeroLogic.HeroClass,
+  cost: number
+): LevelUpFeatureChoiceOption[] {
+  return GameData.getAbilitiesByClass(heroClass)
+    .filter((ability) => ability.metadata.cost_amount === cost)
+    .map((ability) => ({
+      id: getAbilityFeatureId(ability),
+      name: ability.name,
+      description: featureDescription(ability),
+    }));
+}
+
+function abilityChoiceFeature(
+  heroClass: HeroLogic.HeroClass,
+  level: number,
+  cost: number
+): LevelUpFeatureView {
+  const resource = HeroLogic.getHeroicResourceName(HeroLogic.getHeroicResourceType(heroClass));
+  return {
+    id: `${heroClass}-level-${level}-cost-${cost}-ability`,
+    name: `${cost}-${resource} Ability`,
+    description: `Choose one ${cost}-${resource} ability.`,
+    type: 'choice',
+    category: 'ability',
+    choices: abilityChoicesByCost(heroClass, cost),
+  };
+}
+
+function skillChoiceFeature(
+  heroClass: HeroLogic.HeroClass,
+  level: number,
+  id = `${heroClass}-level-${level}-skill`,
+  group?: string
+): LevelUpFeatureView {
+  return {
+    id,
+    name: 'Skill',
+    description: group ? `Choose one ${group} skill.` : 'Choose one skill.',
+    type: 'choice',
+    category: 'skill',
+    choices: skillChoiceOptions(group),
+  };
+}
+
+function characteristicChoiceFeature(
+  heroClass: HeroLogic.HeroClass,
+  level: number
+): LevelUpFeatureView | null {
+  const choices = characteristicChoiceOptions(heroClass);
+  if (choices.length === 0) return null;
+
+  return {
+    id: `${heroClass}-level-${level}-characteristic-choice`,
+    name: 'Characteristic Increase',
+    description: `Choose one non-primary characteristic to increase by 1.`,
+    type: 'choice',
+    category: 'characteristic',
+    choices,
+  };
+}
+
+function choiceCategory(
+  feature: GameDataFeature,
+  choices: GameDataFeature[]
+): string | undefined {
+  const name = feature.name.toLowerCase();
+  if (choices.some((choice) => choice.feature_type === 'ability') || name.includes('ability')) {
+    return 'ability';
+  }
+  if (name.includes('skill')) return 'skill';
+  if (name.includes('characteristic')) return 'characteristic';
+  if (name.includes('ward')) return 'ward';
+  return feature.metadata?.item_id;
+}
+
+function generatedLevelUpFeatures(character: CharacterInProgress, level: number): LevelUpFeatureView[] {
+  if (!character.heroClass) return [];
+
+  return GameData.getAllFeatures()
+    .filter((feature) => feature.feature_type !== 'ability')
+    .filter((feature) => feature.metadata?.class === character.heroClass && feature.metadata?.level === level)
+    .filter((feature) => featureMatchesSubclass(feature, character.heroClass!, character.subclass))
+    .map((feature) => {
+      const loweredName = feature.name.toLowerCase();
+
+      if (loweredName === 'skill') {
+        return skillChoiceFeature(character.heroClass!, level, featureId(feature));
+      }
+
+      if (loweredName === 'characteristic increase') {
+        const choiceFeature = characteristicChoiceFeature(character.heroClass!, level);
+        if (choiceFeature) {
+          return {
+            ...choiceFeature,
+            id: featureId(feature),
+            description: featureDescription(feature),
+          };
+        }
+      }
+
+      const nested = nestedChoiceFeatures(feature);
+      const choices = nested.map((choice) => ({
+        id: featureId(choice),
+        name: choice.name,
+        description: featureDescription(choice),
+      }));
+
+      return {
+        id: featureId(feature),
+        name: feature.name,
+        description: featureDescription(feature),
+        type: choices.length > 0 ? 'choice' : 'automatic',
+        choices,
+        category: choiceCategory(feature, nested),
+      };
+    });
+}
+
+function masterClassFallbackFeatures(
+  heroClass: HeroLogic.HeroClass,
+  level: number
+): LevelUpFeatureView[] {
+  if (heroClass === 'beastheart') {
+    switch (level) {
+      case 2:
+        return [
+          { id: 'beastheart-2-perk', name: 'Perk', description: 'Gain one exploration, interpersonal, or intrigue perk.', type: 'automatic' },
+          { id: 'beastheart-2-best-friend', name: "Everyone's Best Friend", description: 'Your companion can help improve a montage test tier once per round.', type: 'automatic' },
+        ];
+      case 3:
+        return [abilityChoiceFeature(heroClass, level, 7)];
+      case 4:
+        return [
+          { id: 'beastheart-4-characteristics', name: 'Characteristic Increase', description: 'Your Might and Intuition scores each increase to 3.', type: 'automatic' },
+          { id: 'beastheart-4-perk', name: 'Perk', description: 'Gain one perk.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level),
+          { id: 'beastheart-4-unchained-ferocity', name: 'Unchained Ferocity', description: 'The first time each round that a creature adjacent to your companion takes damage, you gain 3 ferocity.', type: 'automatic' },
+        ];
+      case 5:
+        return [abilityChoiceFeature(heroClass, level, 9)];
+      case 6:
+        return [
+          { id: 'beastheart-6-perk', name: 'Perk', description: 'Gain one exploration, interpersonal, or intrigue perk.', type: 'automatic' },
+        ];
+      case 7:
+        return [
+          { id: 'beastheart-7-characteristics', name: 'Characteristic Increase', description: 'Each characteristic score increases by 1, to a maximum of 4.', type: 'automatic' },
+          { id: 'beastheart-7-greater-ferocity', name: 'Greater Ferocity', description: 'At the start of your turn, you gain 1d3 + 1 ferocity.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level),
+        ];
+      case 8:
+        return [
+          { id: 'beastheart-8-perk', name: 'Perk', description: 'Gain one perk.', type: 'automatic' },
+          abilityChoiceFeature(heroClass, level, 11),
+        ];
+      case 9:
+        return [
+          { id: 'beastheart-9-avatar-green', name: 'Avatar of the Green', description: "Your companion's Reason increases and they can communicate telepathically within 10 squares.", type: 'automatic' },
+          { id: 'beastheart-9-nature-skill', name: 'Nature Skill', description: 'You gain Nature.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level, 'beastheart-9-lore-skill', 'lore'),
+        ];
+      case 10:
+        return [
+          { id: 'beastheart-10-characteristics', name: 'Characteristic Increase', description: 'Your Might and Intuition scores each increase to 5.', type: 'automatic' },
+          { id: 'beastheart-10-final-evolution', name: 'Final Evolution', description: 'At the start of your turn, you gain 2d3 + 1 ferocity.', type: 'automatic' },
+          { id: 'beastheart-10-perk', name: 'Perk', description: 'Gain one exploration, interpersonal, or intrigue perk.', type: 'automatic' },
+          { id: 'beastheart-10-ferox', name: 'Ferox', description: 'You gain the epic resource ferox when you finish a respite.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level),
+        ];
+      default:
+        return [];
+    }
+  }
+
+  if (heroClass === 'summoner') {
+    switch (level) {
+      case 2:
+        return [
+          { id: 'summoner-2-perk', name: 'Perk', description: 'Gain one intrigue, lore, or supernatural perk.', type: 'automatic' },
+          { id: 'summoner-2-dominion', name: 'Dominion', description: 'Once per encounter, you can summon a fixture from your circle.', type: 'automatic' },
+        ];
+      case 3:
+        return [
+          { id: 'summoner-3-kit', name: "Summoner's Kit", description: 'Your Summoner Strike improves and uses Summoner Range.', type: 'automatic' },
+          { id: 'summoner-3-ward', name: 'Ward', description: 'Choose one ward from your Summoner Kit.', type: 'choice', category: 'ward', choices: SUMMONER_WARD_CHOICES },
+          abilityChoiceFeature(heroClass, level, 7),
+        ];
+      case 4:
+        return [
+          { id: 'summoner-4-reason', name: 'Reason Increase', description: 'Your Reason score increases to 3.', type: 'automatic' },
+          characteristicChoiceFeature(heroClass, level)!,
+          { id: 'summoner-4-minion-improvement', name: 'Minion Improvement', description: 'Your maximum number of minions increases by 4 and your minions improve.', type: 'automatic' },
+          { id: 'summoner-4-perk', name: 'Perk', description: 'Gain one perk.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level),
+        ].filter((feature): feature is LevelUpFeatureView => Boolean(feature));
+      case 5:
+        return [];
+      case 6:
+        return [
+          { id: 'summoner-6-perk', name: 'Perk', description: 'Gain one intrigue, lore, or supernatural perk.', type: 'automatic' },
+          { id: 'summoner-6-return-source', name: 'Return to the Source', description: "You can travel to your circle's source as a respite activity.", type: 'automatic' },
+          { id: 'summoner-6-minion-machinations', name: 'Minion Machinations', description: 'Your maximum number of followers increases by 2.', type: 'automatic' },
+          { id: 'summoner-6-ward', name: 'Kit Improvement', description: 'Choose one additional ward from your Summoner Kit.', type: 'choice', category: 'ward', choices: SUMMONER_WARD_CHOICES },
+          abilityChoiceFeature(heroClass, level, 9),
+        ];
+      case 7:
+        return [
+          { id: 'summoner-7-characteristics', name: 'Characteristic Increase', description: 'Each characteristic score increases by 1, to a maximum of 4.', type: 'automatic' },
+          { id: 'summoner-7-minion-improvement', name: 'Minion Improvement', description: 'Your minions improve and you can summon an additional signature minion each turn.', type: 'automatic' },
+          { id: 'summoner-7-font-creation', name: 'Font of Creation', description: 'At the start of your turn, you gain 3 essence.', type: 'automatic' },
+          { id: 'summoner-7-life-for-mine', name: 'Their Life for Mine', description: 'You can sacrifice minions and essence to prevent death.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level),
+        ];
+      case 8:
+        return [
+          { id: 'summoner-8-perk', name: 'Perk', description: 'Gain one perk.', type: 'automatic' },
+          { id: 'summoner-8-portfolio-champion', name: 'Portfolio Champion', description: 'You can add a champion to your portfolio.', type: 'automatic' },
+        ];
+      case 9:
+        return [
+          { id: 'summoner-9-kit-improvement', name: 'Kit Improvement', description: 'Your Summoner Strike potency improves and you choose one additional ward.', type: 'choice', category: 'ward', choices: SUMMONER_WARD_CHOICES },
+          { id: 'summoner-9-steward', name: 'Steward of Two Worlds', description: 'Your equipment and regalia mark you as commander of your army.', type: 'automatic' },
+          abilityChoiceFeature(heroClass, level, 11),
+        ];
+      case 10:
+        return [
+          { id: 'summoner-10-reason', name: 'Reason Increase', description: 'Your Reason score increases to 5.', type: 'automatic' },
+          characteristicChoiceFeature(heroClass, level)!,
+          { id: 'summoner-10-minion-improvement', name: 'Minion Improvement', description: 'Your minions improve and your encounter-opening summons scale with Victories.', type: 'automatic' },
+          { id: 'summoner-10-eidos', name: 'Eidos', description: 'You gain the epic resource eidos when you finish a respite.', type: 'automatic' },
+          { id: 'summoner-10-no-matter-cost', name: 'No Matter the Cost', description: 'Sacrificed minions reduce heroic ability or minion costs by the same amount.', type: 'automatic' },
+          { id: 'summoner-10-among-ranks', name: 'Among Our Ranks', description: 'As a respite activity, summon a willing ally to join your party.', type: 'automatic' },
+          { id: 'summoner-10-perk', name: 'Perk', description: 'Gain one intrigue, interpersonal, or supernatural perk.', type: 'automatic' },
+          skillChoiceFeature(heroClass, level),
+        ].filter((feature): feature is LevelUpFeatureView => Boolean(feature));
+      default:
+        return [];
+    }
+  }
+
+  return [];
+}
+
+export function getLevelUpFeatures(character: CharacterInProgress, level: number): LevelUpFeatureView[] {
+  if (!character.heroClass || level < 2 || level > 10) return [];
+
+  const generated = generatedLevelUpFeatures(character, level);
+  if (generated.length > 0) return generated;
+
+  return masterClassFallbackFeatures(character.heroClass, level);
+}
+
+export function getLevelUpChoicesByCategory(
+  character: CharacterInProgress,
+  category: string
+): LevelUpChoice[] {
+  return Object.values(character.levelUpChoices ?? {})
+    .flat()
+    .filter((choice) => choice.category === category);
+}
+
+function resolveSkillChoiceName(choiceId: string): string {
+  const direct = GameData.getSkill(choiceId);
+  if (direct) return direct.name;
+
+  const normalized = normalizeChoiceId(choiceId);
+  const bySlug = GameData.getAllSkills().find((skill) => normalizeChoiceId(skill.name) === normalized);
+  return bySlug?.name ?? choiceId;
+}
+
+function getAutomaticLevelUpSkillNames(character: CharacterInProgress): string[] {
+  const names: string[] = [];
+  if (character.heroClass === 'beastheart' && character.level >= 9) {
+    names.push('Nature');
+  }
+  return names;
+}
+
+export function getLevelUpValidationErrors(
+  character: CharacterInProgress,
+  level: number
+): string[] {
+  if (!character.heroClass) return ['Class is required before level-up choices'];
+
+  const features = getLevelUpFeatures(character, level);
+  const choiceFeatures = features.filter(
+    (feature) => feature.type === 'choice' && (feature.choices?.length ?? 0) > 0
+  );
+  const choices = character.levelUpChoices[level] ?? [];
+  const errors: string[] = [];
+
+  for (const feature of choiceFeatures) {
+    const selected = choices.find((choice) => choice.featureId === feature.id);
+    if (!selected) {
+      errors.push(`Choose ${feature.name}`);
+      continue;
+    }
+
+    if (!feature.choices?.some((option) => option.id === selected.choiceId)) {
+      errors.push(`Choose a valid option for ${feature.name}`);
+    }
+  }
+
+  return errors;
+}
+
+export function isLevelUpStepComplete(character: CharacterInProgress, level: number): boolean {
+  if (!character.heroClass) return false;
+  return getLevelUpValidationErrors(character, level).length === 0;
 }
 
 /**
@@ -1097,11 +1594,9 @@ export function getStepStatus(
   // Handle level-up steps
   if (stepId.startsWith('level-')) {
     const lvl = parseInt(stepId.replace('level-', ''), 10);
-    const choices = character.levelUpChoices[lvl] || [];
-    // Consider complete if at least one choice was made (simplified; can be enhanced)
-    if (choices.length > 0) return 'complete';
-    // Check if previous steps have started
-    if (character.heroClass) return 'incomplete';
+    if (character.heroClass) {
+      return isLevelUpStepComplete(character, lvl) ? 'complete' : 'incomplete';
+    }
     return 'not-begun';
   }
 
@@ -1408,7 +1903,17 @@ export function isCharacterComplete(character: CharacterInProgress): boolean {
     WIZARD_STEPS.PERSONAL,
   ];
 
-  return requiredSteps.every((step) => isStepComplete(character, step));
+  if (!requiredSteps.every((step) => isStepComplete(character, step))) {
+    return false;
+  }
+
+  for (let level = 2; level <= character.level; level += 1) {
+    if (!isLevelUpStepComplete(character, level)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**

@@ -83,6 +83,8 @@ export type {
   HealthStatus,
   Characteristics,
   CharacteristicName,
+  LevelAdvancementChoice,
+  LevelAdvancementChoices,
 } from './hero-logic.js';
 
 // Wizard Logic types
@@ -96,6 +98,8 @@ export type {
   GrantedItems,
   StepValidationResult,
   LevelUpChoice,
+  LevelUpFeatureChoiceOption,
+  LevelUpFeatureView,
   StepStatus,
   WizardStepDefinition,
   AbilityChoiceSlot,

@@ -118,6 +118,7 @@ export function PlayerHeroCommandBar({
   const resourceName = getString(hero, 'heroicResourceName') ?? 'Resource';
   const victories = getNumber(hero, 'victories', 0);
   const xp = getNumber(hero, 'xp', 0);
+  const canAdvance = level >= 1 && level < 10 && HeroLogic.canAdvanceLevel(level, xp);
   const useCatchBreath = combatActive ? onCatchBreath : onOpenSheet;
 
   return (
@@ -175,10 +176,10 @@ export function PlayerHeroCommandBar({
       <CommandTile
         Icon={Medal}
         label="Level"
-        value={`L${level}`}
+        value={canAdvance ? `L${level}->${level + 1}` : `L${level}`}
         accent="text-violet-300"
         onClick={onOpenSheet}
-        title="Open progression"
+        title={canAdvance ? 'Open sheet to advance' : 'Open progression'}
       />
 
       <div className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950/40 px-1">

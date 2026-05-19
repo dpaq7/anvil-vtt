@@ -9,6 +9,7 @@ import {
   UniversalActions,
   WizardLogic,
 } from '@anvil/data';
+import type { LevelAdvancementChoices } from '@anvil/data';
 import type { Env } from '../types.js';
 import type {
   CharacteristicId,
@@ -208,6 +209,27 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeLevelUpChoices(value: unknown): LevelAdvancementChoices | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const choices: LevelAdvancementChoices = {};
+  for (const [key, rawChoices] of Object.entries(value)) {
+    const level = Number(key);
+    if (!Number.isInteger(level) || level < 2 || level > 10) continue;
+    if (!Array.isArray(rawChoices)) continue;
+    choices[level] = rawChoices
+      .filter(isRecord)
+      .filter((choice) => typeof choice['featureId'] === 'string' && typeof choice['choiceId'] === 'string')
+      .map((choice) => ({
+        featureId: choice['featureId'] as string,
+        choiceId: choice['choiceId'] as string,
+        category: typeof choice['category'] === 'string' ? choice['category'] : undefined,
+      }));
+  }
+
+  return choices;
 }
 
 function inventoryString(value: unknown, maxLength = MAX_INVENTORY_TEXT_LENGTH): string | undefined {
@@ -1072,7 +1094,7 @@ export class SessionRoom extends DurableObject<Env> {
 
   private createHeroEntity(hero: HeroEntityRow, index: number): SessionState['entities'][number] {
     const data = parseJson<Record<string, unknown>>(hero.data, {});
-    const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
+    const baseCharacteristics = parseJson<Record<string, number>>(hero.characteristics, {});
     const selectedSkills = parseJson<string[]>(hero.skills, []);
     const selectedAbilityIds = parseJson<string[]>(hero.abilities, []);
     const state = isRecord(data['state']) ? data['state'] : {};
@@ -1080,6 +1102,15 @@ export class SessionRoom extends DurableObject<Env> {
     const heroClass = hero.hero_class && HeroLogic.isValidHeroClass(hero.hero_class)
       ? hero.hero_class
       : null;
+    const levelUpChoices = normalizeLevelUpChoices(data['levelUpChoices']);
+    const characteristics = heroClass
+      ? HeroLogic.applyLevelAdvancementCharacteristics(
+        heroClass,
+        hero.level,
+        baseCharacteristics,
+        levelUpChoices,
+      )
+      : baseCharacteristics;
     const kit = hero.kit ? GameData.getKit(hero.kit) : null;
     const secondaryKitId = heroClass === 'tactician' && typeof data['secondaryKit'] === 'string'
       ? data['secondaryKit']
@@ -1087,7 +1118,7 @@ export class SessionRoom extends DurableObject<Env> {
     const secondaryKit = secondaryKitId ? GameData.getKit(secondaryKitId) : null;
     const kitStaminaBonus = (kit?.staminaPerEchelon ?? 0) + (secondaryKit?.staminaPerEchelon ?? 0);
     const maxStamina = heroClass
-      ? HeroLogic.getMaxStaminaWithKit(heroClass, hero.level, kitStaminaBonus)
+      ? HeroLogic.getMaxStaminaWithAdvancements(heroClass, hero.level, kitStaminaBonus, levelUpChoices)
       : 20;
     const maxRecoveries = heroClass ? HeroLogic.getMaxRecoveries(heroClass) : null;
     const resourceType = heroClass ? HeroLogic.getHeroicResourceType(heroClass) : null;

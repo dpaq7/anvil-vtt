@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
+import { GameData } from '../game-data/index.js';
+import * as HeroLogic from './hero-logic.js';
+import { ALL_PERK_CATEGORIES, getAvailablePerkCategories, getClassPerkLevels } from '../rules/perks/index.js';
 import * as WizardLogic from './wizard-logic.js';
+
+const HERO_CLASSES: HeroLogic.HeroClass[] = [
+  'beastheart',
+  'censor',
+  'conduit',
+  'elementalist',
+  'fury',
+  'null',
+  'shadow',
+  'summoner',
+  'tactician',
+  'talent',
+  'troubadour',
+];
+
+function firstSubclassSelection(heroClass: HeroLogic.HeroClass): string | string[] | null {
+  const subclasses = GameData.getSubclasses(heroClass).map((subclass) => subclass.id);
+  const count = GameData.getSubclassSelectCount(heroClass);
+  if (count <= 0) return null;
+  return count === 1 ? subclasses[0] ?? null : subclasses.slice(0, count);
+}
 
 describe('WizardLogic', () => {
   describe('class-specific characteristic assignment', () => {
@@ -246,6 +270,205 @@ describe('WizardLogic', () => {
         'Track',
         'Hide',
       ]);
+    });
+  });
+
+  describe('level advancement mechanics', () => {
+    it('grants five class perk slots through level 10 with class-specific restrictions', () => {
+      const expected: Record<HeroLogic.HeroClass, Record<number, string[]>> = {
+        beastheart: {
+          2: ['exploration', 'interpersonal', 'intrigue'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['exploration', 'interpersonal', 'intrigue'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['exploration', 'interpersonal', 'intrigue'],
+        },
+        censor: {
+          2: ['interpersonal', 'lore', 'supernatural'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['interpersonal', 'lore', 'supernatural'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['crafting', 'lore', 'supernatural'],
+        },
+        conduit: {
+          2: ['crafting', 'lore', 'supernatural'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['crafting', 'lore', 'supernatural'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['crafting', 'lore', 'supernatural'],
+        },
+        elementalist: {
+          2: ['crafting', 'lore', 'supernatural'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['crafting', 'lore', 'supernatural'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['crafting', 'lore', 'supernatural'],
+        },
+        fury: {
+          2: ['crafting', 'exploration', 'intrigue'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['crafting', 'exploration', 'intrigue'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['crafting', 'exploration', 'intrigue'],
+        },
+        null: {
+          2: ['exploration', 'interpersonal', 'intrigue'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['exploration', 'interpersonal', 'intrigue'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['exploration', 'interpersonal', 'intrigue'],
+        },
+        shadow: {
+          2: ['exploration', 'interpersonal', 'intrigue'],
+          4: ALL_PERK_CATEGORIES,
+          6: ALL_PERK_CATEGORIES,
+          8: ALL_PERK_CATEGORIES,
+          10: ALL_PERK_CATEGORIES,
+        },
+        summoner: {
+          2: ['intrigue', 'lore', 'supernatural'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['intrigue', 'lore', 'supernatural'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['intrigue', 'interpersonal', 'supernatural'],
+        },
+        tactician: {
+          2: ['exploration', 'interpersonal', 'intrigue'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['exploration', 'interpersonal', 'intrigue'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['exploration', 'interpersonal', 'intrigue'],
+        },
+        talent: {
+          2: ['interpersonal', 'lore', 'supernatural'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['interpersonal', 'lore', 'supernatural'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['interpersonal', 'lore', 'supernatural'],
+        },
+        troubadour: {
+          2: ['interpersonal', 'lore', 'supernatural'],
+          4: ALL_PERK_CATEGORIES,
+          6: ['interpersonal', 'lore', 'supernatural'],
+          8: ALL_PERK_CATEGORIES,
+          10: ['interpersonal', 'lore', 'supernatural'],
+        },
+      };
+
+      for (const heroClass of HERO_CLASSES) {
+        expect(getClassPerkLevels(heroClass)).toEqual([2, 4, 6, 8, 10]);
+        for (const level of [2, 4, 6, 8, 10]) {
+          expect(getAvailablePerkCategories(heroClass, level)).toEqual(expected[heroClass][level]);
+        }
+      }
+    });
+
+    it('surfaces and validates every required level-up choice for level 10 heroes', () => {
+      for (const heroClass of HERO_CLASSES) {
+        const character = WizardLogic.createEmptyCharacter();
+        character.heroClass = heroClass;
+        character.subclass = firstSubclassSelection(heroClass);
+        character.level = 10;
+
+        for (let level = 2; level <= 10; level += 1) {
+          const features = WizardLogic.getLevelUpFeatures(character, level);
+          const choiceFeatures = features.filter((feature) => feature.type === 'choice');
+
+          for (const feature of choiceFeatures) {
+            expect(feature.choices?.length, `${heroClass} L${level} ${feature.name}`).toBeGreaterThan(0);
+          }
+
+          if (choiceFeatures.length > 0) {
+            expect(WizardLogic.isLevelUpStepComplete(character, level)).toBe(false);
+          }
+
+          character.levelUpChoices[level] = choiceFeatures.map((feature) => ({
+            featureId: feature.id,
+            choiceId: feature.choices![0]!.id,
+            category: feature.category,
+          }));
+
+          expect(WizardLogic.isLevelUpStepComplete(character, level), `${heroClass} L${level}`).toBe(true);
+        }
+
+        expect(WizardLogic.getSelectedAbilityIds(character).length).toBeGreaterThanOrEqual(
+          heroClass === 'summoner' ? 2 : 0
+        );
+        expect(WizardLogic.getSelectedSkillNames(character).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('calculates level 10 stamina, recoveries, and recovery values for every class', () => {
+      const expectedStats: Record<HeroLogic.HeroClass, { level1: number; perLevel: number; recoveries: number }> = {
+        beastheart: { level1: 21, perLevel: 12, recoveries: 12 },
+        censor: { level1: 21, perLevel: 9, recoveries: 12 },
+        conduit: { level1: 18, perLevel: 6, recoveries: 8 },
+        elementalist: { level1: 18, perLevel: 6, recoveries: 8 },
+        fury: { level1: 21, perLevel: 9, recoveries: 10 },
+        null: { level1: 21, perLevel: 9, recoveries: 8 },
+        shadow: { level1: 18, perLevel: 6, recoveries: 8 },
+        summoner: { level1: 15, perLevel: 6, recoveries: 8 },
+        tactician: { level1: 21, perLevel: 9, recoveries: 10 },
+        talent: { level1: 18, perLevel: 6, recoveries: 8 },
+        troubadour: { level1: 18, perLevel: 6, recoveries: 8 },
+      };
+
+      for (const heroClass of HERO_CLASSES) {
+        const expectedStamina = expectedStats[heroClass].level1 + expectedStats[heroClass].perLevel * 9;
+        expect(HeroLogic.getMaxStaminaForClass(heroClass, 10)).toBe(expectedStamina);
+        expect(HeroLogic.getMaxRecoveries(heroClass)).toBe(expectedStats[heroClass].recoveries);
+        expect(HeroLogic.getRecoveryValue(expectedStamina)).toBe(Math.floor(expectedStamina / 3));
+      }
+
+      expect(HeroLogic.getLevelAdvancementStaminaBonus('summoner', 10, {
+        3: [{ featureId: 'summoner-3-ward', choiceId: 'conjured-ward', category: 'ward' }],
+      })).toBe(12);
+    });
+
+    it('applies fixed and chosen characteristic increases through level 10', () => {
+      const base: HeroLogic.Characteristics = {
+        might: 2,
+        agility: 2,
+        reason: 2,
+        intuition: 2,
+        presence: 2,
+      };
+
+      for (const heroClass of HERO_CLASSES) {
+        const fixed = HeroLogic.getAdvancementFixedCharacteristics(heroClass);
+        const chosen = WizardLogic.CHARACTERISTIC_ORDER.find((name) => !fixed.includes(name))!;
+        const choices = fixed.length === 1
+          ? {
+              4: [{ featureId: 'l4-characteristic', choiceId: chosen, category: 'characteristic' }],
+              10: [{ featureId: 'l10-characteristic', choiceId: chosen, category: 'characteristic' }],
+            }
+          : {};
+        const advanced = HeroLogic.applyLevelAdvancementCharacteristics(heroClass, 10, base, choices);
+
+        for (const name of fixed) {
+          expect(advanced[name], `${heroClass} fixed ${name}`).toBe(5);
+        }
+
+        if (fixed.length === 1) {
+          expect(advanced[chosen], `${heroClass} chosen ${chosen}`).toBe(5);
+        }
+
+        for (const value of Object.values(advanced)) {
+          expect(value).toBeGreaterThanOrEqual(3);
+          expect(value).toBeLessThanOrEqual(5);
+        }
+      }
+    });
+
+    it('uses 16 XP advancement thresholds', () => {
+      expect(HeroLogic.getMinXPForLevel(1)).toBe(0);
+      expect(HeroLogic.getMinXPForLevel(10)).toBe(144);
+      expect(HeroLogic.getMinXPForNextLevel(9)).toBe(144);
+      expect(HeroLogic.getMinXPForNextLevel(10)).toBeNull();
+      expect(HeroLogic.getLevelForXP(143)).toBe(9);
+      expect(HeroLogic.getLevelForXP(144)).toBe(10);
+      expect(HeroLogic.canAdvanceLevel(4, 79)).toBe(true);
+      expect(HeroLogic.canAdvanceLevel(4, 63)).toBe(false);
     });
   });
 });
