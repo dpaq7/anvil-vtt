@@ -10,6 +10,7 @@ const MAX_KIND_LENGTH = 80;
 const MAX_MESSAGE_LENGTH = 800;
 const MAX_STACK_LENGTH = 8000;
 const MAX_CONTEXT_LENGTH = 12000;
+const TOKEN_PATH_SEGMENT = /^(?:[A-Z0-9]{8,}|(?=.*[0-9_-])[A-Za-z0-9_-]{6,})$/;
 
 interface BugReportPayload {
   kind: string;
@@ -40,11 +41,38 @@ function compactString(value: unknown, maxLength: number): string | null {
   return compacted.length > maxLength ? compacted.slice(0, maxLength) : compacted;
 }
 
+function redactPath(pathname: string): string {
+  return pathname
+    .split('/')
+    .map((segment) => (TOKEN_PATH_SEGMENT.test(segment) ? '[redacted]' : segment))
+    .join('/');
+}
+
+function redactUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    url.pathname = redactPath(url.pathname);
+    url.search = url.search ? '?[redacted]' : '';
+    url.hash = url.hash ? '#[redacted]' : '';
+    return url.toString();
+  } catch {
+    return value.replace(/([?&][^=]+)=([^&#]+)/g, '$1=[redacted]').replace(/#.+$/, '#[redacted]');
+  }
+}
+
+function redactText(value: string | null): string | null {
+  if (!value) return null;
+  return value
+    .replace(/https?:\/\/\S+/g, (url) => redactUrl(url) ?? '[redacted-url]')
+    .replace(/\b(token|code|state|session|auth|key|secret)=([^&\s]+)/gi, '$1=[redacted]');
+}
+
 function contextToJson(value: unknown): string | null {
   if (value === undefined || value === null) return null;
 
   try {
-    const json = JSON.stringify(value);
+    const json = redactText(JSON.stringify(value));
     if (!json || json === 'null') return null;
     return json.length > MAX_CONTEXT_LENGTH ? json.slice(0, MAX_CONTEXT_LENGTH) : json;
   } catch {
@@ -61,11 +89,11 @@ function parseBugReport(raw: unknown): { payload?: BugReportPayload; error?: str
   return {
     payload: {
       kind: compactString(raw['kind'], MAX_KIND_LENGTH) ?? 'client-error',
-      message,
-      stack: compactString(raw['stack'], MAX_STACK_LENGTH),
-      componentStack: compactString(raw['componentStack'], MAX_STACK_LENGTH),
+      message: redactText(message) ?? message,
+      stack: redactText(compactString(raw['stack'], MAX_STACK_LENGTH)),
+      componentStack: redactText(compactString(raw['componentStack'], MAX_STACK_LENGTH)),
       source: compactString(raw['source'], 240),
-      url: compactString(raw['url'], 2048),
+      url: redactUrl(compactString(raw['url'], 2048)),
       userAgent: compactString(raw['userAgent'], 512),
       context: raw['context'],
     },

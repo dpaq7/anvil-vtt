@@ -80,6 +80,14 @@ interface HeroRow {
   data: string;
 }
 
+interface HeroAdvanceResponse {
+  ok: boolean;
+  level: number;
+  abilities: string[];
+  skills: string[];
+  data: Record<string, unknown>;
+}
+
 interface AbilityDisplay {
   id: string;
   name: string;
@@ -1312,51 +1320,21 @@ export function HeroSheet() {
       return;
     }
 
-    const nextLevelUpChoices = {
-      ...sheet.levelUpChoices,
-      [nextLevel]: levelUpChoices,
-    };
-    const gainedAbilities = levelUpChoices
-      .filter((choice) => choice.category === "ability")
-      .map((choice) => choice.choiceId);
-    const gainedSkills = levelUpChoices
-      .filter((choice) => choice.category === "skill")
-      .map((choice) => resolveSkill(choice.choiceId).name);
-    const automaticSkills =
-      sheet.heroClass === "beastheart" && nextLevel >= 9 ? ["Nature"] : [];
-    const nextAbilities = unique([...sheet.abilityIds, ...gainedAbilities]);
-    const nextSkills = unique([
-      ...sheet.skillNames,
-      ...automaticSkills,
-      ...gainedSkills,
-    ]);
-    const nextSelectedPerks = unique([
-      ...sheet.selectedPerkIds,
-      ...(levelUpPerkId ? [levelUpPerkId] : []),
-    ]);
-    const nextData = {
-      ...sheet.data,
-      levelUpChoices: nextLevelUpChoices,
-      selectedPerks: nextSelectedPerks,
-    };
-
     setSavingLevelUp(true);
     try {
-      await api.put(`/api/heroes/${hero.id}`, {
-        level: nextLevel,
-        abilities: nextAbilities,
-        skills: nextSkills,
-        data: nextData,
+      const result = await api.post<HeroAdvanceResponse>(`/api/heroes/${hero.id}/advance`, {
+        choices: levelUpChoices,
+        perkId: levelUpPerkId || null,
       });
       setHero({
         ...hero,
-        level: nextLevel,
-        abilities: JSON.stringify(nextAbilities),
-        skills: JSON.stringify(nextSkills),
-        data: JSON.stringify(nextData),
+        level: result.level,
+        abilities: JSON.stringify(result.abilities),
+        skills: JSON.stringify(result.skills),
+        data: JSON.stringify(result.data),
       });
       setLevelUpOpen(false);
-      toast.success(`Advanced to level ${nextLevel}.`);
+      toast.success(`Advanced to level ${result.level}.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Level up failed");
     } finally {

@@ -3,6 +3,7 @@ import { csrfHeaders, getCsrfToken } from './csrf.js';
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 const MAX_REPORTS_PER_PAGE = 8;
 const DUPLICATE_WINDOW_MS = 30_000;
+const TOKEN_PATH_SEGMENT = /^(?:[A-Z0-9]{8,}|(?=.*[0-9_-])[A-Za-z0-9_-]{6,})$/;
 
 type BugReportContext = Record<string, unknown>;
 
@@ -46,14 +47,40 @@ function pageContext(): BugReportContext {
   if (typeof window === 'undefined') return {};
 
   return {
-    path: window.location.pathname,
-    search: window.location.search,
-    hash: window.location.hash,
+    path: redactPath(window.location.pathname),
+    search: window.location.search ? '[redacted]' : '',
+    hash: window.location.hash ? '[redacted]' : '',
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     language: navigator.language,
     online: navigator.onLine,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
+}
+
+function redactPath(pathname: string): string {
+  return pathname
+    .split('/')
+    .map((segment) => (TOKEN_PATH_SEGMENT.test(segment) ? '[redacted]' : segment))
+    .join('/');
+}
+
+function redactUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    url.pathname = redactPath(url.pathname);
+    url.search = url.search ? '?[redacted]' : '';
+    url.hash = url.hash ? '#[redacted]' : '';
+    return url.toString();
+  } catch {
+    return rawUrl.replace(/([?&][^=]+)=([^&#]+)/g, '$1=[redacted]').replace(/#.+$/, '#[redacted]');
+  }
+}
+
+function redactText(value: string | null | undefined): string | null {
+  if (!value) return value ?? null;
+  return value
+    .replace(/https?:\/\/\S+/g, (url) => redactUrl(url))
+    .replace(/\b(token|code|state|session|auth|key|secret)=([^&\s]+)/gi, '$1=[redacted]');
 }
 
 function reportSignature(input: BugReportInput) {
@@ -90,11 +117,11 @@ export async function reportBug(input: BugReportInput): Promise<BugReportResult 
   const csrfToken = getCsrfToken();
   const payload = {
     kind: input.kind,
-    message: input.message,
-    stack: input.stack ?? null,
-    componentStack: input.componentStack ?? null,
+    message: redactText(input.message) ?? input.message,
+    stack: redactText(input.stack),
+    componentStack: redactText(input.componentStack),
     source: input.source ?? null,
-    url: window.location.href,
+    url: redactUrl(window.location.href),
     userAgent: navigator.userAgent,
     context: {
       ...pageContext(),

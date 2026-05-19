@@ -16,6 +16,8 @@ accountRoutes.use('/*', authMiddleware);
 const BACKUP_FORMAT = 'anvil.account-backup';
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_SIZE = 100 * 1024 * 1024;
+const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024;
+const MAX_USER_ASSETS = 1000;
 
 type DbValue = string | number | null;
 type DbRow = Record<string, DbValue>;
@@ -330,15 +332,18 @@ function mappedId(map: Map<string, string>, value: DbValue | undefined): string 
   return typeof value === 'string' ? map.get(value) ?? null : null;
 }
 
-async function insertRows(db: D1Database, table: BackupTableName, rows: DbRow[]) {
+function prepareInsertRows(db: D1Database, table: BackupTableName, rows: DbRow[]): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
   for (const row of rows) {
     const columns = TABLE_COLUMNS[table].filter((column) => row[column] !== undefined);
     if (columns.length === 0) continue;
     const placeholders = columns.map(() => '?').join(', ');
-    await db.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`)
-      .bind(...columns.map((column) => row[column] ?? null))
-      .run();
+    statements.push(
+      db.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`)
+        .bind(...columns.map((column) => row[column] ?? null)),
+    );
   }
+  return statements;
 }
 
 async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive, user: AuthUser) {
@@ -605,26 +610,53 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
     restoredFileData.push({ storageKey, contentType, data });
   }
 
+  const existingAssetStats = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN file_size ELSE 0 END), 0) AS used_bytes,
+       COUNT(*) AS asset_count
+     FROM assets
+     WHERE user_id = ?`,
+  )
+    .bind(user.id)
+    .first<{ used_bytes: number | null; asset_count: number }>();
+  const restoredBytes = restoredFileData.reduce((total, file) => total + file.data.byteLength, 0);
+  if ((existingAssetStats?.asset_count ?? 0) + assets.length > MAX_USER_ASSETS) {
+    throw new RestoreValidationError('Restoring this backup would exceed the account asset limit');
+  }
+  if ((existingAssetStats?.used_bytes ?? 0) + restoredBytes > MAX_USER_STORAGE_BYTES) {
+    throw new RestoreValidationError('Restoring this backup would exceed the account storage quota');
+  }
+
+  const statements: D1PreparedStatement[] = [];
   for (const table of RESTORE_ORDER) {
     if (table === 'note_folders') {
       const rows = restoredTables.note_folders ?? [];
-      await insertRows(c.env.DB, 'note_folders', rows.map((row) => ({ ...row, parent_folder_id: null })));
+      statements.push(...prepareInsertRows(c.env.DB, 'note_folders', rows.map((row) => ({ ...row, parent_folder_id: null }))));
       for (const row of rows) {
         if (typeof row['id'] !== 'string') continue;
         const parentId = typeof row['parent_folder_id'] === 'string' && noteFolderIds.has(row['parent_folder_id'])
           ? row['parent_folder_id']
           : null;
-        await c.env.DB.prepare('UPDATE note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
-          .bind(parentId, row['id'], user.id)
-          .run();
+        statements.push(
+          c.env.DB.prepare('UPDATE note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
+            .bind(parentId, row['id'], user.id),
+        );
       }
       continue;
     }
-    await insertRows(c.env.DB, table, restoredTables[table] ?? []);
+    statements.push(...prepareInsertRows(c.env.DB, table, restoredTables[table] ?? []));
   }
 
-  for (const { storageKey, contentType, data } of restoredFileData) {
-    await c.env.ASSETS.put(storageKey, data, { httpMetadata: { contentType } });
+  const uploadedKeys: string[] = [];
+  try {
+    for (const { storageKey, contentType, data } of restoredFileData) {
+      await c.env.ASSETS.put(storageKey, data, { httpMetadata: { contentType } });
+      uploadedKeys.push(storageKey);
+    }
+    if (statements.length > 0) await c.env.DB.batch(statements);
+  } catch (error) {
+    await Promise.all(uploadedKeys.map((key) => c.env.ASSETS.delete(key).catch(() => undefined)));
+    throw error;
   }
 
   return { ...tableCounts(restoredTables), files: restoredFileData.length };
