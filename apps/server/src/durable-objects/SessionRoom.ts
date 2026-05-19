@@ -44,6 +44,7 @@ import type {
   RespiteActivityState,
   InventoryItemData,
 } from '../protocol.js';
+import { WS_LIMITS } from '../policy/limits.js';
 
 interface ConnectionMeta {
   userId: string;
@@ -138,16 +139,16 @@ type ConditionName = ReturnType<typeof ConditionLogic.getAllConditionNames>[numb
 
 const CHARACTERISTIC_IDS = ['might', 'agility', 'reason', 'intuition', 'presence'] as const;
 const VALID_CONDITIONS = new Set<string>(ConditionLogic.getAllConditionNames());
-const MAX_ACTION_LOG_ENTRIES = 200;
-const MAX_INVENTORY_ITEMS = 160;
-const MAX_INVENTORY_TEXT_LENGTH = 2400;
-const MAX_WS_MESSAGE_LENGTH = 128 * 1024;
-const MAX_ENTITY_JSON_LENGTH = 24 * 1024;
-const MAX_PATCH_JSON_LENGTH = 24 * 1024;
-const MAX_SCENE_SHAPE_POINTS = 2048;
-const MAX_STORY_TEXT_LENGTH = 20_000;
-const MAX_APPROACH_TEXT_LENGTH = 2_000;
-const MAX_ID_LENGTH = 220;
+const MAX_ACTION_LOG_ENTRIES: number = 200;
+const MAX_INVENTORY_ITEMS: number = WS_LIMITS.inventoryItems;
+const MAX_INVENTORY_TEXT_LENGTH: number = WS_LIMITS.inventoryTextLength;
+const MAX_WS_MESSAGE_LENGTH: number = WS_LIMITS.messageBytes;
+const MAX_ENTITY_JSON_LENGTH: number = WS_LIMITS.entityJsonBytes;
+const MAX_PATCH_JSON_LENGTH: number = WS_LIMITS.patchJsonBytes;
+const MAX_SCENE_SHAPE_POINTS: number = WS_LIMITS.sceneShapePoints;
+const MAX_STORY_TEXT_LENGTH: number = WS_LIMITS.storyTextLength;
+const MAX_APPROACH_TEXT_LENGTH: number = WS_LIMITS.approachTextLength;
+const MAX_ID_LENGTH: number = WS_LIMITS.idLength;
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const VALID_INVENTORY_SOURCES = new Set(['mcdm-treasure', 'mcdm-imbuement', 'custom']);
 const VALID_INVENTORY_CATEGORIES = new Set([
@@ -779,12 +780,6 @@ function getAbilityForSource(source: Record<string, unknown>, abilityId: string)
   if (selected) return selected;
   const sourceAbility = getResolvedAbilityForSource(source, abilityId);
   return toRuntimeAbility(abilityId, sourceAbility);
-}
-
-function getRollModifier(source: Record<string, unknown>): number {
-  const values = ['might', 'agility', 'reason', 'intuition', 'presence']
-    .map((key) => (typeof source[key] === 'number' ? source[key] as number : 0));
-  return Math.max(0, ...values);
 }
 
 function isTargetInRange(source: Record<string, unknown>, target: Record<string, unknown>, distance: string): boolean {
