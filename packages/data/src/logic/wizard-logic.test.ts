@@ -26,6 +26,17 @@ function firstSubclassSelection(heroClass: HeroLogic.HeroClass): string | string
 }
 
 describe('WizardLogic', () => {
+  describe('wizard step status', () => {
+    it('does not mark future choice steps complete before their prerequisites exist', () => {
+      const character = WizardLogic.createEmptyCharacter();
+      character.level = 5;
+
+      expect(WizardLogic.getStepStatus(character, WizardLogic.WIZARD_STEP_IDS.SKILLS)).toBe('not-begun');
+      expect(WizardLogic.getStepStatus(character, WizardLogic.WIZARD_STEP_IDS.LANGUAGES)).toBe('not-begun');
+      expect(WizardLogic.getStepStatus(character, WizardLogic.WIZARD_STEP_IDS.PERKS)).toBe('not-begun');
+    });
+  });
+
   describe('class-specific characteristic assignment', () => {
     it('validates fixed class stats and a three-value remaining array', () => {
       const character = WizardLogic.createEmptyCharacter();

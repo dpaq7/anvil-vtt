@@ -40,13 +40,16 @@ import {
   WizardLogic,
   classPerkAtLevel,
   getAvailablePerkCategories,
+  portfolios,
 } from "@anvil/data";
 import type {
   CharacteristicName,
   Characteristics,
   HeroLogic as HeroLogicTypes,
   LevelUpChoice,
+  SummonerMinionChoiceOption,
 } from "@anvil/data";
+import type { MinionTemplate, PortfolioType } from "@anvil/types";
 import {
   Button,
   Dialog,
@@ -216,6 +219,20 @@ interface AbilityDisplayGroup {
   abilities: AbilityDisplay[];
 }
 
+interface ResolvedSummonerMinion {
+  id: string;
+  slotId: string;
+  slotLabel: string;
+  minion: SummonerMinionChoiceOption;
+  unlockLevel: number;
+  locked: boolean;
+}
+
+interface ResolvedSummonerMinionPortfolio {
+  selected: ResolvedSummonerMinion[];
+  locked: ResolvedSummonerMinion[];
+}
+
 interface ResolvedProgression {
   level: number;
   features: string[];
@@ -278,6 +295,9 @@ const SHEET_TAB_TRIGGER_CLASS =
 const SHEET_TAB_CONTENT_CLASS =
   "mt-0 max-h-[calc(100vh-17rem)] min-h-[520px] overflow-y-auto pr-1 focus-visible:ring-cyan-300";
 
+const ABILITIES_TAB_CONTENT_CLASS =
+  "mt-0 max-h-[calc(100vh-10rem)] min-h-[660px] overflow-y-auto pr-1 focus-visible:ring-cyan-300";
+
 const ABILITY_GROUP_ORDER: Array<{ key: AbilityGroupKey; label: string }> = [
   { key: "signature", label: "Signature" },
   { key: "cost3", label: "3 Cost" },
@@ -292,6 +312,83 @@ const ABILITY_GROUP_ORDER: Array<{ key: AbilityGroupKey; label: string }> = [
   { key: "mainAction", label: "Main Action" },
   { key: "other", label: "Other" },
 ];
+
+const FREE_STRIKE_RULE_TEXT = [
+  "Every creature can use a free strike ability as a main action on their turn, though doing so typically isn't the most effective choice. Most of the time, free strikes are used when the rules call for them, such as during a charge or an opportunity attack.",
+  "Unless otherwise stated, when an ability or rule grants a creature a signature ability or heroic ability outside their turn, that creature can make a free strike instead.",
+  "Every hero has a melee weapon free strike and a ranged weapon free strike. Kits and class features can modify those standard options or grant additional free strike options.",
+].join("\n\n");
+
+const STANDARD_FREE_STRIKE_ABILITIES: AbilityDisplay[] = [
+  {
+    id: "standard-free-strike-rules",
+    name: "Free Strikes",
+    ability_type: "Free Strike",
+    flavor: "Simple attacks used when a rule calls for one.",
+    effects: [{ name: "Rules", effect: FREE_STRIKE_RULE_TEXT }],
+    metadata: {
+      ability_type: "Free Strike",
+      class: "combat",
+      item_id: "standard-free-strike-rules",
+      type: "common-ability/free-strike-rule",
+    },
+  },
+  {
+    id: "melee-weapon-free-strike",
+    name: "Melee Weapon Free Strike",
+    ability_type: "Free Strike",
+    usage: "Main Action",
+    distance: "Melee 1",
+    target: "One creature or object",
+    keywords: ["Charge", "Melee", "Strike", "Weapon"],
+    effects: [
+      {
+        roll: "Power Roll + Might or Agility",
+        tier1: "2 + M or A damage",
+        tier2: "5 + M or A damage",
+        tier3: "7 + M or A damage",
+      },
+    ],
+    metadata: {
+      ability_type: "Free Strike",
+      action_type: "Main Action",
+      class: "combat",
+      item_id: "melee-weapon-free-strike",
+      type: "common-ability/free-strike",
+    },
+  },
+  {
+    id: "ranged-weapon-free-strike",
+    name: "Ranged Weapon Free Strike",
+    ability_type: "Free Strike",
+    usage: "Main Action",
+    distance: "Ranged 5",
+    target: "One creature or object",
+    keywords: ["Ranged", "Strike", "Weapon"],
+    effects: [
+      {
+        roll: "Power Roll + Might or Agility",
+        tier1: "2 + M or A damage",
+        tier2: "4 + M or A damage",
+        tier3: "6 + M or A damage",
+      },
+    ],
+    metadata: {
+      ability_type: "Free Strike",
+      action_type: "Main Action",
+      class: "combat",
+      item_id: "ranged-weapon-free-strike",
+      type: "common-ability/free-strike",
+    },
+  },
+];
+
+const SUMMONER_CIRCLE_PORTFOLIOS: Record<string, PortfolioType> = {
+  blight: "demon",
+  graves: "undead",
+  spring: "fey",
+  storms: "elemental",
+};
 
 const DEFAULT_CHARACTERISTICS: Characteristics = {
   might: 0,
@@ -392,6 +489,40 @@ function slugify(value: string): string {
 
 function formatModifier(value: number): string {
   return value >= 0 ? `+${value}` : String(value);
+}
+
+function formatMinionStamina(
+  stamina: SummonerMinionChoiceOption["stamina"],
+): string {
+  return Array.isArray(stamina) ? stamina.join("/") : String(stamina);
+}
+
+function minionTemplateToDisplay(
+  template: MinionTemplate,
+): SummonerMinionChoiceOption {
+  return {
+    id: template.id,
+    name: template.name,
+    essenceCost: template.essenceCost,
+    minionsPerSummon: template.minionsPerSummon,
+    size: template.size,
+    speed: template.speed,
+    stamina: template.stamina,
+    stability: template.stability,
+    freeStrike: template.freeStrike,
+    role: template.role,
+    keywords: template.keywords,
+    movementModes: template.movementModes,
+    freeStrikeDamageType: template.freeStrikeDamageType,
+    traits: template.traits,
+    signatureAbilityName: template.signatureAbility?.name,
+  };
+}
+
+function minionUnlockLevel(minion: SummonerMinionChoiceOption): number {
+  if (minion.essenceCost >= 9) return 6;
+  if (minion.essenceCost >= 7) return 3;
+  return 1;
 }
 
 function formatCharacteristicName(value: string): string {
@@ -702,13 +833,21 @@ function isSupplementalActionEconomyAbility(
   return supplementalActionEconomyGroupKey(ability) !== null;
 }
 
+function isCommonFreeStrikeMainAction(ability: AbilityDisplay): boolean {
+  return (
+    ability.metadata?.item_id === "free-strike" &&
+    ability.metadata?.type === "common-ability/main-action"
+  );
+}
+
 function resolveCommonActionEconomyAbilities(): AbilityDisplay[] {
   return (GameData.getAllFeatures() as AbilityLike[])
     .filter((ability) => ability.metadata?.class === "combat")
     .map((ability, index) =>
       resolveAbilityLike(ability, abilityIdentity(ability, `common-${index}`)),
     )
-    .filter(isSupplementalActionEconomyAbility);
+    .filter(isSupplementalActionEconomyAbility)
+    .filter((ability) => !isCommonFreeStrikeMainAction(ability));
 }
 
 function groupSelectedAbilities(
@@ -745,6 +884,135 @@ function groupSelectedAbilities(
     ...group,
     abilities: sortAbilityDisplays(grouped[group.key]),
   })).filter((group) => group.abilities.length > 0);
+}
+
+function resolveSummonerMinionPortfolio(
+  heroClass: HeroLogicTypes.HeroClass | null,
+  level: number,
+  subclassIds: string[],
+  data: Record<string, unknown>,
+  abilityIds: string[],
+): ResolvedSummonerMinionPortfolio {
+  if (heroClass !== "summoner") return { selected: [], locked: [] };
+
+  const rawChoices = isRecord(data["summonerMinionChoices"])
+    ? data["summonerMinionChoices"]
+    : {};
+  const summonerMinionChoices = Object.fromEntries(
+    Object.entries(rawChoices).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+  const portfolioType = subclassIds
+    .map((subclassId) => SUMMONER_CIRCLE_PORTFOLIOS[subclassId])
+    .find((type): type is PortfolioType => Boolean(type));
+  const portfolio = portfolioType ? portfolios[portfolioType] : null;
+  if (!portfolio) return { selected: [], locked: [] };
+
+  const portfolioMinions = [
+    ...portfolio.signatureMinions,
+    ...portfolio.unlockedMinions,
+  ].map(minionTemplateToDisplay);
+  const portfolioMinionsById = new Map(
+    portfolioMinions.map((minion) => [minion.id, minion]),
+  );
+  const selectedSummonKeys = new Set<string>();
+
+  for (const abilityId of abilityIds) {
+    const ability = resolveAbility(abilityId);
+    for (const raw of [
+      abilityId,
+      ability.id,
+      ability.name,
+      ability.metadata?.item_id,
+      ability.metadata?.item_name,
+    ]) {
+      if (!raw) continue;
+      selectedSummonKeys.add(
+        slugify(raw.replace(/^summon[-_\s]+/i, "")),
+      );
+    }
+  }
+
+  const character = WizardLogic.createEmptyCharacter();
+  character.heroClass = heroClass;
+  character.level = level;
+  character.subclass =
+    subclassIds.length > 1 ? subclassIds : (subclassIds[0] ?? null);
+  character.summonerMinionChoices = summonerMinionChoices;
+
+  const selected: ResolvedSummonerMinion[] = [];
+  const seen = new Set<string>();
+  const allOptionsById = new Map<string, SummonerMinionChoiceOption>();
+
+  const addSelected = (
+    minion: SummonerMinionChoiceOption,
+    slotId: string,
+    slotLabel: string,
+  ) => {
+    if (seen.has(minion.id)) return;
+    seen.add(minion.id);
+    selected.push({
+      id: minion.id,
+      slotId,
+      slotLabel,
+      minion,
+      unlockLevel: minionUnlockLevel(minion),
+      locked: false,
+    });
+  };
+
+  for (const slot of WizardLogic.getAbilityChoiceSlots(character)) {
+    if (slot.kind !== "minion") continue;
+
+    const options = WizardLogic.getSummonerMinionOptionsForSlot(
+      character,
+      slot,
+    );
+    for (const option of options) {
+      allOptionsById.set(option.id, option);
+    }
+
+    const selectedId = WizardLogic.getSelectedChoiceIdForSlot(
+      character,
+      slot,
+    );
+    const minion = selectedId
+      ? options.find((option) => option.id === selectedId)
+      : null;
+    if (minion) addSelected(minion, slot.id, slot.label);
+  }
+
+  for (const [slotId, selectedId] of Object.entries(summonerMinionChoices)) {
+    const minion =
+      allOptionsById.get(selectedId) ?? portfolioMinionsById.get(selectedId);
+    if (!minion) continue;
+    addSelected(minion, slotId, "Portfolio Choice");
+  }
+
+  for (const minion of portfolioMinions) {
+    if (seen.has(minion.id) || minionUnlockLevel(minion) > level) continue;
+    const minionNameKey = slugify(minion.name);
+    if (!selectedSummonKeys.has(minionNameKey)) continue;
+    addSelected(
+      minion,
+      `ability:${minion.id}`,
+      `${minion.essenceCost}-Essence Ability`,
+    );
+  }
+
+  const locked = portfolioMinions
+    .filter((minion) => !seen.has(minion.id) && minionUnlockLevel(minion) > level)
+    .map((minion) => ({
+      id: minion.id,
+      slotId: `locked:${minion.id}`,
+      slotLabel: `Unlocks at Level ${minionUnlockLevel(minion)}`,
+      minion,
+      unlockLevel: minionUnlockLevel(minion),
+      locked: true,
+    }));
+
+  return { selected, locked };
 }
 
 function selectedAbilityKeys(abilityIds: string[]): Set<string> {
@@ -1363,13 +1631,18 @@ export function HeroSheet() {
     );
     const supplementalActionAbilities = [
       ...resolveCommonActionEconomyAbilities(),
-      ...classAbilities
-        .map((ability) => ability.ability)
-        .filter(isSupplementalActionEconomyAbility),
+      ...STANDARD_FREE_STRIKE_ABILITIES,
     ];
     const selectedAbilityGroups = groupSelectedAbilities(
       abilityDisplays,
       supplementalActionAbilities,
+    );
+    const selectedMinionPortfolio = resolveSummonerMinionPortfolio(
+      heroClass,
+      hero.level,
+      subclassIds,
+      data,
+      abilities,
     );
     const classProgression = resolveClassProgression(
       classDef,
@@ -1470,6 +1743,8 @@ export function HeroSheet() {
       groupedSkills,
       selectedClassAbilities,
       selectedAbilityGroups,
+      selectedMinionPortfolio: selectedMinionPortfolio.selected,
+      lockedMinionPortfolio: selectedMinionPortfolio.locked,
       selectedPerkIds: stringArray(data["selectedPerks"]),
       shownAbilities,
       size,
@@ -2210,19 +2485,25 @@ export function HeroSheet() {
 
               <TabsContent
                 value="abilities"
-                className={SHEET_TAB_CONTENT_CLASS}
+                className={ABILITIES_TAB_CONTENT_CLASS}
               >
                 <SheetPanel icon={Zap} title="Abilities">
                   {sheet.shownAbilities.length > 0 ? (
                     <div className="grid gap-5">
-                      {sheet.selectedAbilityGroups.length > 0 && (
+                      {(sheet.selectedAbilityGroups.length > 0 ||
+                        sheet.classAbilities.length > 0 ||
+                        sheet.selectedMinionPortfolio.length > 0 ||
+                        sheet.lockedMinionPortfolio.length > 0) && (
                         <div>
                           <h3 className="text-sm font-semibold text-zinc-200">
-                            Selected Abilities
+                            Ability Groups
                           </h3>
                           <Tabs
                             defaultValue={
-                              sheet.selectedAbilityGroups[0]?.key ?? "other"
+                              sheet.selectedAbilityGroups[0]?.key ??
+                              (sheet.classAbilities.length > 0
+                                ? "classAbilities"
+                                : "minionPortfolio")
                             }
                             className="mt-3 grid gap-3"
                           >
@@ -2239,6 +2520,29 @@ export function HeroSheet() {
                                   </span>
                                 </TabsTrigger>
                               ))}
+                              {sheet.classAbilities.length > 0 && (
+                                <TabsTrigger
+                                  value="classAbilities"
+                                  className="group h-8 gap-2 rounded border border-transparent px-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-500 hover:border-anvil-accent/35 hover:text-zinc-200 data-[state=active]:border-anvil-accent/80 data-[state=active]:bg-anvil-accent/10 data-[state=active]:text-anvil-accent"
+                                >
+                                  Class Abilities
+                                  <span className="rounded border border-zinc-800 bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-400 group-data-[state=active]:border-anvil-accent/50 group-data-[state=active]:bg-anvil-accent/15 group-data-[state=active]:text-anvil-accent">
+                                    {sheet.classAbilities.length}
+                                  </span>
+                                </TabsTrigger>
+                              )}
+                              {(sheet.selectedMinionPortfolio.length > 0 ||
+                                sheet.lockedMinionPortfolio.length > 0) && (
+                                <TabsTrigger
+                                  value="minionPortfolio"
+                                  className="group h-8 gap-2 rounded border border-transparent px-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-500 hover:border-anvil-accent/35 hover:text-zinc-200 data-[state=active]:border-anvil-accent/80 data-[state=active]:bg-anvil-accent/10 data-[state=active]:text-anvil-accent"
+                                >
+                                  Minion Portfolio
+                                  <span className="rounded border border-zinc-800 bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-400 group-data-[state=active]:border-anvil-accent/50 group-data-[state=active]:bg-anvil-accent/15 group-data-[state=active]:text-anvil-accent">
+                                    {sheet.selectedMinionPortfolio.length}
+                                  </span>
+                                </TabsTrigger>
+                              )}
                             </TabsList>
 
                             {sheet.selectedAbilityGroups.map((group) => (
@@ -2260,47 +2564,101 @@ export function HeroSheet() {
                                 </div>
                               </TabsContent>
                             ))}
-                          </Tabs>
-                        </div>
-                      )}
-
-                      {sheet.classAbilities.length > 0 && (
-                        <div>
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <h3 className="text-sm font-semibold text-zinc-200">
-                              Class Abilities Through Level {hero.level}
-                            </h3>
-                            {sheet.selectedClassAbilities.length > 0 && (
-                              <span className="text-xs text-cyan-200/80">
-                                {sheet.selectedClassAbilities.length} selected
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-3 grid gap-3 xl:grid-cols-2">
-                            {sheet.classAbilities.map((entry) => (
-                              <div key={entry.id} className="grid gap-2">
-                                <div className="flex items-center gap-2">
-                                  {entry.level && (
-                                    <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
-                                      L{entry.level}
-                                    </span>
-                                  )}
-                                  {entry.selected && (
-                                    <span className="rounded border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-cyan-200">
-                                      Selected
-                                    </span>
-                                  )}
+                            {sheet.classAbilities.length > 0 && (
+                              <TabsContent
+                                value="classAbilities"
+                                className="mt-0 focus-visible:ring-cyan-300"
+                              >
+                                <div className="grid gap-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h4 className="text-sm font-semibold text-zinc-200">
+                                      Class Abilities Through Level {hero.level}
+                                    </h4>
+                                    {sheet.selectedClassAbilities.length > 0 && (
+                                      <span className="text-xs text-cyan-200/80">
+                                        {sheet.selectedClassAbilities.length} selected
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="grid gap-3 xl:grid-cols-2">
+                                    {sheet.classAbilities.map((entry) => (
+                                      <div key={entry.id} className="grid gap-2">
+                                        <div className="flex items-center gap-2">
+                                          {entry.level && (
+                                            <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
+                                              L{entry.level}
+                                            </span>
+                                          )}
+                                          {entry.selected && (
+                                            <span className="rounded border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-cyan-200">
+                                              Selected
+                                            </span>
+                                          )}
+                                        </div>
+                                        <AbilityBlock
+                                          ability={drawSteelAbilityFromLike(
+                                            entry.ability,
+                                          )}
+                                          selected={entry.selected}
+                                          compact
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                                <AbilityBlock
-                                  ability={drawSteelAbilityFromLike(
-                                    entry.ability,
+                              </TabsContent>
+                            )}
+                            {(sheet.selectedMinionPortfolio.length > 0 ||
+                              sheet.lockedMinionPortfolio.length > 0) && (
+                              <TabsContent
+                                value="minionPortfolio"
+                                className="mt-0 focus-visible:ring-cyan-300"
+                              >
+                                <div className="grid gap-5">
+                                  {sheet.selectedMinionPortfolio.length > 0 && (
+                                    <section>
+                                      <h4 className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/80">
+                                        Selected Available Minions
+                                      </h4>
+                                      <div className="mt-2 grid gap-3 xl:grid-cols-2">
+                                        {sheet.selectedMinionPortfolio.map(
+                                          (entry) => (
+                                            <MinionPortfolioCard
+                                              key={`${entry.slotId}-${entry.id}`}
+                                              entry={entry}
+                                            />
+                                          ),
+                                        )}
+                                      </div>
+                                    </section>
                                   )}
-                                  selected={entry.selected}
-                                  compact
-                                />
-                              </div>
-                            ))}
-                          </div>
+                                  {sheet.lockedMinionPortfolio.length > 0 && (
+                                    <section>
+                                      <h4 className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
+                                        Yet to Unlock
+                                      </h4>
+                                      <div className="mt-2 grid gap-3 xl:grid-cols-2">
+                                        {sheet.lockedMinionPortfolio.map(
+                                          (entry) => (
+                                            <MinionPortfolioCard
+                                              key={`${entry.slotId}-${entry.id}`}
+                                              entry={entry}
+                                            />
+                                          ),
+                                        )}
+                                      </div>
+                                    </section>
+                                  )}
+                                  {sheet.selectedMinionPortfolio.length === 0 &&
+                                    sheet.lockedMinionPortfolio.length === 0 && (
+                                      <EmptyText>
+                                        No minions are recorded for this portfolio.
+                                      </EmptyText>
+                                    )}
+                                </div>
+                              </TabsContent>
+                            )}
+                          </Tabs>
                         </div>
                       )}
                     </div>
@@ -3050,6 +3408,80 @@ function DetailCard({
       {description && (
         <p className="mt-2 text-xs leading-5 text-zinc-500">{description}</p>
       )}
+    </div>
+  );
+}
+
+function MinionPortfolioCard({ entry }: { entry: ResolvedSummonerMinion }) {
+  const { minion } = entry;
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border border-zinc-800 bg-zinc-950/45 p-3",
+        entry.locked && "opacity-50",
+      )}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200/75">
+            {entry.slotLabel}
+          </p>
+          <h4 className="mt-1 truncate text-sm font-black uppercase tracking-[0.12em] text-zinc-100">
+            {minion.name}
+          </h4>
+          <p className="mt-1 text-xs capitalize text-zinc-500">
+            {minion.role} / Size {minion.size}
+          </p>
+        </div>
+        <span className="shrink-0 rounded border border-anvil-accent/45 bg-anvil-accent/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-anvil-accent">
+          {minion.essenceCost} Essence
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <MiniStat label="Summon" value={minion.minionsPerSummon} />
+        <MiniStat label="Sta" value={formatMinionStamina(minion.stamina)} />
+        <MiniStat label="Spd" value={minion.speed} />
+        <MiniStat label="Stb" value={minion.stability} />
+        <MiniStat
+          label="Free"
+          value={`${minion.freeStrike} ${minion.freeStrikeDamageType}`}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {[
+          ...minion.keywords,
+          ...minion.movementModes.map((mode) => `${mode} movement`),
+        ].map((item) => (
+          <span
+            key={item}
+            className="rounded border border-zinc-700 bg-zinc-950/50 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-900/55 px-2 py-1.5 text-center">
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-1 font-mono text-xs font-semibold text-zinc-100">
+        {value}
+      </p>
     </div>
   );
 }

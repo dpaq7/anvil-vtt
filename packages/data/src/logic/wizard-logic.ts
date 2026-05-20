@@ -1666,22 +1666,27 @@ export function getStepStatus(
       return 'not-begun';
 
     case WIZARD_STEP_IDS.SKILLS:
+      if (getSelectedKitIds(character).length < getKitSelectionsNeeded(character)) return 'not-begun';
       const skillsNeeded = getSkillSelectionsNeeded(character);
       if (getSkillSelectionsMade(character) >= skillsNeeded) return 'complete';
-      if (character.kit) return 'incomplete';
-      return 'not-begun';
+      return 'incomplete';
 
     case WIZARD_STEP_IDS.LANGUAGES:
+      if (
+        getSelectedKitIds(character).length < getKitSelectionsNeeded(character) ||
+        getSkillSelectionsMade(character) < getSkillSelectionsNeeded(character)
+      ) {
+        return 'not-begun';
+      }
       const langsNeeded = getLanguageSelectionsNeeded(character);
       if (character.selectedLanguages.length >= langsNeeded) return 'complete';
-      if (character.selectedSkills.length > 0) return 'incomplete';
-      return 'not-begun';
+      return 'incomplete';
 
     case WIZARD_STEP_IDS.PERKS:
+      if (!character.career && !character.heroClass) return 'not-begun';
       const perkSlots = getPerkChoiceSlots(character);
       if (perkSlots.length === 0 || perkSlots.every((slot) => !!slot.selectedPerkId)) return 'complete';
-      if (character.career) return 'incomplete';
-      return 'not-begun';
+      return 'incomplete';
 
     case WIZARD_STEP_IDS.TITLES:
       // Optional step
