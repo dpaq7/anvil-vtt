@@ -107,6 +107,64 @@
 
   --color-flow-director: #9f1239;
   --color-flow-player: #155e75;
+
+  /* Accent utilities double as icon/status foregrounds. Keep their low stops readable on pale surfaces. */
+  --color-cyan-100: #155e75;
+  --color-cyan-200: #155e75;
+  --color-cyan-300: #0e7490;
+  --color-cyan-400: #0e7490;
+  --color-sky-100: #075985;
+  --color-sky-200: #075985;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0369a1;
+  --color-blue-100: #1e3a8a;
+  --color-blue-200: #1e40af;
+  --color-blue-300: #1d4ed8;
+  --color-blue-400: #1d4ed8;
+  --color-indigo-100: #3730a3;
+  --color-indigo-200: #4338ca;
+  --color-indigo-300: #4f46e5;
+  --color-indigo-400: #4f46e5;
+  --color-violet-100: #5b21b6;
+  --color-violet-200: #6d28d9;
+  --color-violet-300: #7c3aed;
+  --color-violet-400: #7c3aed;
+  --color-purple-100: #6b21a8;
+  --color-purple-200: #7e22ce;
+  --color-purple-300: #9333ea;
+  --color-purple-400: #9333ea;
+  --color-pink-100: #9d174d;
+  --color-pink-200: #be185d;
+  --color-pink-300: #db2777;
+  --color-pink-400: #db2777;
+  --color-rose-100: #9f1239;
+  --color-rose-200: #be123c;
+  --color-rose-300: #e11d48;
+  --color-rose-400: #e11d48;
+  --color-red-100: #991b1b;
+  --color-red-200: #b91c1c;
+  --color-red-300: #dc2626;
+  --color-red-400: #dc2626;
+  --color-orange-100: #9a3412;
+  --color-orange-200: #c2410c;
+  --color-orange-300: #ea580c;
+  --color-orange-400: #ea580c;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #b45309;
+  --color-yellow-100: #713f12;
+  --color-yellow-200: #854d0e;
+  --color-yellow-300: #a16207;
+  --color-yellow-400: #a16207;
+  --color-emerald-100: #065f46;
+  --color-emerald-200: #047857;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-green-100: #166534;
+  --color-green-200: #15803d;
+  --color-green-300: #15803d;
+  --color-green-400: #16a34a;
 }
 
 body {

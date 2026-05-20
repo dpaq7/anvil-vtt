@@ -16,9 +16,10 @@ export async function deleteOwnedAssetIfUnreferenced(
       OR EXISTS (SELECT 1 FROM monster_portraits WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM npcs WHERE portrait_asset_id = ?)
       OR EXISTS (SELECT 1 FROM heroes WHERE portrait_asset_id = ? AND deleted_at IS NULL)
+      OR EXISTS (SELECT 1 FROM heroes WHERE data LIKE ? AND deleted_at IS NULL)
      LIMIT 1`,
   )
-    .bind(assetId, assetId, assetId, assetId, assetId, assetId)
+    .bind(assetId, assetId, assetId, assetId, assetId, assetId, `%${assetId}%`)
     .first<{ 1: number }>();
   if (linked) return;
 

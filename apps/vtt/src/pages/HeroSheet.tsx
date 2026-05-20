@@ -7,6 +7,7 @@ import {
   BookOpen,
   Brain,
   BriefcaseBusiness,
+  Camera,
   CheckCircle2,
   Circle,
   CircleGauge,
@@ -16,6 +17,7 @@ import {
   Gem,
   Hammer,
   HeartPulse,
+  ImagePlus,
   Languages,
   Medal,
   Package,
@@ -57,6 +59,8 @@ import {
   cn,
 } from "@anvil/ui";
 import { CharacterInventoryPanel } from "../components/CharacterInventoryPanel.js";
+import { ImageAssetDialog } from "../components/assets/ImageAssetDialog.js";
+import { HeroPortraitDialog } from "../components/assets/HeroPortraitDialog.js";
 import { AbilityBlock } from "../components/drawsteel/AbilityBlock.js";
 import { drawSteelAbilityFromLike } from "../components/drawsteel/abilityData.js";
 import { api } from "../lib/api.js";
@@ -76,6 +80,7 @@ interface HeroRow {
   kit: string | null;
   skills: string;
   abilities: string;
+  portrait_asset_id: string | null;
   portrait_url: string | null;
   data: string;
 }
@@ -94,6 +99,7 @@ interface AbilityDisplay {
   ability_type?: string;
   usage?: string;
   cost?: string;
+  cost_amount?: number;
   flavor?: string;
   distance?: string;
   target?: string;
@@ -109,6 +115,10 @@ interface AbilityDisplay {
   }>;
   metadata?: {
     ability_type?: string;
+    action_type?: string;
+    cost?: string;
+    cost_amount?: number;
+    cost_resource?: string;
   };
 }
 
@@ -118,6 +128,7 @@ interface AbilityLike {
   ability_type?: string;
   usage?: string;
   cost?: string;
+  cost_amount?: number;
   flavor?: string;
   distance?: string;
   target?: string;
@@ -126,6 +137,10 @@ interface AbilityLike {
   effects?: AbilityDisplay["effects"];
   metadata?: {
     ability_type?: string;
+    action_type?: string;
+    cost?: string;
+    cost_amount?: number;
+    cost_resource?: string;
     item_id?: string;
     level?: number;
     scc?: string[];
@@ -167,6 +182,25 @@ interface ResolvedAbility {
   ability: AbilityDisplay;
   level: number | null;
   selected: boolean;
+}
+
+type AbilityGroupKey =
+  | "signature"
+  | "cost3"
+  | "cost5"
+  | "freeAction"
+  | "freeManeuver"
+  | "maneuver"
+  | "freeTriggered"
+  | "triggered"
+  | "moveAction"
+  | "mainAction"
+  | "other";
+
+interface AbilityDisplayGroup {
+  key: AbilityGroupKey;
+  label: string;
+  abilities: AbilityDisplay[];
 }
 
 interface ResolvedProgression {
@@ -230,6 +264,20 @@ const SHEET_TAB_TRIGGER_CLASS =
 
 const SHEET_TAB_CONTENT_CLASS =
   "mt-0 max-h-[calc(100vh-17rem)] min-h-[520px] overflow-y-auto pr-1 focus-visible:ring-cyan-300";
+
+const ABILITY_GROUP_ORDER: Array<{ key: AbilityGroupKey; label: string }> = [
+  { key: "signature", label: "Signature" },
+  { key: "cost3", label: "3 Cost" },
+  { key: "cost5", label: "5 Cost" },
+  { key: "freeAction", label: "Free Action" },
+  { key: "freeManeuver", label: "Free Maneuver" },
+  { key: "maneuver", label: "Maneuver" },
+  { key: "freeTriggered", label: "Free Triggered" },
+  { key: "triggered", label: "Triggered" },
+  { key: "moveAction", label: "Move Action" },
+  { key: "mainAction", label: "Main Action" },
+  { key: "other", label: "Other" },
+];
 
 const DEFAULT_CHARACTERISTICS: Characteristics = {
   might: 0,
@@ -303,7 +351,8 @@ function normalizeLevelUpChoices(
         isRecord(choice) &&
         typeof choice["featureId"] === "string" &&
         typeof choice["choiceId"] === "string" &&
-        (choice["category"] === undefined || typeof choice["category"] === "string")
+        (choice["category"] === undefined ||
+          typeof choice["category"] === "string")
       );
     });
   }
@@ -467,6 +516,7 @@ function resolveAbility(id: string): AbilityDisplay {
     ability_type: ability?.ability_type,
     usage: ability?.usage,
     cost: ability?.cost,
+    cost_amount: ability?.cost_amount,
     flavor: ability?.flavor,
     distance: ability?.distance,
     target: ability?.target,
@@ -496,6 +546,7 @@ function resolveAbilityLike(
     ability_type: ability.ability_type,
     usage: ability.usage,
     cost: ability.cost,
+    cost_amount: ability.cost_amount,
     flavor: ability.flavor,
     distance: ability.distance,
     target: ability.target,
@@ -504,6 +555,99 @@ function resolveAbilityLike(
     effects: ability.effects,
     metadata: ability.metadata,
   };
+}
+
+function abilityCostAmount(ability: AbilityDisplay): number | null {
+  const explicitCost =
+    numberValue(ability.cost_amount) ??
+    numberValue(ability.metadata?.cost_amount);
+  if (explicitCost !== null) return explicitCost;
+
+  const costText = ability.cost ?? ability.metadata?.cost ?? "";
+  const match = costText.match(/\d+/);
+  return match ? Number(match[0]) : null;
+}
+
+function normalizedAbilityAction(ability: AbilityDisplay): string {
+  return [ability.usage, ability.metadata?.action_type]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/[-_]+/g, " ");
+}
+
+function abilityActionGroupKey(ability: AbilityDisplay): AbilityGroupKey {
+  const action = normalizedAbilityAction(ability);
+  if (action.includes("free triggered")) return "freeTriggered";
+  if (action.includes("free maneuver")) return "freeManeuver";
+  if (action.includes("free action")) return "freeAction";
+  if (action.includes("maneuver")) return "maneuver";
+  if (action.includes("triggered")) return "triggered";
+  if (action.includes("move action")) return "moveAction";
+  if (action.includes("main action") || action.includes("main")) {
+    return "mainAction";
+  }
+  return "other";
+}
+
+function abilityGroupKey(ability: AbilityDisplay): AbilityGroupKey {
+  const abilityType = [
+    ability.ability_type,
+    ability.metadata?.ability_type,
+    ability.cost,
+    ability.metadata?.cost,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (abilityType.includes("signature")) return "signature";
+
+  const cost = abilityCostAmount(ability);
+  if (cost === 3) return "cost3";
+  if (cost === 5) return "cost5";
+  return abilityActionGroupKey(ability);
+}
+
+function abilityActionSortRank(ability: AbilityDisplay): number {
+  const key = abilityActionGroupKey(ability);
+  const index = ABILITY_GROUP_ORDER.findIndex((group) => group.key === key);
+  return index === -1 ? ABILITY_GROUP_ORDER.length : index;
+}
+
+function sortAbilityDisplays(abilities: AbilityDisplay[]): AbilityDisplay[] {
+  return [...abilities].sort((a, b) => {
+    const actionSort = abilityActionSortRank(a) - abilityActionSortRank(b);
+    if (actionSort !== 0) return actionSort;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function groupAbilitiesByCost(
+  abilities: AbilityDisplay[],
+): AbilityDisplayGroup[] {
+  const grouped: Record<AbilityGroupKey, AbilityDisplay[]> = {
+    signature: [],
+    cost3: [],
+    cost5: [],
+    freeAction: [],
+    freeManeuver: [],
+    maneuver: [],
+    freeTriggered: [],
+    triggered: [],
+    moveAction: [],
+    mainAction: [],
+    other: [],
+  };
+
+  for (const ability of abilities) {
+    grouped[abilityGroupKey(ability)].push(ability);
+  }
+
+  return ABILITY_GROUP_ORDER.map((group) => ({
+    ...group,
+    abilities: sortAbilityDisplays(grouped[group.key]),
+  })).filter((group) => group.abilities.length > 0);
 }
 
 function selectedAbilityKeys(abilityIds: string[]): Set<string> {
@@ -749,7 +893,10 @@ function resolveClassFeatures(
       character.heroClass = heroClass;
       character.level = level;
       character.subclass = subclass;
-      for (const feature of WizardLogic.getLevelUpFeatures(character, featureLevel)) {
+      for (const feature of WizardLogic.getLevelUpFeatures(
+        character,
+        featureLevel,
+      )) {
         if (seen.has(feature.id)) continue;
         seen.add(feature.id);
         features.push({
@@ -1039,7 +1186,9 @@ export function HeroSheet() {
     const kit = hero.kit ? GameData.getKit(hero.kit) : null;
     const secondaryKitId =
       heroClass === "tactician" ? stringFromData(data, "secondaryKit") : null;
-    const secondaryKit = secondaryKitId ? GameData.getKit(secondaryKitId) : null;
+    const secondaryKit = secondaryKitId
+      ? GameData.getKit(secondaryKitId)
+      : null;
     const kits = [kit, secondaryKit].filter(
       (entry): entry is NonNullable<ReturnType<typeof GameData.getKit>> =>
         Boolean(entry),
@@ -1098,7 +1247,7 @@ export function HeroSheet() {
     const classFeatures = resolveClassFeatures(
       heroClass,
       hero.level,
-      subclassIds.length > 1 ? subclassIds : subclassIds[0] ?? null,
+      subclassIds.length > 1 ? subclassIds : (subclassIds[0] ?? null),
     );
     const languages = resolveLanguages(data, hero.career);
     const perks = resolvePerks(data);
@@ -1110,6 +1259,7 @@ export function HeroSheet() {
       hero.ancestry,
     );
     const abilityDisplays = abilities.map(resolveAbility);
+    const selectedAbilityGroups = groupAbilitiesByCost(abilityDisplays);
     const classAbilities = resolveClassAbilities(
       heroClass,
       hero.level,
@@ -1161,11 +1311,19 @@ export function HeroSheet() {
     const victories = numberFromData(data, "victories") ?? 0;
     const xp = numberFromData(data, "xp") ?? 0;
     const speed = ancestry
-      ? ancestry.speed + kits.reduce((total, entry) => total + entry.speedBonus, 0)
+      ? ancestry.speed +
+        kits.reduce((total, entry) => total + entry.speedBonus, 0)
       : null;
     const size = ancestry?.size ?? null;
-    const stability = kits.reduce((total, entry) => total + entry.stabilityBonus, 0);
+    const stability = kits.reduce(
+      (total, entry) => total + entry.stabilityBonus,
+      0,
+    );
     const incitingIncident = stringFromData(data, "incitingIncident");
+    const heroBannerAssetId = stringFromData(data, "heroBannerAssetId");
+    const heroBannerUrl = heroBannerAssetId
+      ? `/api/assets/${heroBannerAssetId}/data`
+      : null;
 
     return {
       abilities: abilityDisplays,
@@ -1189,6 +1347,8 @@ export function HeroSheet() {
       data,
       echelon,
       heroClass,
+      heroBannerAssetId,
+      heroBannerUrl,
       heroicResource,
       inventory,
       kit,
@@ -1203,6 +1363,7 @@ export function HeroSheet() {
       resolvedSkills,
       groupedSkills,
       selectedClassAbilities,
+      selectedAbilityGroups,
       selectedPerkIds: stringArray(data["selectedPerks"]),
       shownAbilities,
       size,
@@ -1250,7 +1411,7 @@ export function HeroSheet() {
     character.subclass =
       sheet.subclassIds.length > 1
         ? sheet.subclassIds
-        : sheet.subclassIds[0] ?? null;
+        : (sheet.subclassIds[0] ?? null);
     character.levelUpChoices = {
       ...sheet.levelUpChoices,
       ...(nextLevel ? { [nextLevel]: choices } : {}),
@@ -1272,15 +1433,22 @@ export function HeroSheet() {
           nextLevel,
         )
       : [];
-  const gainsPerk =
-    Boolean(sheet.heroClass && nextLevel && classPerkAtLevel(sheet.heroClass, nextLevel));
+  const gainsPerk = Boolean(
+    sheet.heroClass &&
+    nextLevel &&
+    classPerkAtLevel(sheet.heroClass, nextLevel),
+  );
   const perkOptions =
     sheet.heroClass && nextLevel && gainsPerk
       ? PERKS.filter((perk) => {
-          const categories = getAvailablePerkCategories(sheet.heroClass!, nextLevel);
+          const categories = getAvailablePerkCategories(
+            sheet.heroClass!,
+            nextLevel,
+          );
           return (
             categories.includes(perk.category) &&
-            (!sheet.selectedPerkIds.includes(perk.id) || perk.id === levelUpPerkId)
+            (!sheet.selectedPerkIds.includes(perk.id) ||
+              perk.id === levelUpPerkId)
           );
         })
       : [];
@@ -1322,10 +1490,13 @@ export function HeroSheet() {
 
     setSavingLevelUp(true);
     try {
-      const result = await api.post<HeroAdvanceResponse>(`/api/heroes/${hero.id}/advance`, {
-        choices: levelUpChoices,
-        perkId: levelUpPerkId || null,
-      });
+      const result = await api.post<HeroAdvanceResponse>(
+        `/api/heroes/${hero.id}/advance`,
+        {
+          choices: levelUpChoices,
+          perkId: levelUpPerkId || null,
+        },
+      );
       setHero({
         ...hero,
         level: result.level,
@@ -1342,6 +1513,58 @@ export function HeroSheet() {
     }
   };
 
+  const handleHeroPortraitSave = async (assetId: string) => {
+    if (!hero) return;
+    await api.put(`/api/heroes/${hero.id}`, { portraitAssetId: assetId });
+    setHero({
+      ...hero,
+      portrait_asset_id: assetId,
+      portrait_url: `/api/assets/${assetId}/data`,
+    });
+    toast.success("Hero portrait updated.");
+  };
+
+  const handleHeroPortraitRemove = async () => {
+    if (!hero) return;
+    await api.put(`/api/heroes/${hero.id}`, {
+      portraitAssetId: null,
+      portraitUrl: null,
+    });
+    setHero({
+      ...hero,
+      portrait_asset_id: null,
+      portrait_url: null,
+    });
+    toast.success("Hero portrait removed.");
+  };
+
+  const handleHeroBannerSave = async (assetId: string) => {
+    if (!hero || !sheet) return;
+    const nextData = { ...sheet.data, heroBannerAssetId: assetId };
+    await api.put(`/api/heroes/${hero.id}`, {
+      data: { heroBannerAssetId: assetId },
+    });
+    setHero({
+      ...hero,
+      data: JSON.stringify(nextData),
+    });
+    toast.success("Hero banner updated.");
+  };
+
+  const handleHeroBannerRemove = async () => {
+    if (!hero || !sheet) return;
+    const nextData = { ...sheet.data };
+    delete nextData["heroBannerAssetId"];
+    await api.put(`/api/heroes/${hero.id}`, {
+      data: { heroBannerAssetId: null },
+    });
+    setHero({
+      ...hero,
+      data: JSON.stringify(nextData),
+    });
+    toast.success("Hero banner removed.");
+  };
+
   const handleInventoryChange = async (inventory: CharacterInventoryItem[]) => {
     if (!hero || !sheet || savingInventory) return;
 
@@ -1355,7 +1578,9 @@ export function HeroSheet() {
       await api.put(`/api/heroes/${hero.id}`, { data: nextData });
     } catch (err) {
       setHero(previousHero);
-      toast.error(err instanceof Error ? err.message : "Inventory update failed");
+      toast.error(
+        err instanceof Error ? err.message : "Inventory update failed",
+      );
     } finally {
       setSavingInventory(false);
     }
@@ -1365,20 +1590,73 @@ export function HeroSheet() {
     <div className="min-h-full bg-zinc-950 text-zinc-100">
       <div className="mx-auto flex max-w-[1500px] flex-col gap-6 p-5 lg:p-8">
         <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70 shadow-2xl shadow-black/25">
-          <div className="border-b border-zinc-800 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(244,63,94,0.10)_48%,rgba(234,179,8,0.09))] p-5 lg:p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative overflow-hidden border-b border-zinc-800 bg-zinc-900 p-5 lg:p-6">
+            {sheet.heroBannerUrl && (
+              <img
+                src={sheet.heroBannerUrl}
+                alt=""
+                className="absolute inset-0 size-full object-cover opacity-65"
+              />
+            )}
+            <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(14,165,233,0.28),rgba(24,24,27,0.82)_46%,rgba(234,179,8,0.18))]" />
+            <div className="absolute inset-0 bg-zinc-950/35" />
+            <div className="absolute bottom-3 left-3 z-20">
+              <ImageAssetDialog
+                title={`Hero Banner - ${hero.name}`}
+                currentImageUrl={sheet.heroBannerUrl}
+                uploadDescription="Upload wide art for the hero banner, or choose any image asset."
+                onSave={handleHeroBannerSave}
+                onRemove={
+                  sheet.heroBannerUrl ? handleHeroBannerRemove : undefined
+                }
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Edit hero banner image"
+                  title="Edit hero banner image"
+                  className="group/banner-control relative size-9 border-cyan-400/30 bg-zinc-950/55 text-cyan-100 shadow-lg shadow-black/25 backdrop-blur transition hover:bg-zinc-900/85"
+                >
+                  <ImagePlus className="size-4" />
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-full left-0 mb-2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-medium normal-case tracking-normal text-zinc-100 opacity-0 shadow-lg shadow-black/30 transition-opacity group-hover/banner-control:opacity-100 group-focus-visible/banner-control:opacity-100"
+                  >
+                    Edit hero banner
+                  </span>
+                </Button>
+              </ImageAssetDialog>
+            </div>
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-4">
-                {hero.portrait_url ? (
-                  <img
-                    src={hero.portrait_url}
-                    alt=""
-                    className="size-24 rounded-md border border-zinc-700 object-cover shadow-lg shadow-black/30"
-                  />
-                ) : (
-                  <div className="flex size-24 shrink-0 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/60 text-4xl font-semibold text-cyan-200">
-                    {(hero.name?.[0] ?? "?").toUpperCase()}
-                  </div>
-                )}
+                <HeroPortraitDialog
+                  heroName={hero.name}
+                  currentPortraitUrl={hero.portrait_url}
+                  onSave={handleHeroPortraitSave}
+                  onRemove={
+                    hero.portrait_url ? handleHeroPortraitRemove : undefined
+                  }
+                >
+                  <button
+                    type="button"
+                    aria-label={`Edit ${hero.name} portrait`}
+                    className="group/portrait relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700 bg-zinc-950/60 text-4xl font-semibold text-cyan-200 shadow-lg shadow-black/30 transition hover:border-cyan-400/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                  >
+                    {hero.portrait_url ? (
+                      <img
+                        src={hero.portrait_url}
+                        alt=""
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      (hero.name?.[0] ?? "?").toUpperCase()
+                    )}
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/portrait:opacity-100 group-focus-visible/portrait:opacity-100">
+                      <Camera className="size-5 text-zinc-100" />
+                    </span>
+                  </button>
+                </HeroPortraitDialog>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.16em] text-cyan-200/80">
                     <span>Level {hero.level}</span>
@@ -1446,7 +1724,8 @@ export function HeroSheet() {
                   )}
                   {nextLevel && !canAdvance && (
                     <p className="mt-1 text-center text-[11px] text-zinc-500">
-                      {xpNeeded} XP needed. Level {nextLevel} requires {nextLevelXP} XP.
+                      {xpNeeded} XP needed. Level {nextLevel} requires{" "}
+                      {nextLevelXP} XP.
                     </p>
                   )}
                 </div>
@@ -1492,10 +1771,7 @@ export function HeroSheet() {
             <SheetPanel icon={UserRound} title="Identity">
               <div className="grid gap-3">
                 <Detail label="Ancestry" value={sheet.ancestryName} />
-                <Detail
-                  label="Culture"
-                  value={sheet.cultureDisplay}
-                />
+                <Detail label="Culture" value={sheet.cultureDisplay} />
                 <Detail label="Career" value={sheet.careerName} />
                 <Detail label="Class" value={sheet.className} />
                 <Detail
@@ -1833,20 +2109,52 @@ export function HeroSheet() {
                 <SheetPanel icon={Zap} title="Abilities">
                   {sheet.shownAbilities.length > 0 ? (
                     <div className="grid gap-5">
-                      {sheet.abilities.length > 0 && (
+                      {sheet.selectedAbilityGroups.length > 0 && (
                         <div>
                           <h3 className="text-sm font-semibold text-zinc-200">
                             Selected Abilities
                           </h3>
-                          <div className="mt-3 grid gap-3 xl:grid-cols-2">
-                            {sheet.abilities.map((ability) => (
-                              <AbilityBlock
-                                key={ability.id}
-                                ability={drawSteelAbilityFromLike(ability)}
-                                compact
-                              />
+                          <Tabs
+                            defaultValue={
+                              sheet.selectedAbilityGroups[0]?.key ?? "other"
+                            }
+                            className="mt-3 grid gap-3"
+                          >
+                            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/55 p-1 sm:flex sm:flex-wrap sm:justify-start">
+                              {sheet.selectedAbilityGroups.map((group) => (
+                                <TabsTrigger
+                                  key={group.key}
+                                  value={group.key}
+                                  className="h-8 gap-2 rounded px-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-500 data-[state=active]:bg-zinc-800 data-[state=active]:text-cyan-100"
+                                >
+                                  {group.label}
+                                  <span className="rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                                    {group.abilities.length}
+                                  </span>
+                                </TabsTrigger>
+                              ))}
+                            </TabsList>
+
+                            {sheet.selectedAbilityGroups.map((group) => (
+                              <TabsContent
+                                key={group.key}
+                                value={group.key}
+                                className="mt-0 focus-visible:ring-cyan-300"
+                              >
+                                <div className="grid gap-3 xl:grid-cols-2">
+                                  {group.abilities.map((ability) => (
+                                    <AbilityBlock
+                                      key={ability.id}
+                                      ability={drawSteelAbilityFromLike(
+                                        ability,
+                                      )}
+                                      compact
+                                    />
+                                  ))}
+                                </div>
+                              </TabsContent>
                             ))}
-                          </div>
+                          </Tabs>
                         </div>
                       )}
 
@@ -1904,7 +2212,9 @@ export function HeroSheet() {
                         <div key={kit.id} className="grid gap-4">
                           <div>
                             <div className="text-xs uppercase tracking-wide text-zinc-500">
-                              {sheet.kits.length > 1 && index === 1 ? "Second Kit" : "Kit"}
+                              {sheet.kits.length > 1 && index === 1
+                                ? "Second Kit"
+                                : "Kit"}
                             </div>
                             <h3 className="text-lg font-black text-zinc-50">
                               {kit.name}
@@ -1985,8 +2295,7 @@ export function HeroSheet() {
                       <DetailCard
                         label="Equipped"
                         value={
-                          sheet.inventory.filter((item) => item.equipped)
-                            .length
+                          sheet.inventory.filter((item) => item.equipped).length
                         }
                       />
                     </div>
@@ -2322,7 +2631,8 @@ export function HeroSheet() {
                 </span>
               </div>
               <p className="text-xs text-zinc-500">
-                Automatic features are gained immediately. Choose each required option before advancing.
+                Automatic features are gained immediately. Choose each required
+                option before advancing.
               </p>
             </div>
 
@@ -2333,7 +2643,8 @@ export function HeroSheet() {
                     (choice) => choice.featureId === feature.id,
                   )?.choiceId;
                   const hasChoices =
-                    feature.type === "choice" && (feature.choices?.length ?? 0) > 0;
+                    feature.type === "choice" &&
+                    (feature.choices?.length ?? 0) > 0;
 
                   return (
                     <div
@@ -2395,7 +2706,9 @@ export function HeroSheet() {
                   );
                 })
               ) : (
-                <EmptyText>No level-up choices are required for this level.</EmptyText>
+                <EmptyText>
+                  No level-up choices are required for this level.
+                </EmptyText>
               )}
             </div>
 
@@ -2442,7 +2755,9 @@ export function HeroSheet() {
                 }
                 onClick={handleAdvanceLevel}
               >
-                {savingLevelUp ? "Advancing..." : `Advance to Level ${nextLevel ?? hero.level}`}
+                {savingLevelUp
+                  ? "Advancing..."
+                  : `Advance to Level ${nextLevel ?? hero.level}`}
               </Button>
             </div>
           </div>

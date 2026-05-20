@@ -6,7 +6,7 @@ import type { CharacterInProgress, Characteristics, LevelUpChoice } from '@anvil
 import type { HeroSummary } from '@anvil/types';
 import { HERO_LIMITS } from '../policy/limits.js';
 import { deleteOwnedAssetIfUnreferenced } from '../repositories/assets.js';
-import { validateOwnedPortraitAsset } from '../security/assets.js';
+import { validateOwnedImageAsset, validateOwnedPortraitAsset } from '../security/assets.js';
 import { jsonError, readJsonBody } from '../security/request.js';
 import {
   calculateHeroVitals,
@@ -530,17 +530,44 @@ heroRoutes.put('/:id', async (c) => {
     vals.push(portraitUrl);
   }
   if (body.data !== undefined) {
-    const inventory = body.data['inventory'];
-    if (inventory !== undefined) {
+    const hasInventory = Object.prototype.hasOwnProperty.call(body.data, 'inventory');
+    const hasHeroBannerAssetId = Object.prototype.hasOwnProperty.call(body.data, 'heroBannerAssetId');
+    if (!hasInventory && !hasHeroBannerAssetId) {
+      return c.json({ error: 'Only inventory and hero banner data can be updated directly' }, 400);
+    }
+
+    const existingData = parseJson<Record<string, unknown>>(existing.data, {});
+    const nextData = { ...existingData };
+
+    if (hasInventory) {
+      const inventory = body.data['inventory'];
       if (!Array.isArray(inventory) || JSON.stringify(inventory).length > HERO_LIMITS.inventoryBytes) {
         return c.json({ error: 'Invalid inventory update' }, 400);
       }
-      const existingData = parseJson<Record<string, unknown>>(existing.data, {});
-      sets.push('data = ?');
-      vals.push(JSON.stringify({ ...existingData, inventory }));
-    } else {
-      return c.json({ error: 'Only inventory data can be updated directly' }, 400);
+      nextData['inventory'] = inventory;
     }
+
+    if (hasHeroBannerAssetId) {
+      const rawHeroBannerAssetId = body.data['heroBannerAssetId'];
+      if (
+        rawHeroBannerAssetId !== null
+        && rawHeroBannerAssetId !== undefined
+        && typeof rawHeroBannerAssetId !== 'string'
+      ) {
+        return c.json({ error: 'Invalid hero banner image' }, 400);
+      }
+      const heroBannerAssetId = stringValue(rawHeroBannerAssetId);
+      const bannerError = await validateOwnedImageAsset(c, heroBannerAssetId, user);
+      if (bannerError) return bannerError;
+      if (heroBannerAssetId) {
+        nextData['heroBannerAssetId'] = heroBannerAssetId;
+      } else {
+        delete nextData['heroBannerAssetId'];
+      }
+    }
+
+    sets.push('data = ?');
+    vals.push(JSON.stringify(nextData));
   }
 
   if (sets.length === 0) return c.json({ error: 'No fields to update' }, 400);

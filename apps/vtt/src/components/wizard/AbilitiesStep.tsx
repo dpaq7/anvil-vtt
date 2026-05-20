@@ -1,19 +1,15 @@
 import { useState, useMemo } from "react";
 import { GameData, WizardLogic } from "@anvil/data";
-import type { CharacterInProgress, SummonerMinionChoiceOption } from "@anvil/data";
+import type {
+  CharacterInProgress,
+  SummonerMinionChoiceOption,
+} from "@anvil/data";
 import type { HeroClass } from "@anvil/types";
 import { cn, Input } from "@anvil/ui";
-import {
-  SplitViewSelector,
-  DetailPanel,
-} from "../creator/index.js";
+import { SplitViewSelector, DetailPanel } from "../creator/index.js";
 import { AbilityBlock } from "../drawsteel/AbilityBlock.js";
 import { drawSteelAbilityFromLike } from "../drawsteel/abilityData.js";
-import {
-  Search,
-  Swords,
-  Sparkles,
-} from "lucide-react";
+import { Search, Swords, Sparkles } from "lucide-react";
 
 interface Props {
   character: CharacterInProgress;
@@ -76,7 +72,12 @@ function abilityStepCopy(heroClass: HeroClass | null): string {
   if (heroClass === "tactician") {
     return "Your kits grant your signature abilities. Choose one 3-focus ability and one 5-focus ability.";
   }
-  if (heroClass === "conduit" || heroClass === "elementalist" || heroClass === "null" || heroClass === "talent") {
+  if (
+    heroClass === "conduit" ||
+    heroClass === "elementalist" ||
+    heroClass === "null" ||
+    heroClass === "talent"
+  ) {
     return "Choose two signature abilities, one 3pt ability, and one 5pt ability.";
   }
   return "Choose one signature ability, one 3pt ability, and one 5pt ability.";
@@ -91,12 +92,15 @@ export function AbilitiesStep({ character, onChange }: Props) {
     useState<SummonerMinionChoiceOption | null>(null);
 
   const heroClass = character.heroClass as HeroClass | null;
-  const slots = useMemo(() => WizardLogic.getAbilityChoiceSlots(character), [
-    character,
-  ]);
+  const slots = useMemo(
+    () => WizardLogic.getAbilityChoiceSlots(character),
+    [character],
+  );
   const selectedSlot =
     slots.find((slot) => slot.id === selectedSlotId) ??
-    slots.find((slot) => !WizardLogic.getSelectedChoiceIdForSlot(character, slot)) ??
+    slots.find(
+      (slot) => !WizardLogic.getSelectedChoiceIdForSlot(character, slot),
+    ) ??
     slots[0] ??
     null;
   const selectedCount = slots.filter(
@@ -107,11 +111,12 @@ export function AbilitiesStep({ character, onChange }: Props) {
     const ability = GameData.getAbility(abilityId);
     return ability?.name ?? abilityId;
   });
-  const kitSignatureNames = heroClass === "tactician"
-    ? WizardLogic.getSelectedKitIds(character)
-        .map((kitId) => GameData.getKit(kitId)?.signatureAbility.name)
-        .filter((name): name is string => !!name)
-    : [];
+  const kitSignatureNames =
+    heroClass === "tactician"
+      ? WizardLogic.getSelectedKitIds(character)
+          .map((kitId) => GameData.getKit(kitId)?.signatureAbility.name)
+          .filter((name): name is string => !!name)
+      : [];
 
   const abilityFeatures = useMemo(() => {
     if (!selectedSlot || selectedSlot.kind !== "ability") return [];
@@ -149,7 +154,10 @@ export function AbilitiesStep({ character, onChange }: Props) {
     return minionOptions.filter((minion) => {
       if (minion.name.toLowerCase().includes(query)) return true;
       if (minion.role.toLowerCase().includes(query)) return true;
-      if (minion.keywords.some((keyword) => keyword.toLowerCase().includes(query))) return true;
+      if (
+        minion.keywords.some((keyword) => keyword.toLowerCase().includes(query))
+      )
+        return true;
       return minion.traits.some((trait) =>
         `${trait.name} ${trait.description}`.toLowerCase().includes(query),
       );
@@ -160,7 +168,9 @@ export function AbilitiesStep({ character, onChange }: Props) {
     if (!selectedSlot) return;
 
     const abilityChoices = { ...(character.abilityChoices ?? {}) };
-    const summonerMinionChoices = { ...(character.summonerMinionChoices ?? {}) };
+    const summonerMinionChoices = {
+      ...(character.summonerMinionChoices ?? {}),
+    };
 
     for (const slot of slots) {
       if (slot.id === selectedSlot.id) continue;
@@ -198,17 +208,32 @@ export function AbilitiesStep({ character, onChange }: Props) {
     _isSelected: boolean,
     isPreviewed: boolean,
   ) => {
+    const abilityView = drawSteelAbilityFromLike(ability);
     const isSelected = selectedSlot
-      ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) === getFeatureId(ability)
+      ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) ===
+        getFeatureId(ability)
       : false;
 
     return (
-      <AbilityBlock
-        ability={drawSteelAbilityFromLike(ability)}
-        compact
-        selected={isSelected}
-        className={cn(isPreviewed && !isSelected && "border-zinc-500")}
-      />
+      <div
+        className={cn(
+          "block min-h-[4.75rem] w-full cursor-pointer rounded-md border bg-zinc-900/80 p-3 text-left text-zinc-100 shadow-sm shadow-black/20 transition",
+          isSelected
+            ? "border-flow-player/70 ring-1 ring-flow-player/45"
+            : isPreviewed
+              ? "border-zinc-500"
+              : "border-zinc-800 hover:border-flow-player/45 hover:bg-zinc-900",
+        )}
+      >
+        <h3 className="min-w-0 break-words text-sm font-black uppercase tracking-[0.08em] text-zinc-100">
+          {abilityView.name}
+        </h3>
+        {abilityView.flavor ? (
+          <p className="mt-2 line-clamp-2 text-xs italic leading-5 text-zinc-400">
+            {abilityView.flavor}
+          </p>
+        ) : null}
+      </div>
     );
   };
 
@@ -235,7 +260,8 @@ export function AbilitiesStep({ character, onChange }: Props) {
     isPreviewed: boolean,
   ) => {
     const isSelected = selectedSlot
-      ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) === minion.id
+      ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) ===
+        minion.id
       : false;
 
     return (
@@ -265,7 +291,9 @@ export function AbilitiesStep({ character, onChange }: Props) {
         <div className="mt-3 grid grid-cols-4 gap-1 text-center text-[11px] text-creator-text-muted">
           <div className="rounded bg-creator-bg px-1.5 py-1">
             <div className="uppercase">Sta</div>
-            <div className="font-mono text-creator-text">{formatStamina(minion.stamina)}</div>
+            <div className="font-mono text-creator-text">
+              {formatStamina(minion.stamina)}
+            </div>
           </div>
           <div className="rounded bg-creator-bg px-1.5 py-1">
             <div className="uppercase">Spd</div>
@@ -273,16 +301,23 @@ export function AbilitiesStep({ character, onChange }: Props) {
           </div>
           <div className="rounded bg-creator-bg px-1.5 py-1">
             <div className="uppercase">Stb</div>
-            <div className="font-mono text-creator-text">{minion.stability}</div>
+            <div className="font-mono text-creator-text">
+              {minion.stability}
+            </div>
           </div>
           <div className="rounded bg-creator-bg px-1.5 py-1">
             <div className="uppercase">FS</div>
-            <div className="font-mono text-creator-text">{minion.freeStrike}</div>
+            <div className="font-mono text-creator-text">
+              {minion.freeStrike}
+            </div>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-1">
           {minion.keywords.slice(0, 4).map((keyword) => (
-            <span key={keyword} className="rounded border border-creator-border px-1.5 py-0.5 text-[10px] uppercase text-creator-text-muted">
+            <span
+              key={keyword}
+              className="rounded border border-creator-border px-1.5 py-0.5 text-[10px] uppercase text-creator-text-muted"
+            >
               {keyword}
             </span>
           ))}
@@ -293,7 +328,8 @@ export function AbilitiesStep({ character, onChange }: Props) {
 
   const renderMinionDetail = (minion: SummonerMinionChoiceOption) => {
     const isSelected = selectedSlot
-      ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) === minion.id
+      ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) ===
+        minion.id
       : false;
 
     return (
@@ -306,42 +342,69 @@ export function AbilitiesStep({ character, onChange }: Props) {
         <div className="grid gap-4 text-sm text-creator-text">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <div className="rounded border border-creator-border bg-creator-card p-2">
-              <div className="text-[10px] uppercase text-creator-text-muted">Size</div>
+              <div className="text-[10px] uppercase text-creator-text-muted">
+                Size
+              </div>
               <div className="font-mono">{minion.size}</div>
             </div>
             <div className="rounded border border-creator-border bg-creator-card p-2">
-              <div className="text-[10px] uppercase text-creator-text-muted">Speed</div>
+              <div className="text-[10px] uppercase text-creator-text-muted">
+                Speed
+              </div>
               <div className="font-mono">{minion.speed}</div>
             </div>
             <div className="rounded border border-creator-border bg-creator-card p-2">
-              <div className="text-[10px] uppercase text-creator-text-muted">Stamina</div>
+              <div className="text-[10px] uppercase text-creator-text-muted">
+                Stamina
+              </div>
               <div className="font-mono">{formatStamina(minion.stamina)}</div>
             </div>
             <div className="rounded border border-creator-border bg-creator-card p-2">
-              <div className="text-[10px] uppercase text-creator-text-muted">Stability</div>
+              <div className="text-[10px] uppercase text-creator-text-muted">
+                Stability
+              </div>
               <div className="font-mono">{minion.stability}</div>
             </div>
             <div className="rounded border border-creator-border bg-creator-card p-2">
-              <div className="text-[10px] uppercase text-creator-text-muted">Free Strike</div>
-              <div className="font-mono">{minion.freeStrike} {minion.freeStrikeDamageType}</div>
+              <div className="text-[10px] uppercase text-creator-text-muted">
+                Free Strike
+              </div>
+              <div className="font-mono">
+                {minion.freeStrike} {minion.freeStrikeDamageType}
+              </div>
             </div>
             <div className="rounded border border-creator-border bg-creator-card p-2">
-              <div className="text-[10px] uppercase text-creator-text-muted">Movement</div>
-              <div>{minion.movementModes.length ? minion.movementModes.join(", ") : "-"}</div>
+              <div className="text-[10px] uppercase text-creator-text-muted">
+                Movement
+              </div>
+              <div>
+                {minion.movementModes.length
+                  ? minion.movementModes.join(", ")
+                  : "-"}
+              </div>
             </div>
           </div>
           {minion.signatureAbilityName && (
             <div>
-              <div className="text-xs uppercase tracking-wide text-creator-text-muted">Signature</div>
+              <div className="text-xs uppercase tracking-wide text-creator-text-muted">
+                Signature
+              </div>
               <div>{minion.signatureAbilityName}</div>
             </div>
           )}
           {minion.traits.length > 0 && (
             <div className="grid gap-2">
               {minion.traits.map((trait) => (
-                <div key={trait.name} className="rounded border border-creator-border bg-creator-card p-3">
-                  <div className="text-sm font-medium text-creator-text">{trait.name}</div>
-                  <p className="mt-1 text-sm leading-6 text-creator-text-muted">{trait.description}</p>
+                <div
+                  key={trait.name}
+                  className="rounded border border-creator-border bg-creator-card p-3"
+                >
+                  <div className="text-sm font-medium text-creator-text">
+                    {trait.name}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-creator-text-muted">
+                    {trait.description}
+                  </p>
                 </div>
               ))}
             </div>
@@ -354,7 +417,7 @@ export function AbilitiesStep({ character, onChange }: Props) {
   // No class selected
   if (!heroClass) {
     return (
-      <div className="h-[500px] flex flex-col items-center justify-center">
+      <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col items-center justify-center">
         <div className="text-center text-zinc-500">
           <Swords className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <h2 className="text-lg font-semibold mb-2">No Class Selected</h2>
@@ -368,7 +431,7 @@ export function AbilitiesStep({ character, onChange }: Props) {
 
   if (slots.length === 0) {
     return (
-      <div className="h-[500px] flex flex-col items-center justify-center">
+      <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col items-center justify-center">
         <div className="text-center text-zinc-500">
           <Swords className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <h2 className="text-lg font-semibold mb-2">No Ability Slots</h2>
@@ -382,7 +445,7 @@ export function AbilitiesStep({ character, onChange }: Props) {
 
   if (selectedSlot?.kind === "ability" && abilityFeatures.length === 0) {
     return (
-      <div className="h-[500px] flex flex-col items-center justify-center">
+      <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col items-center justify-center">
         <div className="text-center text-zinc-500">
           <Swords className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <h2 className="text-lg font-semibold mb-2">No Abilities Available</h2>
@@ -395,19 +458,33 @@ export function AbilitiesStep({ character, onChange }: Props) {
   }
 
   return (
-    <div className="h-[500px] flex flex-col">
-      <div className="flex-shrink-0">
-        <h2 className="mb-1 text-lg font-semibold">Choose Abilities</h2>
-        <p className="mb-2 text-sm text-zinc-400">
-          {abilityStepCopy(heroClass)}
-        </p>
-        <p className={cn("mb-4 text-xs", selectedCount >= slots.length ? "text-creator-highlight" : "text-creator-text-muted")}>
-          {selectedCount} / {slots.length} choices filled
-        </p>
+    <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col">
+      <div className="flex-shrink-0 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold">Choose Abilities</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              {abilityStepCopy(heroClass)}
+            </p>
+          </div>
+          <div className="rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-400">
+            <span
+              className={cn(
+                "font-medium",
+                selectedCount >= slots.length
+                  ? "text-creator-highlight"
+                  : "text-zinc-200",
+              )}
+            >
+              {selectedCount} / {slots.length}
+            </span>{" "}
+            filled
+          </div>
+        </div>
 
         {(automaticAbilities.length > 0 || kitSignatureNames.length > 0) && (
-          <div className="mb-4 rounded-md border border-creator-border bg-creator-card p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-creator-text-muted">
+          <div className="rounded-md border border-creator-border bg-creator-card px-3 py-2">
+            <div className="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-creator-text-muted">
               <Sparkles className="h-3.5 w-3.5 text-creator-highlight" />
               Automatic
             </div>
@@ -424,55 +501,67 @@ export function AbilitiesStep({ character, onChange }: Props) {
           </div>
         )}
 
-        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {slots.map((slot) => {
-            const selectedChoiceId = WizardLogic.getSelectedChoiceIdForSlot(character, slot);
-            const selectedAbility = selectedChoiceId && slot.kind === "ability"
-              ? WizardLogic.getAbilityOptionsForSlot(character, slot).find(
-                  (ability) => WizardLogic.getAbilityFeatureId(ability) === selectedChoiceId,
-                )?.name
-              : null;
-            const selectedMinion = selectedChoiceId && slot.kind === "minion"
-              ? WizardLogic.getSummonerMinionOptionsForSlot(character, slot).find(
-                  (minion) => minion.id === selectedChoiceId,
-                )?.name
-              : null;
-            const active = selectedSlot?.id === slot.id;
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {slots.map((slot) => {
+              const selectedChoiceId = WizardLogic.getSelectedChoiceIdForSlot(
+                character,
+                slot,
+              );
+              const selectedAbility =
+                selectedChoiceId && slot.kind === "ability"
+                  ? WizardLogic.getAbilityOptionsForSlot(character, slot).find(
+                      (ability) =>
+                        WizardLogic.getAbilityFeatureId(ability) ===
+                        selectedChoiceId,
+                    )?.name
+                  : null;
+              const selectedMinion =
+                selectedChoiceId && slot.kind === "minion"
+                  ? WizardLogic.getSummonerMinionOptionsForSlot(
+                      character,
+                      slot,
+                    ).find((minion) => minion.id === selectedChoiceId)?.name
+                  : null;
+              const active = selectedSlot?.id === slot.id;
 
-            return (
-              <button
-                key={slot.id}
-                type="button"
-                onClick={() => {
-                  setSelectedSlotId(slot.id);
-                  setPreviewedAbility(null);
-                  setPreviewedMinion(null);
-                }}
-                className={cn(
-                  "rounded-md border px-3 py-2 text-left text-sm transition",
-                  active
-                    ? "border-creator-highlight bg-creator-highlight/15 text-creator-highlight"
-                    : selectedChoiceId
-                      ? "border-green-700 bg-green-900/20 text-green-300"
-                      : "border-creator-border text-creator-text-muted hover:border-creator-text-muted",
-                )}
-              >
-                <div className="font-medium">{slot.label}</div>
-                <div className="mt-0.5 truncate text-xs opacity-75">
-                  {selectedAbility ?? selectedMinion ?? slot.description}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedSlotId(slot.id);
+                    setPreviewedAbility(null);
+                    setPreviewedMinion(null);
+                  }}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-left text-sm transition",
+                    active
+                      ? "border-creator-highlight bg-creator-highlight/15 text-creator-highlight"
+                      : selectedChoiceId
+                        ? "border-green-700 bg-green-900/20 text-green-300"
+                        : "border-creator-border text-creator-text-muted hover:border-creator-text-muted",
+                  )}
+                >
+                  <div className="font-medium">{slot.label}</div>
+                  <div className="mt-0.5 truncate text-xs opacity-75">
+                    {selectedAbility ?? selectedMinion ?? slot.description}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Search */}
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
+          {/* Search */}
+          <div className="relative min-w-0">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
             <Input
               className="pl-9"
-              placeholder={selectedSlot?.kind === "minion" ? "Search minions..." : "Search abilities..."}
+              placeholder={
+                selectedSlot?.kind === "minion"
+                  ? "Search minions..."
+                  : "Search abilities..."
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -480,11 +569,18 @@ export function AbilitiesStep({ character, onChange }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="min-h-0 flex-1 pt-3">
         {selectedSlot?.kind === "minion" ? (
           <SplitViewSelector
             items={filteredMinions}
-            selectedId={selectedSlot ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) ?? null : null}
+            selectedId={
+              selectedSlot
+                ? (WizardLogic.getSelectedChoiceIdForSlot(
+                    character,
+                    selectedSlot,
+                  ) ?? null)
+                : null
+            }
             onPreview={setPreviewedMinion}
             onSelect={(item) => selectAbility(item.id)}
             renderCard={renderMinionCard}
@@ -500,7 +596,14 @@ export function AbilitiesStep({ character, onChange }: Props) {
         ) : (
           <SplitViewSelector
             items={filteredAbilities}
-            selectedId={selectedSlot ? WizardLogic.getSelectedChoiceIdForSlot(character, selectedSlot) ?? null : null}
+            selectedId={
+              selectedSlot
+                ? (WizardLogic.getSelectedChoiceIdForSlot(
+                    character,
+                    selectedSlot,
+                  ) ?? null)
+                : null
+            }
             onPreview={setPreviewedAbility}
             onSelect={(item) => selectAbility(getFeatureId(item))}
             renderCard={renderCard}
@@ -514,12 +617,6 @@ export function AbilitiesStep({ character, onChange }: Props) {
             gridCols={1}
           />
         )}
-      </div>
-
-      <div className="flex-shrink-0 mt-4 pt-3 border-t border-zinc-800">
-        <p className="text-xs text-zinc-500">
-          {selectedCount} / {slots.length} choices filled
-        </p>
       </div>
     </div>
   );
