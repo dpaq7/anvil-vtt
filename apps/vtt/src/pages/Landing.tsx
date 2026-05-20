@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 const HERO_IMAGE = '/landing/anvil-hero.png';
+const LANDING_TITLE_IMAGE = '/landing/anvil-landing-title.png?v=3';
 const LOGO_IMAGE = '/landing/anvil-vtt-logo.png';
 
 function GoogleIcon() {
@@ -95,15 +96,13 @@ export function Landing() {
 
         <div className="relative z-10 flex w-full items-end px-6 pb-24 pt-[38svh] sm:px-10 sm:pb-12 sm:pt-[42svh] md:items-center md:px-12 md:py-16 lg:px-16 xl:px-24">
           <div className="max-w-xl pt-12 md:pt-0">
-            <div className="flex items-center gap-4 sm:gap-5">
+            <div className="relative -ml-2 aspect-[2.08/1] w-[60%] max-w-[27rem] overflow-hidden sm:-ml-4">
+              <h1 className="sr-only">Anvil</h1>
               <img
-                src={LOGO_IMAGE}
-                alt="Anvil VTT logo"
-                className="h-16 w-16 shrink-0 object-contain drop-shadow-[0_8px_28px_rgba(0,0,0,0.75)] sm:h-20 sm:w-20 lg:h-24 lg:w-24"
+                src={LANDING_TITLE_IMAGE}
+                alt="Anvil"
+                className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 -translate-y-1/2 object-cover drop-shadow-[0_8px_30px_rgba(0,0,0,0.8)]"
               />
-              <h1 className="text-5xl font-bold leading-none text-white [text-shadow:0_3px_28px_rgba(0,0,0,0.82)] sm:text-6xl lg:text-7xl">
-                Anvil
-              </h1>
             </div>
             <p className="mt-5 max-w-lg text-balance text-lg leading-8 text-zinc-100 [text-shadow:0_2px_22px_rgba(0,0,0,0.78)] sm:text-xl">
               A lightweight, easy-to-use, fully web-based vtt for Draw Steel by MCDM.

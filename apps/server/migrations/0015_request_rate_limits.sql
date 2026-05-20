@@ -5,4 +5,4 @@ CREATE TABLE IF NOT EXISTS request_rate_limits (
   reset_at INTEGER NOT NULL
 );
 
-CREATE INDEX idx_request_rate_limits_reset_at ON request_rate_limits(reset_at);
+CREATE INDEX IF NOT EXISTS idx_request_rate_limits_reset_at ON request_rate_limits(reset_at);
