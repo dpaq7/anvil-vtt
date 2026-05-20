@@ -116,9 +116,16 @@ interface AbilityDisplay {
   metadata?: {
     ability_type?: string;
     action_type?: string;
+    class?: string;
     cost?: string;
     cost_amount?: number;
     cost_resource?: string;
+    feature_type?: string;
+    file_dpath?: string;
+    item_id?: string;
+    item_name?: string;
+    scc?: string[];
+    type?: string;
   };
 }
 
@@ -138,12 +145,17 @@ interface AbilityLike {
   metadata?: {
     ability_type?: string;
     action_type?: string;
+    class?: string;
     cost?: string;
     cost_amount?: number;
     cost_resource?: string;
+    feature_type?: string;
+    file_dpath?: string;
     item_id?: string;
+    item_name?: string;
     level?: number;
     scc?: string[];
+    type?: string;
   };
 }
 
@@ -188,6 +200,7 @@ type AbilityGroupKey =
   | "signature"
   | "cost3"
   | "cost5"
+  | "freeStrike"
   | "freeAction"
   | "freeManeuver"
   | "maneuver"
@@ -269,11 +282,12 @@ const ABILITY_GROUP_ORDER: Array<{ key: AbilityGroupKey; label: string }> = [
   { key: "signature", label: "Signature" },
   { key: "cost3", label: "3 Cost" },
   { key: "cost5", label: "5 Cost" },
+  { key: "maneuver", label: "Maneuvers" },
+  { key: "freeStrike", label: "Free Strikes" },
+  { key: "triggered", label: "Triggered Actions" },
   { key: "freeAction", label: "Free Action" },
-  { key: "freeManeuver", label: "Free Maneuver" },
-  { key: "maneuver", label: "Maneuver" },
+  { key: "freeManeuver", label: "Free Maneuvers" },
   { key: "freeTriggered", label: "Free Triggered" },
-  { key: "triggered", label: "Triggered" },
   { key: "moveAction", label: "Move Action" },
   { key: "mainAction", label: "Main Action" },
   { key: "other", label: "Other" },
@@ -569,14 +583,41 @@ function abilityCostAmount(ability: AbilityDisplay): number | null {
 }
 
 function normalizedAbilityAction(ability: AbilityDisplay): string {
-  return [ability.usage, ability.metadata?.action_type]
+  return [
+    ability.usage,
+    ability.metadata?.action_type,
+    ability.metadata?.type,
+    ability.metadata?.file_dpath,
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase()
     .replace(/[-_]+/g, " ");
 }
 
+function normalizedAbilityIdentityText(ability: AbilityDisplay): string {
+  return [
+    ability.id,
+    ability.name,
+    ability.ability_type,
+    ability.metadata?.ability_type,
+    ability.metadata?.item_id,
+    ability.metadata?.item_name,
+    ability.metadata?.type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/[-_]+/g, " ");
+}
+
+function isFreeStrikeAbility(ability: AbilityDisplay): boolean {
+  return normalizedAbilityIdentityText(ability).includes("free strike");
+}
+
 function abilityActionGroupKey(ability: AbilityDisplay): AbilityGroupKey {
+  if (isFreeStrikeAbility(ability)) return "freeStrike";
+
   const action = normalizedAbilityAction(ability);
   if (action.includes("free triggered")) return "freeTriggered";
   if (action.includes("free maneuver")) return "freeManeuver";
@@ -623,13 +664,62 @@ function sortAbilityDisplays(abilities: AbilityDisplay[]): AbilityDisplay[] {
   });
 }
 
-function groupAbilitiesByCost(
-  abilities: AbilityDisplay[],
+function supplementalActionEconomyGroupKey(
+  ability: AbilityDisplay,
+): AbilityGroupKey | null {
+  const key = abilityActionGroupKey(ability);
+  if (key === "freeStrike") return "freeStrike";
+  if (key === "maneuver" || key === "freeManeuver") return "maneuver";
+  if (key === "triggered" || key === "freeTriggered") return "triggered";
+  return null;
+}
+
+function abilityDisplayIdentity(ability: AbilityDisplay): string {
+  return slugify(
+    ability.metadata?.scc?.[0] ??
+      ability.metadata?.item_id ??
+      ability.id ??
+      ability.name,
+  );
+}
+
+function addAbilityToGroup(
+  grouped: Record<AbilityGroupKey, AbilityDisplay[]>,
+  seen: Set<string>,
+  groupKey: AbilityGroupKey,
+  ability: AbilityDisplay,
+): void {
+  const identity = abilityDisplayIdentity(ability);
+  if (seen.has(identity)) return;
+  seen.add(identity);
+  grouped[groupKey].push(ability);
+}
+
+function isSupplementalActionEconomyAbility(
+  ability: AbilityDisplay,
+): boolean {
+  if (abilityCostAmount(ability) !== null) return false;
+  return supplementalActionEconomyGroupKey(ability) !== null;
+}
+
+function resolveCommonActionEconomyAbilities(): AbilityDisplay[] {
+  return (GameData.getAllFeatures() as AbilityLike[])
+    .filter((ability) => ability.metadata?.class === "combat")
+    .map((ability, index) =>
+      resolveAbilityLike(ability, abilityIdentity(ability, `common-${index}`)),
+    )
+    .filter(isSupplementalActionEconomyAbility);
+}
+
+function groupSelectedAbilities(
+  selectedAbilities: AbilityDisplay[],
+  supplementalAbilities: AbilityDisplay[],
 ): AbilityDisplayGroup[] {
   const grouped: Record<AbilityGroupKey, AbilityDisplay[]> = {
     signature: [],
     cost3: [],
     cost5: [],
+    freeStrike: [],
     freeAction: [],
     freeManeuver: [],
     maneuver: [],
@@ -639,9 +729,16 @@ function groupAbilitiesByCost(
     mainAction: [],
     other: [],
   };
+  const seen = new Set<string>();
 
-  for (const ability of abilities) {
-    grouped[abilityGroupKey(ability)].push(ability);
+  for (const ability of selectedAbilities) {
+    addAbilityToGroup(grouped, seen, abilityGroupKey(ability), ability);
+  }
+
+  for (const ability of supplementalAbilities) {
+    const groupKey = supplementalActionEconomyGroupKey(ability);
+    if (!groupKey) continue;
+    addAbilityToGroup(grouped, seen, groupKey, ability);
   }
 
   return ABILITY_GROUP_ORDER.map((group) => ({
@@ -1259,11 +1356,20 @@ export function HeroSheet() {
       hero.ancestry,
     );
     const abilityDisplays = abilities.map(resolveAbility);
-    const selectedAbilityGroups = groupAbilitiesByCost(abilityDisplays);
     const classAbilities = resolveClassAbilities(
       heroClass,
       hero.level,
       abilities,
+    );
+    const supplementalActionAbilities = [
+      ...resolveCommonActionEconomyAbilities(),
+      ...classAbilities
+        .map((ability) => ability.ability)
+        .filter(isSupplementalActionEconomyAbility),
+    ];
+    const selectedAbilityGroups = groupSelectedAbilities(
+      abilityDisplays,
+      supplementalActionAbilities,
     );
     const classProgression = resolveClassProgression(
       classDef,
@@ -2120,15 +2226,15 @@ export function HeroSheet() {
                             }
                             className="mt-3 grid gap-3"
                           >
-                            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/55 p-1 sm:flex sm:flex-wrap sm:justify-start">
+                            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-anvil-accent/70 bg-zinc-950/70 p-1 shadow-[0_0_0_1px_rgba(239,234,90,0.16),0_0_24px_rgba(239,234,90,0.08)] sm:flex sm:flex-wrap sm:justify-start">
                               {sheet.selectedAbilityGroups.map((group) => (
                                 <TabsTrigger
                                   key={group.key}
                                   value={group.key}
-                                  className="h-8 gap-2 rounded px-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-500 data-[state=active]:bg-zinc-800 data-[state=active]:text-cyan-100"
+                                  className="group h-8 gap-2 rounded border border-transparent px-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-500 hover:border-anvil-accent/35 hover:text-zinc-200 data-[state=active]:border-anvil-accent/80 data-[state=active]:bg-anvil-accent/10 data-[state=active]:text-anvil-accent"
                                 >
                                   {group.label}
-                                  <span className="rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                                  <span className="rounded border border-zinc-800 bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-400 group-data-[state=active]:border-anvil-accent/50 group-data-[state=active]:bg-anvil-accent/15 group-data-[state=active]:text-anvil-accent">
                                     {group.abilities.length}
                                   </span>
                                 </TabsTrigger>

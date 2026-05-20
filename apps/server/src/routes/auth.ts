@@ -32,6 +32,12 @@ const PROVIDER_LABELS: Record<OAuthProvider, string> = {
   google: 'Google',
 };
 
+function legacyDiscordId(profile: OAuthProfile): string {
+  return profile.provider === 'discord'
+    ? profile.providerUserId
+    : `${profile.provider}:${profile.providerUserId}`;
+}
+
 function missingConfig(required: Record<string, string | undefined>) {
   return Object.entries(required)
     .filter(([, value]) => !value || value === 'undefined')
@@ -124,9 +130,16 @@ async function upsertOAuthUser(c: Context<AppEnv>, profile: OAuthProfile): Promi
   }
 
   const userId = crypto.randomUUID();
-  await c.env.DB.prepare('INSERT INTO users (id, username, avatar_url) VALUES (?, ?, ?)')
-    .bind(userId, profile.username, profile.avatarUrl)
-    .run();
+  const hasLegacyDiscordId = await tableHasColumn(c, 'users', 'discord_id');
+  if (hasLegacyDiscordId) {
+    await c.env.DB.prepare('INSERT INTO users (id, discord_id, username, avatar_url) VALUES (?, ?, ?, ?)')
+      .bind(userId, legacyDiscordId(profile), profile.username, profile.avatarUrl)
+      .run();
+  } else {
+    await c.env.DB.prepare('INSERT INTO users (id, username, avatar_url) VALUES (?, ?, ?)')
+      .bind(userId, profile.username, profile.avatarUrl)
+      .run();
+  }
 
   try {
     await c.env.DB.prepare(
