@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   CircleUserRound,
@@ -36,6 +36,8 @@ import {
 } from '@anvil/ui';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { addBreadcrumb } from '../../lib/bug-reporting';
+import { IssueReportButton } from './IssueReportButton.js';
 
 type UserRole = 'director' | 'player';
 
@@ -62,7 +64,7 @@ const ROLE_OPTIONS = [
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 
 // Collect all labels from both nav configs for width calculation
-const ALL_LABELS = ['Account', ...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
+const ALL_LABELS = ['Account', 'Report issue', ...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
 
 function onboardingId(label: string) {
   return `menu-${label.toLowerCase()}`;
@@ -289,6 +291,19 @@ export function AppLayout() {
   const isPlayer = user?.role === 'player';
   const navItems = isPlayer ? PLAYER_NAV : DIRECTOR_NAV;
 
+  useEffect(() => {
+    addBreadcrumb({
+      category: 'navigation',
+      message: 'Route changed',
+      data: {
+        path: location.pathname,
+        search: location.search ? '[redacted]' : '',
+        hash: location.hash ? '[redacted]' : '',
+        role: user?.role ?? null,
+      },
+    });
+  }, [location.hash, location.pathname, location.search, user?.role]);
+
   const isActive = (to: string, exact: boolean) => {
     return exact ? location.pathname === to : location.pathname === to || location.pathname.startsWith(`${to}/`);
   };
@@ -362,6 +377,7 @@ export function AppLayout() {
                 );
               })}
             </SidebarNav>
+            <IssueReportButton />
             <ThemeToggle />
             <div data-onboarding="menu-sidebar-toggle">
               <SidebarToggle />

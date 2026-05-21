@@ -2,10 +2,21 @@ import { csrfHeaders, getCsrfToken } from './csrf.js';
 
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 const MAX_REPORTS_PER_PAGE = 8;
+const MAX_BREADCRUMBS = 50;
+const MAX_BREADCRUMB_DATA_LENGTH = 1200;
+const MAX_REPORT_CONTEXT_LENGTH = 11_000;
 const DUPLICATE_WINDOW_MS = 30_000;
 const TOKEN_PATH_SEGMENT = /^(?:[A-Z0-9]{8,}|(?=.*[0-9_-])[A-Za-z0-9_-]{6,})$/;
 
 type BugReportContext = Record<string, unknown>;
+type BreadcrumbData = Record<string, unknown>;
+
+export interface BugReportBreadcrumb {
+  timestamp: string;
+  category: string;
+  message: string;
+  data?: BreadcrumbData;
+}
 
 export interface BugReportInput {
   kind: string;
@@ -24,6 +35,7 @@ export interface BugReportResult {
 
 let installed = false;
 let sentReports = 0;
+const breadcrumbs: BugReportBreadcrumb[] = [];
 const recentReports = new Map<string, number>();
 
 function errorParts(error: unknown): { message: string; stack: string | null } {
@@ -83,6 +95,60 @@ function redactText(value: string | null | undefined): string | null {
     .replace(/\b(token|code|state|session|auth|key|secret)=([^&\s]+)/gi, '$1=[redacted]');
 }
 
+function sanitizeBreadcrumbData(data: BreadcrumbData | undefined): BreadcrumbData | undefined {
+  if (!data) return undefined;
+
+  try {
+    const json = redactText(JSON.stringify(data));
+    if (!json || json === 'null') return undefined;
+    if (json.length > MAX_BREADCRUMB_DATA_LENGTH) {
+      return { preview: json.slice(0, MAX_BREADCRUMB_DATA_LENGTH), truncated: true };
+    }
+    return JSON.parse(json) as BreadcrumbData;
+  } catch {
+    return undefined;
+  }
+}
+
+export function addBreadcrumb(input: {
+  category: string;
+  message: string;
+  data?: BreadcrumbData;
+}) {
+  if (typeof window === 'undefined') return;
+
+  breadcrumbs.push({
+    timestamp: new Date().toISOString(),
+    category: input.category.slice(0, 80),
+    message: input.message.slice(0, 240),
+    data: sanitizeBreadcrumbData(input.data),
+  });
+
+  if (breadcrumbs.length > MAX_BREADCRUMBS) {
+    breadcrumbs.splice(0, breadcrumbs.length - MAX_BREADCRUMBS);
+  }
+}
+
+export function getBugReportBreadcrumbs(): BugReportBreadcrumb[] {
+  return breadcrumbs.slice();
+}
+
+function contextWithBreadcrumbs(inputContext: BugReportContext | undefined): BugReportContext {
+  const baseContext = {
+    ...pageContext(),
+    ...inputContext,
+  };
+  const reportBreadcrumbs = getBugReportBreadcrumbs();
+  let context = { ...baseContext, breadcrumbs: reportBreadcrumbs };
+
+  while (reportBreadcrumbs.length > 0 && JSON.stringify(context).length > MAX_REPORT_CONTEXT_LENGTH) {
+    reportBreadcrumbs.shift();
+    context = { ...baseContext, breadcrumbs: reportBreadcrumbs };
+  }
+
+  return context;
+}
+
 function reportSignature(input: BugReportInput) {
   return [
     input.kind,
@@ -123,10 +189,7 @@ export async function reportBug(input: BugReportInput): Promise<BugReportResult 
     source: input.source ?? null,
     url: redactUrl(window.location.href),
     userAgent: navigator.userAgent,
-    context: {
-      ...pageContext(),
-      ...input.context,
-    },
+    context: contextWithBreadcrumbs(input.context),
   };
   const body = JSON.stringify(payload);
 
@@ -155,6 +218,19 @@ export function reportApiError(input: {
   message: string;
   stack?: string | null;
 }) {
+  addBreadcrumb({
+    category: 'api',
+    message: input.status
+      ? `${input.method} ${input.path} failed with ${input.status}`
+      : `${input.method} ${input.path} failed`,
+    data: {
+      method: input.method,
+      path: input.path,
+      status: input.status ?? null,
+      responseMessage: input.message,
+    },
+  });
+
   void reportBug({
     kind: 'api-error',
     message: input.status
@@ -177,6 +253,13 @@ export function installGlobalBugReporter() {
 
   window.addEventListener('error', (event) => {
     const parts = errorParts(event.error);
+    addBreadcrumb({
+      category: 'error',
+      message: event.message || parts.message,
+      data: {
+        source: event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : 'window',
+      },
+    });
     void reportBug({
       kind: 'window-error',
       message: event.message || parts.message,
@@ -191,6 +274,11 @@ export function installGlobalBugReporter() {
 
   window.addEventListener('unhandledrejection', (event) => {
     const parts = errorParts(event.reason);
+    addBreadcrumb({
+      category: 'error',
+      message: parts.message,
+      data: { source: 'promise' },
+    });
     void reportBug({
       kind: 'unhandled-rejection',
       message: parts.message,
