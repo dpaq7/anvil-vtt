@@ -61,6 +61,12 @@ const ONBOARDING_CARD_WIDTH = 340;
 const ONBOARDING_CARD_ESTIMATED_HEIGHT = 260;
 const ONBOARDING_VIEWPORT_INSET = 16;
 const ONBOARDING_TARGET_PADDING = 8;
+const DASHBOARD_SECTION_GRID_STYLE: CSSProperties = {
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 30rem), 1fr))',
+};
+const DASHBOARD_CARD_GRID_STYLE: CSSProperties = {
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr))',
+};
 
 interface AssetItem {
   id: string;
@@ -556,13 +562,13 @@ function DragHandle({ label, className, attributes, listeners }: {
       type="button"
       aria-label={label}
       className={cn(
-        'flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-950/80 text-zinc-500 opacity-70 shadow-sm shadow-black/20 transition-colors hover:border-zinc-500 hover:text-zinc-200 active:cursor-grabbing',
+        'flex size-6 shrink-0 cursor-grab items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-950/80 text-zinc-500 opacity-70 shadow-sm shadow-black/20 transition-colors hover:border-zinc-500 hover:text-zinc-200 active:cursor-grabbing',
         className,
       )}
       {...attributes}
       {...listeners}
     >
-      <GripVertical size={15} />
+      <GripVertical size={14} />
     </button>
   );
 }
@@ -581,9 +587,9 @@ function SortableCard({ id, children }: { id: string; children: ReactNode }) {
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn('flex min-w-0 gap-2', isDragging && 'relative z-20 opacity-70')}
+      className={cn('flex min-w-0 gap-1.5', isDragging && 'relative z-20 opacity-70')}
     >
-      <DragHandle label="Move card" attributes={attributes} listeners={listeners} className="mt-3" />
+      <DragHandle label="Move card" attributes={attributes} listeners={listeners} className="mt-2.5" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
@@ -626,7 +632,7 @@ function SortableGrid<T extends { id: string }>({
 }: {
   storageKey: string;
   items: T[];
-  className: string;
+  className?: string;
   emptyState: ReactNode;
   renderItem: (item: T) => ReactNode;
 }) {
@@ -649,7 +655,7 @@ function SortableGrid<T extends { id: string }>({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
-        <div className={className}>
+        <div className={cn('grid gap-2', className)} style={DASHBOARD_CARD_GRID_STYLE}>
           {orderedItems.map((item) => (
             <SortableCard key={item.id} id={item.id}>
               {renderItem(item)}
@@ -679,7 +685,7 @@ function SortableSections({ storageKey, sections }: { storageKey: string; sectio
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
-        <div className="grid gap-8 xl:grid-cols-2">
+        <div className="grid gap-5" style={DASHBOARD_SECTION_GRID_STYLE}>
           {orderedSections.map((section) => (
             <SortableSection key={section.id} section={section} />
           ))}
@@ -696,12 +702,12 @@ function EmptyState({ icon: Icon, title, detail, action }: {
   action?: { label: string; to: string; icon: LucideIcon };
 }) {
   return (
-    <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-6 text-center shadow-lg shadow-black/20 backdrop-blur-sm">
-      <Icon className="size-7 text-zinc-500" />
-      <p className="mt-3 text-sm font-semibold text-zinc-300">{title}</p>
+    <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-5 text-center shadow-lg shadow-black/20 backdrop-blur-sm">
+      <Icon className="size-6 text-zinc-500" />
+      <p className="mt-2 text-sm font-semibold text-zinc-300">{title}</p>
       <p className="mt-1 max-w-sm text-xs leading-5 text-zinc-500">{detail}</p>
       {action && (
-        <Button asChild variant="outline" size="sm" className="mt-4">
+        <Button asChild variant="outline" size="sm" className="mt-3">
           <Link to={action.to}>
             <action.icon size={14} />
             {action.label}
@@ -724,13 +730,13 @@ function SectionHeader({
   dragHandle?: ReactNode;
 }) {
   return (
-    <div className="mb-3 flex items-end justify-between gap-3">
+    <div className="mb-2.5 flex items-end justify-between gap-3">
       <div>
         <div className="flex items-center gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{eyebrow}</p>
           {dragHandle}
         </div>
-        <h2 className="mt-1 text-base font-semibold text-zinc-100">{title}</h2>
+        <h2 className="mt-1 text-sm font-semibold text-zinc-100">{title}</h2>
       </div>
       {to && (
         <Link to={to} className="dashboard-accent-link inline-flex items-center gap-1 text-xs font-semibold">
@@ -1030,31 +1036,31 @@ function CampaignCard({ campaign, isDirector }: { campaign: CampaignData; isDire
 
   return (
     <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-colors hover:border-zinc-700">
-      <CardHeader className="p-4 pb-2">
+      <CardHeader className="p-3 pb-1.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="truncate text-sm font-semibold leading-5 text-zinc-100">
               {campaign.name}
             </CardTitle>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">
+            <p className="mt-1 line-clamp-2 text-xs leading-4 text-zinc-500">
               {campaign.description || (isDirector ? 'No description yet.' : `Directed by ${campaign.director?.username ?? 'Director'}`)}
             </p>
           </div>
           {liveSession && (
-            <Badge className="dashboard-tone-green shrink-0">
+            <Badge className="dashboard-tone-green shrink-0 text-[11px]">
               {liveSession.status}
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent className="p-4 pt-2">
-        <div className="flex flex-wrap gap-2 text-xs text-zinc-400">
+      <CardContent className="p-3 pt-2">
+        <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-zinc-400">
           <span>{campaign.sessions.length} {sessionLabel}</span>
           {campaign.scenes.length > 0 && <span>{campaign.scenes.length} {sceneLabel}</span>}
           <span>{memberCount} players</span>
         </div>
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="text-xs text-zinc-500">Last played {formatDate(campaign.last_played)}</span>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[11px] text-zinc-500">Last played {formatDate(campaign.last_played)}</span>
           <Button asChild variant="outline" size="sm">
             <Link to={isDirector ? `/app/campaigns/${campaign.id}` : '/app/live'}>
               <ArrowRight size={14} />
@@ -1070,15 +1076,15 @@ function CampaignCard({ campaign, isDirector }: { campaign: CampaignData; isDire
 function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirector: boolean }) {
   return (
     <Card className="dashboard-border-green bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
-      <CardContent className="flex items-center justify-between gap-4 p-4">
+      <CardContent className="flex items-center justify-between gap-3 p-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <PlayCircle size={16} className="dashboard-text-green" />
+            <PlayCircle size={15} className="dashboard-text-green shrink-0" />
             <p className="truncate text-sm font-semibold text-zinc-100">{table.session.name}</p>
           </div>
           <p className="mt-1 truncate text-xs text-zinc-500">{table.campaign.name}</p>
           {table.session.room_code && (
-            <p className="dashboard-text-green mt-2 font-mono text-xs">{table.session.room_code}</p>
+            <p className="dashboard-text-green mt-1.5 font-mono text-[11px]">{table.session.room_code}</p>
           )}
         </div>
         <Button asChild size="sm" variant="secondary" className="shrink-0">
@@ -1095,8 +1101,8 @@ function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirector: bo
 function CharacterCard({ character }: { character: RecentCharacter }) {
   return (
     <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="dashboard-tone-amber flex size-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold">
+      <CardContent className="flex items-center gap-2.5 p-3">
+        <div className="dashboard-tone-amber flex size-9 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold">
           {initials(character.name)}
         </div>
         <div className="min-w-0 flex-1">
@@ -1104,7 +1110,7 @@ function CharacterCard({ character }: { character: RecentCharacter }) {
           <p className="mt-0.5 truncate text-xs text-zinc-500">{character.detail}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="secondary">{character.badge}</Badge>
+          <Badge variant="secondary" className="text-[11px]">{character.badge}</Badge>
           <Button asChild variant="ghost" size="icon" className="size-8">
             <Link to={character.to} aria-label={`Open ${character.name}`}>
               <ArrowRight size={14} />
@@ -1120,15 +1126,15 @@ function NoteCard({ note }: { note: DashboardNote }) {
   const preview = plainPreview(note.content);
   return (
     <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
-      <CardContent className="p-4">
+      <CardContent className="p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-zinc-100">{note.title}</p>
             <p className="mt-1 truncate text-xs text-zinc-500">{note.campaignName}</p>
           </div>
-          <span className="shrink-0 text-xs text-zinc-500">{formatDate(note.updatedAt)}</span>
+          <span className="shrink-0 text-[11px] text-zinc-500">{formatDate(note.updatedAt)}</span>
         </div>
-        <p className="mt-3 line-clamp-2 text-xs leading-5 text-zinc-400">
+        <p className="mt-2 line-clamp-2 text-xs leading-4 text-zinc-400">
           {preview || 'Empty note'}
         </p>
       </CardContent>
@@ -1137,18 +1143,18 @@ function NoteCard({ note }: { note: DashboardNote }) {
 }
 
 function AssetCard({ asset, canOpenAssets }: { asset: AssetItem; canOpenAssets: boolean }) {
+  const uploadedAt = formatDate(asset.uploaded_at ?? asset.created_at);
   const content = (
-    <CardContent className="flex items-center gap-3 p-4">
-      <div className="dashboard-tone-cyan flex size-10 shrink-0 items-center justify-center rounded-lg border">
-        <ImageIcon size={17} />
+    <CardContent className="flex items-center gap-2.5 p-3">
+      <div className="dashboard-tone-cyan flex size-9 shrink-0 items-center justify-center rounded-lg border">
+        <ImageIcon size={16} />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-zinc-100">{asset.name}</p>
         <p className="mt-0.5 truncate text-xs text-zinc-500">
-          {asset.type} · {formatBytes(asset.file_size)}
+          {asset.type} · {formatBytes(asset.file_size)} · {uploadedAt}
         </p>
       </div>
-      <span className="shrink-0 text-xs text-zinc-500">{formatDate(asset.uploaded_at ?? asset.created_at)}</span>
     </CardContent>
   );
 
@@ -1400,12 +1406,10 @@ export function Home() {
       eyebrow: isDirector ? 'Current tables' : 'Live rooms',
       title: isDirector ? 'Sessions In Progress' : 'Available Sessions',
       to: '/app/live',
-      className: 'xl:col-span-2',
       body: (
         <SortableGrid
           storageKey={`anvil-dashboard:${roleKey}:cards:live`}
           items={liveTableItems}
-          className="grid gap-3 lg:grid-cols-2"
           emptyState={
             <EmptyState
               icon={CalendarClock}
@@ -1427,7 +1431,6 @@ export function Home() {
         <SortableGrid
           storageKey={`anvil-dashboard:${roleKey}:cards:campaigns`}
           items={recentCampaigns}
-          className="grid gap-3"
           emptyState={
             <EmptyState
               icon={FolderKanban}
@@ -1453,7 +1456,6 @@ export function Home() {
         <SortableGrid
           storageKey={`anvil-dashboard:${roleKey}:cards:notes`}
           items={data.notes.slice(0, MAX_LIST_ITEMS)}
-          className="grid gap-3"
           emptyState={
             <EmptyState
               icon={FileText}
@@ -1479,7 +1481,6 @@ export function Home() {
         <SortableGrid
           storageKey={`anvil-dashboard:${roleKey}:cards:characters`}
           items={recentCharacters}
-          className="grid gap-3"
           emptyState={
             <EmptyState
               icon={Users}
@@ -1501,7 +1502,6 @@ export function Home() {
         <SortableGrid
           storageKey={`anvil-dashboard:${roleKey}:cards:assets`}
           items={data.assets.slice(0, MAX_LIST_ITEMS)}
-          className="grid gap-3"
           emptyState={
             <EmptyState
               icon={ImageIcon}
