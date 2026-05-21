@@ -4,6 +4,14 @@
 [![Build: passing locally](https://img.shields.io/badge/build-passing%20locally-2ea44f)](#build-and-validation)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+## Acknowledgements
+
+Anvil is an independent fan-built tool for **Draw Steel**. It is not affiliated with, sponsored by, or endorsed by MCDM Productions, LLC. DRAW STEEL © 2024 MCDM Productions, LLC.
+
+- [MCDM Productions](https://www.mcdmproductions.com/) for creating Draw Steel.
+- [Andy Aiken and Forge Steel](https://github.com/andyaiken/forgesteel) for showing how useful focused Draw Steel tooling can be.
+- [Steel Compendium](https://github.com/SteelCompendium) for making Draw Steel rules data easier to explore, reference, and adapt.
+
 Anvil is a virtual tabletop for **Draw Steel**, built around a director-style campaign workflow. Directors organize campaigns into modules, sessions, and playable scenes, then run those scenes live for players through focused interfaces for battle, story, montage, negotiation, and respite play.
 
 The app is in active beta development. Core director, player, campaign, live-session, notes, asset, and hero workflows are functional, but data coverage, import/export workflows, deployment hardening, and broad automated test coverage are still evolving.
