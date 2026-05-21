@@ -1381,12 +1381,17 @@ export class SessionRoom extends DurableObject<Env> {
       .bind(sessionId)
       .all<SceneRef & { data?: string; snapshot?: string | null }>();
 
-    const sceneRefs: HydratedSceneRef[] = scenes.results.map((s) => {
+    const sceneRefs: HydratedSceneRef[] = await Promise.all(
+      scenes.results.map(async (s) => {
         let preparedData: Record<string, unknown> = {};
         if (typeof s.data === 'string') {
           try { preparedData = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
         }
+        preparedData = await this.hydrateSceneMedia(s.type, preparedData, session.campaign_id);
         const snapshot = this.parseSceneSnapshot(s.snapshot);
+        if (snapshot?.data) {
+          snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
+        }
         const ref = {
           id: s.id,
           name: s.name,
@@ -1399,7 +1404,8 @@ export class SessionRoom extends DurableObject<Env> {
           snapshot: { value: snapshot, writable: true, enumerable: false },
         });
         return ref;
-      });
+      }),
+    );
     const activeSceneId = sceneRefs.some((scene) => scene.id === session.active_scene_id)
       ? session.active_scene_id
       : sceneRefs[0]?.id ?? null;
@@ -1449,6 +1455,35 @@ export class SessionRoom extends DurableObject<Env> {
     } catch {
       return null;
     }
+  }
+
+  private async hydrateSceneMedia(
+    sceneType: string,
+    data: Record<string, unknown>,
+    campaignId: string | null,
+  ): Promise<Record<string, unknown>> {
+    if (!campaignId || (sceneType !== 'battle' && sceneType !== 'story')) return data;
+
+    const mapAssetId = typeof data['mapAssetId'] === 'string'
+      ? data['mapAssetId'].trim()
+      : '';
+    if (!mapAssetId) return data;
+
+    const urlKey = sceneType === 'story' ? 'assetUrl' : 'mapUrl';
+    const existingUrl = data[urlKey];
+    if (typeof existingUrl === 'string' && existingUrl.trim()) return data;
+
+    const map = await this.env.DB.prepare(
+      'SELECT asset_id FROM maps WHERE id = ? AND campaign_id = ?',
+    )
+      .bind(mapAssetId, campaignId)
+      .first<{ asset_id: string | null }>();
+    if (!map?.asset_id) return data;
+
+    return {
+      ...data,
+      [urlKey]: `/api/assets/${map.asset_id}/data`,
+    };
   }
 
   private activeSceneRef(): HydratedSceneRef | null {
@@ -1679,7 +1714,11 @@ export class SessionRoom extends DurableObject<Env> {
     const row = await this.env.DB.prepare('SELECT data FROM scenes WHERE id = ? AND deleted_at IS NULL')
       .bind(targetSceneId)
       .first<{ data: string | null }>();
-    const preparedData = parseJson<Record<string, unknown>>(row?.data, {});
+    const preparedData = await this.hydrateSceneMedia(
+      scene.type,
+      parseJson<Record<string, unknown>>(row?.data, {}),
+      this.sessionState.campaignId,
+    );
 
     await this.env.DB.prepare('UPDATE scenes SET snapshot = NULL WHERE id = ?')
       .bind(targetSceneId)

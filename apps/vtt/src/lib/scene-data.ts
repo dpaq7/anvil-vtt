@@ -258,11 +258,15 @@ export function parseBattleData(sceneData: Record<string, unknown>): BattleStage
     const raw = sceneData[key];
     return Array.isArray(raw) ? (raw as T[]) : [];
   };
+  const stringValue = (key: string): string | null => {
+    const value = sceneData[key];
+    return typeof value === 'string' && value.trim() ? value : null;
+  };
 
   return {
     cols: (sceneData['gridCols'] as number) ?? (sceneData['gridSize'] as number) ?? 30,
     rows: (sceneData['gridRows'] as number) ?? 20,
-    backgroundUrl: (sceneData['mapUrl'] as string) ?? null,
+    backgroundUrl: stringValue('mapUrl') ?? stringValue('backgroundUrl'),
     cellSize: (sceneData['gridCellSize'] as number) ?? 48,
     gridOpacity: (sceneData['gridOpacity'] as number) ?? 0.4,
     gridColor: (sceneData['gridColor'] as string) ?? '#444444',
