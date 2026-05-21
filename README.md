@@ -97,8 +97,6 @@ Scene Import uses a structured JSON document with this shape:
 
 The `data` object is native Anvil scene data. Battle scenes can include map URLs, grid settings, tokens, terrain, fog, drawings, difficulty, notes, and hero starting areas. Montage and negotiation scenes map to their mode-specific live state templates.
 
-Directors can import the bundled **MCDM Draw Steel Demo Scenes** pack from the campaign list, or append imported scenes from inside an existing campaign.
-
 ## Getting Started
 
 Requirements:
