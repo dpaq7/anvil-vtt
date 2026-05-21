@@ -1391,6 +1391,7 @@ export class SessionRoom extends DurableObject<Env> {
         const snapshot = this.parseSceneSnapshot(s.snapshot);
         if (snapshot?.data) {
           snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
+          snapshot.data = this.applyPreparedSceneMediaFallbacks(s.type, snapshot.data, preparedData);
         }
         const ref = {
           id: s.id,
@@ -1484,6 +1485,44 @@ export class SessionRoom extends DurableObject<Env> {
       ...data,
       [urlKey]: `/api/assets/${map.asset_id}/data`,
     };
+  }
+
+  private applyPreparedSceneMediaFallbacks(
+    sceneType: string,
+    data: Record<string, unknown>,
+    preparedData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const keys = sceneType === 'battle'
+      ? [
+          'mapUrl',
+          'backgroundUrl',
+          'mapAssetId',
+          'gridCols',
+          'gridRows',
+          'gridCellSize',
+          'gridType',
+          'gridOpacity',
+          'gridColor',
+          'gridOffsetX',
+          'gridOffsetY',
+        ]
+      : sceneType === 'story'
+        ? ['assetUrl', 'mapAssetId']
+        : [];
+    if (keys.length === 0) return data;
+
+    let next: Record<string, unknown> | null = null;
+    for (const key of keys) {
+      const current = data[key];
+      const fallback = preparedData[key];
+      const missing = current === undefined || current === null || (typeof current === 'string' && current.trim() === '');
+      const hasFallback = fallback !== undefined && fallback !== null && (typeof fallback !== 'string' || fallback.trim() !== '');
+      if (!missing || !hasFallback) continue;
+      next ??= { ...data };
+      next[key] = fallback;
+    }
+
+    return next ?? data;
   }
 
   private activeSceneRef(): HydratedSceneRef | null {

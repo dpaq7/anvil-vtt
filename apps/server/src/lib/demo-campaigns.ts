@@ -11,6 +11,12 @@ interface CampaignSeedRow {
   deleted_at: string | null;
 }
 
+interface DemoSceneRow {
+  id: string;
+  title: string;
+  data: string | null;
+}
+
 async function demoCampaignId(userId: string): Promise<string> {
   const encoded = new TextEncoder().encode(`${DEMO_CAMPAIGN_SEED}:${userId}`);
   const digest = await crypto.subtle.digest('SHA-256', encoded);
@@ -33,6 +39,62 @@ function seededDocument(): SceneImportDocument {
       },
     },
   };
+}
+
+function demoBattleMapUrls(): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const module of MCDM_DRAW_STEEL_DEMO_CAMPAIGN.modules ?? []) {
+    for (const session of module.sessions ?? []) {
+      for (const scene of session.scenes ?? []) {
+        if (scene.type !== 'battle' || !scene.data || typeof scene.data !== 'object') continue;
+        const mapUrl = (scene.data as Record<string, unknown>)['mapUrl'];
+        if (typeof mapUrl === 'string' && mapUrl.trim()) {
+          urls.set(scene.title.trim(), mapUrl);
+        }
+      }
+    }
+  }
+  return urls;
+}
+
+async function repairDemoBattleMapUrls(db: D1Database, campaignId: string): Promise<void> {
+  const mapUrls = demoBattleMapUrls();
+  if (mapUrls.size === 0) return;
+
+  const rows = await db.prepare(
+    `SELECT s.id, s.title, s.data
+     FROM scenes s
+     JOIN game_sessions gs ON gs.id = s.game_session_id
+     WHERE gs.campaign_id = ?
+       AND s.deleted_at IS NULL
+       AND s.type = 'battle'`,
+  )
+    .bind(campaignId)
+    .all<DemoSceneRow>();
+
+  const updates: D1PreparedStatement[] = [];
+  for (const row of rows.results) {
+    const mapUrl = mapUrls.get(row.title.trim());
+    if (!mapUrl) continue;
+
+    let data: Record<string, unknown> = {};
+    if (row.data) {
+      try {
+        const parsed = JSON.parse(row.data) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          data = parsed as Record<string, unknown>;
+        }
+      } catch { /* ignore malformed scene data */ }
+    }
+
+    if (typeof data['mapUrl'] === 'string' && data['mapUrl'].trim()) continue;
+    updates.push(
+      db.prepare('UPDATE scenes SET data = ? WHERE id = ?')
+        .bind(JSON.stringify({ ...data, mapUrl }), row.id),
+    );
+  }
+
+  if (updates.length > 0) await db.batch(updates);
 }
 
 export async function ensureMcdmDemoCampaignForUser(db: D1Database, userId: string): Promise<string | null> {
@@ -67,6 +129,7 @@ export async function ensureMcdmDemoCampaignForUser(db: D1Database, userId: stri
     )
       .bind(existing.id, userId, 'director')
       .run();
+    await repairDemoBattleMapUrls(db, existing.id);
     return existing.id;
   }
 
