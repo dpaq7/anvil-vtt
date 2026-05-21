@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { AudioLiveState } from '../types/protocol.js';
+import { credentialedMediaCrossOrigin, resolveApiUrl } from '../lib/api-url.js';
 
 /**
  * Synchronises client-side HTML5 Audio playback with the server's audio state.
@@ -29,7 +30,8 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
       return;
     }
 
-    const { playing, audioUrl, loop } = audioState;
+    const { playing, loop } = audioState;
+    const audioUrl = audioState.audioUrl ? resolveApiUrl(audioState.audioUrl) : null;
 
     // If URL changed, swap audio element
     if (audioUrl && audioUrl !== lastUrlRef.current) {
@@ -41,7 +43,8 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
       }
 
       const audio = new Audio();
-      audio.crossOrigin = 'anonymous';
+      const crossOrigin = credentialedMediaCrossOrigin(audioUrl);
+      if (crossOrigin) audio.crossOrigin = crossOrigin;
       audio.preload = 'auto';
       audio.volume = volume;
       audio.loop = loop;
