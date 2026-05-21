@@ -1,6 +1,6 @@
 import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { reportBug } from '../lib/bug-reporting.js';
+import { addBreadcrumb, reportBug } from '../lib/bug-reporting.js';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -27,6 +27,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error(`[ErrorBoundary${this.props.label ? `: ${this.props.label}` : ''}]`, error, info.componentStack);
+    addBreadcrumb({
+      category: 'error',
+      message: error.message || 'React render crash',
+      data: { source: this.props.label ?? 'react' },
+    });
     void reportBug({
       kind: 'react-render',
       message: error.message || 'React render crash',
