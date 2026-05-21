@@ -238,6 +238,49 @@ assetRoutes.get('/', async (c) => {
   return c.json({ assets: results.results });
 });
 
+// Update owned asset metadata. Campaign-linked records keep their subtype-specific
+// metadata in the owning map/audio/etc. endpoints.
+assetRoutes.patch('/:id', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const assetId = c.req.param('id');
+  const body = await c.req.json<{ name?: string; type?: string }>();
+
+  const asset = await c.env.DB.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<AssetRow>();
+  if (!asset) return c.json({ error: 'Not found' }, 404);
+
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+
+  if (body.name !== undefined) {
+    if (!body.name.trim()) return c.json({ error: 'Name is required' }, 400);
+    sets.push('name = ?');
+    vals.push(body.name.trim());
+  }
+
+  if (body.type !== undefined) {
+    if (!isAllowedAssetType(body.type)) return c.json({ error: 'Invalid type' }, 400);
+    if (!asset.content_type || !isAllowedAssetContentType(body.type, asset.content_type)) {
+      return c.json({ error: 'File type is not allowed for this asset type' }, 400);
+    }
+    sets.push('type = ?');
+    vals.push(body.type);
+  }
+
+  if (sets.length > 0) {
+    vals.push(assetId);
+    await c.env.DB.prepare(`UPDATE assets SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
+  }
+
+  const updated = await c.env.DB.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<AssetRow>();
+  if (!updated) return c.json({ error: 'Not found' }, 404);
+
+  return c.json({ asset: updated });
+});
+
 // Delete an owned unlinked asset. Linked campaign asset cleanup goes through the owning campaign record.
 assetRoutes.delete('/:id', async (c) => {
   const user = c.get('user') as AuthUser;

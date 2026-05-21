@@ -246,4 +246,4 @@ export interface UpdateMontageTestInput {
 
 // ── Asset folder type for tree sidebar ──
 
-export type AssetFolder = 'heroes' | 'npcs' | 'maps' | 'bestiary' | 'terrain' | 'audio';
+export type AssetFolder = 'heroes' | 'npcs' | 'pictures' | 'maps' | 'bestiary' | 'terrain' | 'audio';
