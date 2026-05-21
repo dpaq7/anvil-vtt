@@ -1,4 +1,4 @@
-import { Users, UserCircle, Map, Skull, Mountain, Music } from 'lucide-react';
+import { Users, UserCircle, Image, Map, Skull, Mountain, Music } from 'lucide-react';
 import { Badge } from '@anvil/ui';
 import { FileTreeRoot, FileTreeFile } from '../builder/FileTree.js';
 import type { AssetFolder } from '@anvil/types';
@@ -11,6 +11,7 @@ const FOLDER_CONFIG: Array<{
 }> = [
   { id: 'heroes', label: 'Heroes', icon: <Users className="size-4 shrink-0" /> },
   { id: 'npcs', label: 'NPCs', icon: <UserCircle className="size-4 shrink-0" /> },
+  { id: 'pictures', label: 'Pictures', icon: <Image className="size-4 shrink-0" /> },
   { id: 'maps', label: 'Maps', icon: <Map className="size-4 shrink-0" /> },
   { id: 'bestiary', label: 'Bestiary', icon: <Skull className="size-4 shrink-0" /> },
   { id: 'terrain', label: 'Terrain', icon: <Mountain className="size-4 shrink-0" /> },

@@ -9,12 +9,14 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, Badge, cn } from '@anvil/ui';
-import type { AudioAsset } from '@anvil/types';
+import type { AudioAsset, UpdateAudioInput } from '@anvil/types';
 import {
   assetDataUrl,
   credentialedMediaCrossOrigin,
   resolveApiUrl,
 } from '../../lib/api-url.js';
+import { AssetActionMenu } from './AssetActionMenu.js';
+import { AudioDetailsDialog } from './AudioDetailsDialog.js';
 
 const MOOD_COLORS: Record<string, string> = {
   combat: 'text-red-400 bg-red-600/20',
@@ -61,6 +63,8 @@ function getAudioUrl(asset: AudioAsset) {
 export interface AudioGridProps {
   audioAssets: AudioAsset[];
   onSelect: (audioId: string) => void;
+  onUpdate?: (audioId: string, input: UpdateAudioInput) => Promise<void>;
+  onDelete?: (audioId: string) => Promise<void>;
   selectedId?: string | null;
   compact?: boolean;
 }
@@ -68,6 +72,8 @@ export interface AudioGridProps {
 export function AudioGrid({
   audioAssets,
   onSelect,
+  onUpdate,
+  onDelete,
   selectedId,
   compact,
 }: AudioGridProps) {
@@ -81,6 +87,7 @@ export function AudioGrid({
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.5);
   const [muted, setMuted] = useState(false);
+  const [editingAudio, setEditingAudio] = useState<AudioAsset | null>(null);
 
   const stopAudio = useCallback(() => {
     const audio = audioRef.current;
@@ -235,6 +242,23 @@ export function AudioGrid({
     if (value > 0) setMuted(false);
   }, []);
 
+  const handleDelete = useCallback(
+    async (asset: AudioAsset) => {
+      if (!onDelete) return;
+      if (activeId === asset.id) {
+        stopAudio();
+        setActiveId(null);
+        setPlayingId(null);
+        setLoadingId(null);
+        setErrorId(null);
+        setCurrentTime(0);
+        setDuration(0);
+      }
+      await onDelete(asset.id);
+    },
+    [activeId, onDelete, stopAudio],
+  );
+
   if (audioAssets.length === 0) {
     return (
       <p className="p-8 text-center text-zinc-500">No audio assets yet.</p>
@@ -242,14 +266,15 @@ export function AudioGrid({
   }
 
   return (
-    <div
-      className={
-        compact
-          ? 'grid grid-cols-1 gap-3 p-3 sm:grid-cols-2'
-          : 'grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-      }
-    >
-      {audioAssets.map((audio) => {
+    <>
+      <div
+        className={
+          compact
+            ? 'grid grid-cols-1 gap-3 p-3 sm:grid-cols-2'
+            : 'grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+        }
+      >
+        {audioAssets.map((audio) => {
         const isActive = activeId === audio.id;
         const isPlaying = playingId === audio.id;
         const isLoading = loadingId === audio.id;
@@ -264,68 +289,76 @@ export function AudioGrid({
           ? Math.min(currentTime, activeDuration || currentTime)
           : 0;
 
-        return (
-          <Card
-            key={audio.id}
-            className={`cursor-pointer transition hover:border-zinc-600 ${
-              selectedId === audio.id ? 'ring-2 ring-zinc-400' : ''
-            }`}
-            onClick={() => onSelect(audio.id)}
-          >
-            <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
-              <div
-                className={cn(
-                  'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors',
-                  isPlaying
-                    ? 'bg-purple-600/30 text-purple-300'
-                    : 'bg-zinc-800 text-zinc-500',
-                )}
-              >
-                <Music className="size-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <CardTitle className="truncate text-sm font-bold">
-                  {audio.name}
-                </CardTitle>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-xs text-zinc-500">
-                    {formatDuration(audio.durationSeconds)}
-                  </span>
-                  {audio.audioType && (
-                    <Badge variant="secondary" className="text-[9px] px-1 py-0">
-                      {audio.audioType.replace('_', ' ')}
-                    </Badge>
+          return (
+            <Card
+              key={audio.id}
+              className={`cursor-pointer transition hover:border-zinc-600 ${
+                selectedId === audio.id ? 'ring-2 ring-zinc-400' : ''
+              }`}
+              onClick={() => onSelect(audio.id)}
+            >
+              <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
+                <div
+                  className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors',
+                    isPlaying
+                      ? 'bg-purple-600/30 text-purple-300'
+                      : 'bg-zinc-800 text-zinc-500',
                   )}
+                >
+                  <Music className="size-5" />
                 </div>
-              </div>
-              <button
-                type="button"
-                aria-label={
-                  isPlaying ? `Pause ${audio.name}` : `Preview ${audio.name}`
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  togglePlay(audio);
-                }}
-                className={cn(
-                  'flex size-9 shrink-0 items-center justify-center rounded-md border transition-colors',
-                  isPlaying
-                    ? 'border-purple-400/40 bg-purple-500/20 text-purple-200 hover:bg-purple-500/30'
-                    : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800',
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="truncate text-sm font-bold">
+                    {audio.name}
+                  </CardTitle>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-xs text-zinc-500">
+                      {formatDuration(audio.durationSeconds)}
+                    </span>
+                    {audio.audioType && (
+                      <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                        {audio.audioType.replace('_', ' ')}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label={
+                    isPlaying ? `Pause ${audio.name}` : `Preview ${audio.name}`
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    togglePlay(audio);
+                  }}
+                  className={cn(
+                    'flex size-9 shrink-0 items-center justify-center rounded-md border transition-colors',
+                    isPlaying
+                      ? 'border-purple-400/40 bg-purple-500/20 text-purple-200 hover:bg-purple-500/30'
+                      : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800',
+                  )}
+                >
+                  {isLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause className="size-4" />
+                  ) : (
+                    <Play className="size-4" />
+                  )}
+                </button>
+                {onUpdate && onDelete && (
+                  <AssetActionMenu
+                    label={`Open ${audio.name} actions`}
+                    itemName={audio.name}
+                    onEdit={() => setEditingAudio(audio)}
+                    onDelete={() => handleDelete(audio)}
+                  />
                 )}
-              >
-                {isLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : isPlaying ? (
-                  <Pause className="size-4" />
-                ) : (
-                  <Play className="size-4" />
-                )}
-              </button>
-            </CardHeader>
+              </CardHeader>
 
-            {!compact && (
-              <CardContent className="px-4 pb-4 pt-0">
+              {!compact && (
+                <CardContent className="px-4 pb-4 pt-0">
                 <div
                   className="mb-3 space-y-2 rounded-md border border-zinc-800 bg-zinc-950/55 p-3"
                   onClick={(event) => event.stopPropagation()}
@@ -431,11 +464,23 @@ export function AudioGrid({
                     </Badge>
                   ))}
                 </div>
-              </CardContent>
-            )}
-          </Card>
-        );
-      })}
-    </div>
+                </CardContent>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      {onUpdate && (
+        <AudioDetailsDialog
+          audio={editingAudio}
+          open={editingAudio !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditingAudio(null);
+          }}
+          onSave={onUpdate}
+        />
+      )}
+    </>
   );
 }
