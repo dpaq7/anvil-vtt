@@ -75,6 +75,27 @@ export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focus
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedDataRef = useRef<string>(scene.data);
 
+  const saveDataNow = useCallback(
+    async (nextData: Record<string, unknown>) => {
+      if (isReadOnly) return;
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+
+      const nextDataStr = JSON.stringify(nextData);
+      if (nextDataStr === lastSavedDataRef.current) return;
+
+      setSaveStatus('saving');
+      await api.put(`/api/scenes/${scene.id}`, { data: nextDataStr });
+      lastSavedDataRef.current = nextDataStr;
+      setSaveStatus('saved');
+      onSave?.();
+    },
+    [scene.id, onSave, isReadOnly],
+  );
+
   // Reset data when scene changes or view mode switches
   useEffect(() => {
     if (viewMode === 'endState' && parsedSnapshot) {
@@ -115,10 +136,7 @@ export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focus
       // Debounce save by 1 second
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          await api.put(`/api/scenes/${scene.id}`, { data: newDataStr });
-          lastSavedDataRef.current = newDataStr;
-          setSaveStatus('saved');
-          onSave?.();
+          await saveDataNow(newData);
 
           // Reset to idle after 2 seconds
           setTimeout(() => setSaveStatus('idle'), 2000);
@@ -128,7 +146,7 @@ export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focus
         }
       }, 1000);
     },
-    [scene.id, onSave, isReadOnly]
+    [saveDataNow, isReadOnly],
   );
 
   // Cleanup on unmount
@@ -181,6 +199,16 @@ export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focus
     }
   };
 
+  const handleBeginCombatClick = useCallback(async () => {
+    try {
+      await saveDataNow(data);
+      onBeginCombat?.(scene);
+    } catch (err) {
+      console.error('Failed to save scene before starting live session:', err);
+      setSaveStatus('error');
+    }
+  }, [data, onBeginCombat, saveDataNow, scene]);
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -224,7 +252,7 @@ export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focus
             <Button
               size="sm"
               className="bg-red-600 text-zinc-100 hover:bg-red-500"
-              onClick={() => onBeginCombat?.(scene)}
+              onClick={() => { void handleBeginCombatClick(); }}
             >
               <Swords className="size-4" />
               Draw Steel!
