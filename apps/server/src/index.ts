@@ -38,7 +38,8 @@ app.use(
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'Range'],
+    exposeHeaders: ['Accept-Ranges', 'Content-Length', 'Content-Range'],
   }),
 );
 

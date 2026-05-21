@@ -10,6 +10,11 @@ import {
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, Badge, cn } from '@anvil/ui';
 import type { AudioAsset } from '@anvil/types';
+import {
+  assetDataUrl,
+  credentialedMediaCrossOrigin,
+  resolveApiUrl,
+} from '../../lib/api-url.js';
 
 const MOOD_COLORS: Record<string, string> = {
   combat: 'text-red-400 bg-red-600/20',
@@ -45,10 +50,8 @@ function formatDuration(seconds: number | null | undefined): string {
 }
 
 function getAudioUrl(asset: AudioAsset) {
-  return (
-    asset.audioUrl ??
-    (asset.assetId ? `/api/assets/${asset.assetId}/data` : null)
-  );
+  if (asset.audioUrl) return resolveApiUrl(asset.audioUrl);
+  return asset.assetId ? assetDataUrl(asset.assetId) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +157,8 @@ export function AudioGrid({
 
       const audio = new Audio();
       audio.preload = 'auto';
-      audio.crossOrigin = 'anonymous';
+      const crossOrigin = credentialedMediaCrossOrigin(url);
+      if (crossOrigin) audio.crossOrigin = crossOrigin;
       audio.volume = muted ? 0 : volume;
       audioRef.current = audio;
 

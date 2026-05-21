@@ -4,6 +4,11 @@ import { Button } from '@anvil/ui';
 import type { AudioAsset } from '@anvil/types';
 import { useAssetsStore } from '../../stores/assetsStore.js';
 import { AudioPlayer } from './AudioPlayer.js';
+import {
+  assetDataUrl,
+  credentialedMediaCrossOrigin,
+  resolveApiUrl,
+} from '../../lib/api-url.js';
 
 const SFX_SLOT_COUNT = 4;
 
@@ -47,10 +52,8 @@ function formatDuration(seconds: number | null): string {
 }
 
 function getAudioUrl(asset: AudioAsset | null): string | null {
-  return (
-    asset?.audioUrl ??
-    (asset?.assetId ? `/api/assets/${asset.assetId}/data` : null)
-  );
+  if (asset?.audioUrl) return resolveApiUrl(asset.audioUrl);
+  return asset?.assetId ? assetDataUrl(asset.assetId) : null;
 }
 
 function hasTag(asset: AudioAsset, tag: string): boolean {
@@ -275,9 +278,10 @@ export function SceneAudioPanel({
         existing.load();
       }
 
-      const audio = new Audio(url);
+      const audio = new Audio();
+      const crossOrigin = credentialedMediaCrossOrigin(url);
+      if (crossOrigin) audio.crossOrigin = crossOrigin;
       audio.preload = 'auto';
-      audio.crossOrigin = 'anonymous';
       audio.volume = volumes.sfx;
       sfxRefs.current[slotIndex] = audio;
       setPlayingSfxSlots((current) => ({ ...current, [slotIndex]: true }));
@@ -293,6 +297,7 @@ export function SceneAudioPanel({
 
       audio.addEventListener('ended', finish);
       audio.addEventListener('error', finish);
+      audio.src = url;
       audio.play().catch(finish);
     },
     [audioAssets, normalizedSfxIds, volumes.sfx],

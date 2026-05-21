@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music, Pause, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@anvil/ui';
 import type { AudioAsset } from '@anvil/types';
+import {
+  assetDataUrl,
+  credentialedMediaCrossOrigin,
+  resolveApiUrl,
+} from '../../lib/api-url.js';
 
 export interface AudioPlayerProps {
   /** The audio asset to play (null = nothing selected) */
@@ -50,6 +55,12 @@ export function AudioPlayer({
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
 
+  const url = track?.audioUrl
+    ? resolveApiUrl(track.audioUrl)
+    : track?.assetId
+      ? assetDataUrl(track.assetId)
+      : null;
+
   // Create / swap audio element when track changes
   useEffect(() => {
     // Stop any previous playback
@@ -65,15 +76,12 @@ export function AudioPlayer({
     setReady(false);
     setError(null);
 
-    // Derive the URL from the asset ID when audioUrl isn't populated
-    const url =
-      track?.audioUrl ??
-      (track?.assetId ? `/api/assets/${track.assetId}/data` : null);
     if (!url) return;
 
     const audio = new Audio();
     audio.preload = 'auto';
-    audio.crossOrigin = 'anonymous';
+    const crossOrigin = credentialedMediaCrossOrigin(url);
+    if (crossOrigin) audio.crossOrigin = crossOrigin;
     audio.volume = mutedRef.current ? 0 : volumeRef.current;
     audio.loop = loopRef.current;
     audioRef.current = audio;
@@ -114,7 +122,7 @@ export function AudioPlayer({
       audio.load();
     };
     // Only re-create when track identity changes
-  }, [track?.id, track?.audioUrl, track?.assetId]);
+  }, [track?.id, url]);
 
   // Sync volume
   useEffect(() => {
