@@ -55,7 +55,8 @@ const DASHBOARD_BACKGROUNDS = {
   player: '/dashboard/player-flow-background.png',
 } as const;
 
-const ONBOARDING_STORAGE_VERSION = 'v1';
+const APP_VERSION = '0.2.0';
+const ONBOARDING_STORAGE_VERSION = `v${APP_VERSION}`;
 const ONBOARDING_CARD_WIDTH = 340;
 const ONBOARDING_CARD_ESTIMATED_HEIGHT = 260;
 const ONBOARDING_VIEWPORT_INSET = 16;
@@ -149,6 +150,14 @@ const COMMON_UTILITY_ONBOARDING_STEPS: OnboardingStep[] = [
     target: 'menu-notes',
     title: 'Notes',
     description: 'Open campaign and personal notes without leaving the main workspace.',
+    placement: 'right',
+  },
+  {
+    id: 'report-issue',
+    target: 'menu-report-issue',
+    title: 'Report issue',
+    description:
+      'Send a manual report when something crashes, looks wrong, or feels out of sync. Recent navigation and session breadcrumbs are included automatically.',
     placement: 'right',
   },
   {
@@ -871,17 +880,23 @@ function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRoleKey; u
           aria-labelledby="dashboard-onboarding-title"
           className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl shadow-black/40"
         >
-          <Badge className={cn(
-            'border-transparent',
-            roleKey === 'director' ? 'bg-rose-300/10 text-flow-director' : 'bg-cyan-300/10 text-flow-player',
-          )}>
-            {roleKey === 'director' ? 'Director flow' : 'Player flow'}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge className={cn(
+              'border-transparent',
+              roleKey === 'director' ? 'bg-rose-300/10 text-flow-director' : 'bg-cyan-300/10 text-flow-player',
+            )}>
+              {roleKey === 'director' ? 'Director flow' : 'Player flow'}
+            </Badge>
+            <Badge variant="secondary">Beta v{APP_VERSION}</Badge>
+          </div>
           <h2 id="dashboard-onboarding-title" className="mt-4 text-xl font-semibold text-zinc-50">
-            Welcome to your {roleKey === 'director' ? 'Director' : 'Player'} dashboard
+            Welcome to Anvil beta testing
           </h2>
           <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Take a short guided tour of the menu bar and dashboard areas, or skip it for now.
+            Thanks for helping test Anvil v{APP_VERSION} in the{' '}
+            {roleKey === 'director' ? 'Director' : 'Player'} flow. This brief tour highlights the
+            dashboard, menu tools, and the issue reporter to use when something crashes, looks wrong,
+            or needs context.
           </p>
           <label className="mt-5 flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm text-zinc-300">
             <input
