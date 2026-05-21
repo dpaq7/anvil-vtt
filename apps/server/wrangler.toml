@@ -5,7 +5,7 @@ preview_urls = false
 
 [vars]
 ENVIRONMENT = "production"
-FRONTEND_URL = "https://anvil-vtt.pages.dev"
+FRONTEND_URL = "https://anvilvtt.ca"
 DISCORD_REDIRECT_URI = "https://anvil-server.paquin-dan.workers.dev/api/auth/callback"
 GOOGLE_REDIRECT_URI = "https://anvil-server.paquin-dan.workers.dev/api/auth/google/callback"
 
