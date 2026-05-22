@@ -5,6 +5,10 @@ This project deploys as two surfaces:
 - `apps/server`: Cloudflare Worker API, Durable Object, D1 database, and R2 asset bucket.
 - `apps/vtt`: Vite static frontend that calls the Worker through `VITE_API_BASE`.
 
+Production should keep the API on a same-site hostname such as `https://api.anvilvtt.ca`.
+Using a `workers.dev` API origin from `https://anvilvtt.ca` makes the session cookie third-party
+from the frontend's point of view, and Safari may block it after OAuth.
+
 ## Required Cloudflare Resources
 
 The Worker expects these bindings from `apps/server/wrangler.toml`:
@@ -33,20 +37,34 @@ Set non-secret vars in `apps/server/wrangler.toml` or the Cloudflare dashboard:
 ```text
 ENVIRONMENT=production
 FRONTEND_URL=https://<your-vtt-frontend-origin>
-DISCORD_REDIRECT_URI=https://<your-worker-origin>/api/auth/callback
-GOOGLE_REDIRECT_URI=https://<your-worker-origin>/api/auth/google/callback
+DISCORD_REDIRECT_URI=https://<your-api-origin>/api/auth/callback
+GOOGLE_REDIRECT_URI=https://<your-api-origin>/api/auth/google/callback
 ```
 
 The Discord application must include the exact `DISCORD_REDIRECT_URI` in its OAuth2 redirect list.
 The Google OAuth client must include the exact `GOOGLE_REDIRECT_URI` in its authorized redirect URIs.
 `BUG_REPORT_WEBHOOK_URL` is optional; when present, client crash and server-error reports are stored in D1 and forwarded to that webhook.
 
+For the public beta deployment, the expected production values are:
+
+```text
+FRONTEND_URL=https://anvilvtt.ca
+DISCORD_REDIRECT_URI=https://api.anvilvtt.ca/api/auth/callback
+GOOGLE_REDIRECT_URI=https://api.anvilvtt.ca/api/auth/google/callback
+```
+
 ## Required VTT Build Env
 
 Set this for the production VTT build:
 
 ```text
-VITE_API_BASE=https://<your-worker-origin>
+VITE_API_BASE=https://<your-api-origin>
+```
+
+For the public beta deployment, use:
+
+```text
+VITE_API_BASE=https://api.anvilvtt.ca
 ```
 
 The value should not have a trailing slash. It is used for HTTP API calls and live-session WebSocket URLs.
@@ -54,7 +72,7 @@ The value should not have a trailing slash. It is used for HTTP API calls and li
 ## Security Policy Checks
 
 - Apply D1 migrations before deploying code that uses public rate limits. `0015_request_rate_limits.sql` is required by invite lookup/acceptance and bug report ingestion.
-- Keep the Cloudflare Pages headers in `apps/vtt/public/_headers` aligned with the deployed Worker origin. If the Worker moves to a custom domain, update `connect-src`, `img-src`, and `media-src` before deploying the VTT.
+- Keep the Cloudflare Pages headers in `apps/vtt/public/_headers` aligned with the deployed Worker origin. If the Worker moves to another custom domain, update `connect-src`, `img-src`, and `media-src` before deploying the VTT.
 - Keep `BUG_REPORT_WEBHOOK_URL` unset unless report forwarding is actively monitored. Anonymous bug reports are origin-checked and rate-limited, but the webhook still receives user-supplied error text.
 - Public invite URLs are bearer tokens. Treat them as shareable secrets, keep default expirations short, and prefer nonzero `max_uses` for private campaigns.
 
@@ -65,7 +83,9 @@ The value should not have a trailing slash. It is used for HTTP API calls and li
 3. Build both deploy surfaces: `pnpm deploy:check`
 4. Apply remote D1 migrations: `pnpm db:migrate:remote`
 5. Deploy the Worker: `pnpm deploy:server`
-6. Build and deploy `apps/vtt/dist` with `VITE_API_BASE` set to the Worker origin.
+6. Confirm the Worker responds on the configured API custom domain, for example `https://api.anvilvtt.ca/api/health`.
+7. Add the exact API-domain callback URLs to the Discord and Google OAuth app settings.
+8. Build and deploy `apps/vtt/dist` with `VITE_API_BASE` set to the API custom domain.
 
 ## Beta Smoke Test
 
@@ -74,6 +94,7 @@ After deployment, verify:
 - `GET /api/health` returns `{ "status": "ok" }` from the Worker.
 - Discord and Google OAuth complete and redirect back to the VTT frontend.
 - `/api/auth/me` returns the signed-in user from the frontend.
+- In Safari, Google OAuth does not send the user back to `/auth` after a successful sign-in.
 - A director can create a campaign, create a session, and enter live mode.
 - A player can join by code, ready up, reconnect, and receive scene changes.
 - Map, token/portrait, handout, custom terrain, and audio uploads are readable by campaign members.
