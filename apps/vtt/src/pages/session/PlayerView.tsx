@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Expand, Minimize2 } from 'lucide-react';
+import { Expand, Minimize2, Volume2, VolumeX } from 'lucide-react';
 import { AppShell, Tabs, TabsContent, TabsList, TabsTrigger } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
@@ -41,7 +41,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   const user = useAuthStore((s) => s.user);
 
   // Sync server audio commands to local HTML5 Audio playback
-  useAudioSync(sessionState.audio);
+  const audioPlayback = useAudioSync(sessionState.audio);
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
@@ -416,10 +416,33 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
           />
           {/* Audio now-playing indicator */}
           {sessionState.audio?.playing && sessionState.audio.assetName && (
-            <span className="mr-1 flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
-              <span className="inline-block size-1.5 animate-pulse rounded-full bg-purple-400" />
-              {sessionState.audio.assetName}
-            </span>
+            audioPlayback.needsUserGesture ? (
+              <button
+                type="button"
+                className="mr-1 inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-200 transition hover:border-amber-400 hover:bg-amber-500/20"
+                onClick={() => {
+                  void audioPlayback.retryPlayback();
+                }}
+                title={audioPlayback.error ?? 'Click to enable scene audio'}
+              >
+                <VolumeX className="size-3" />
+                Enable audio
+              </button>
+            ) : audioPlayback.status === 'error' ? (
+              <span
+                className="mr-1 inline-flex shrink-0 items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-300"
+                title={audioPlayback.error ?? 'Scene audio could not be played'}
+              >
+                <VolumeX className="size-3" />
+                Audio unavailable
+              </span>
+            ) : (
+              <span className="mr-1 flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
+                <span className="inline-block size-1.5 animate-pulse rounded-full bg-purple-400" />
+                <Volume2 className="size-3" />
+                {sessionState.audio.assetName}
+              </span>
+            )
           )}
           {/* Scene type indicator */}
           {sceneType && (

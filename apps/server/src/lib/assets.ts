@@ -14,6 +14,24 @@ const ACTIVE_CONTENT_TYPES = new Set([
   'text/xml',
 ]);
 
+const BROWSER_COMPATIBLE_AUDIO_CONTENT_TYPES = new Set([
+  'audio/aac',
+  'audio/m4a',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/mpeg3',
+  'audio/vnd.wave',
+  'audio/wav',
+  'audio/wave',
+  'audio/x-aac',
+  'audio/x-m4a',
+  'audio/x-mp3',
+  'audio/x-mpeg',
+  'audio/x-mpeg-3',
+  'audio/x-wav',
+]);
+
 export function normalizeContentType(contentType: string | null | undefined): string {
   return contentType?.toLowerCase().split(';')[0]?.trim() ?? '';
 }
@@ -25,10 +43,21 @@ export function extensionForContentType(contentType: string): string {
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
+    'audio/aac': 'aac',
+    'audio/m4a': 'm4a',
     'audio/mpeg': 'mp3',
     'audio/mp3': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/mpeg3': 'mp3',
     'audio/wav': 'wav',
+    'audio/wave': 'wav',
+    'audio/vnd.wave': 'wav',
     'audio/x-wav': 'wav',
+    'audio/x-aac': 'aac',
+    'audio/x-m4a': 'm4a',
+    'audio/x-mp3': 'mp3',
+    'audio/x-mpeg': 'mp3',
+    'audio/x-mpeg-3': 'mp3',
     'audio/ogg': 'ogg',
     'audio/webm': 'webm',
     'application/pdf': 'pdf',
@@ -44,7 +73,7 @@ export function isAllowedAssetContentType(assetType: string, contentType: string
   const normalized = normalizeContentType(contentType);
   if (!normalized || ACTIVE_CONTENT_TYPES.has(normalized)) return false;
   if (assetType === 'map' || assetType === 'token' || assetType === 'portrait') return normalized.startsWith('image/');
-  if (assetType === 'audio') return normalized.startsWith('audio/');
+  if (assetType === 'audio') return BROWSER_COMPATIBLE_AUDIO_CONTENT_TYPES.has(normalized);
   if (assetType === 'handout') {
     return normalized.startsWith('image/')
       || normalized === 'application/pdf'
