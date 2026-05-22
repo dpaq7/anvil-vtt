@@ -20,7 +20,7 @@ The app is in active beta development. Core director, player, campaign, live-ses
 
 - **Stage:** active beta / pre-release.
 - **Production frontend:** `https://anvilvtt.ca`, served as a Vite static app through Cloudflare Pages.
-- **Production API:** Cloudflare Worker API with Durable Objects, D1, and R2 bindings configured in `apps/server/wrangler.toml`.
+- **Production API:** `https://api.anvilvtt.ca`, served as a Cloudflare Worker custom domain with Durable Objects, D1, and R2 bindings configured in `apps/server/wrangler.toml`.
 - **Build status:** local validation is passing with `pnpm typecheck` and `pnpm deploy:check` as of May 21, 2026.
 - **Hosted CI:** no GitHub Actions workflow is checked in yet; build status is currently verified locally before release/merge.
 

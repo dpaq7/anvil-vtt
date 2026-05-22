@@ -19,7 +19,7 @@
     "build:server": "pnpm --filter @anvil/server build",
     "build:vtt": "pnpm --filter @anvil/vtt build",
     "deploy:check": "pnpm --filter @anvil/server build && pnpm --filter @anvil/vtt build",
-    "deploy:server": "pnpm --filter @anvil/server deploy",
+    "deploy:server": "pnpm --filter @anvil/server run deploy",
     "db:migrate:remote": "pnpm --filter @anvil/server db:migrate:remote"
   },
   "devDependencies": {
