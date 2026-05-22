@@ -21,6 +21,43 @@ import type { CreateAudioInput, AudioType, AudioMood, SceneType } from '@anvil/t
 const AUDIO_TYPES: AudioType[] = ['ambient', 'music', 'sound_effect'];
 const MOODS: AudioMood[] = ['combat', 'tense', 'calm', 'celebratory', 'eerie', 'exploration'];
 const SCENE_TYPES: SceneType[] = ['battle', 'negotiation', 'montage', 'story', 'respite'];
+const ACCEPTED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.aac'];
+const ACCEPTED_AUDIO_MIME_TYPES = new Set([
+  'audio/aac',
+  'audio/m4a',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/mpeg3',
+  'audio/vnd.wave',
+  'audio/wav',
+  'audio/wave',
+  'audio/x-aac',
+  'audio/x-m4a',
+  'audio/x-mp3',
+  'audio/x-mpeg',
+  'audio/x-mpeg-3',
+  'audio/x-wav',
+]);
+const AUDIO_ACCEPT_VALUE = [
+  'audio/aac',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/wav',
+  ...ACCEPTED_AUDIO_EXTENSIONS,
+].join(',');
+
+function getAudioFileError(file: File): string | null {
+  const fileName = file.name.toLowerCase();
+  const hasAcceptedExtension = ACCEPTED_AUDIO_EXTENSIONS.some((extension) =>
+    fileName.endsWith(extension),
+  );
+  const hasAcceptedMimeType =
+    file.type === '' || ACCEPTED_AUDIO_MIME_TYPES.has(file.type.toLowerCase());
+
+  if (hasAcceptedExtension && hasAcceptedMimeType) return null;
+  return 'Choose an MP3, WAV, M4A, or AAC file for reliable playback across browsers.';
+}
 
 export interface AudioUploadDialogProps {
   onUpload: (input: CreateAudioInput, file: File) => Promise<void>;
@@ -37,11 +74,21 @@ export function AudioUploadDialog({ onUpload, children }: AudioUploadDialogProps
   const [tagsInput, setTagsInput] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
+    const fileError = getAudioFileError(selected);
+    if (fileError) {
+      setFile(null);
+      setError(fileError);
+      e.target.value = '';
+      return;
+    }
+
+    setError(null);
     setFile(selected);
     if (!name) {
       setName(selected.name.replace(/\.[^.]+$/, ''));
@@ -56,7 +103,14 @@ export function AudioUploadDialog({ onUpload, children }: AudioUploadDialogProps
 
   const handleUpload = useCallback(async () => {
     if (!file || !name) return;
+    const fileError = getAudioFileError(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
+
     setUploading(true);
+    setError(null);
     setProgress(25);
 
     try {
@@ -84,6 +138,7 @@ export function AudioUploadDialog({ onUpload, children }: AudioUploadDialogProps
       setMood('');
       setSceneTypes([]);
       setTagsInput('');
+      setError(null);
       setOpen(false);
     } finally {
       setUploading(false);
@@ -98,6 +153,7 @@ export function AudioUploadDialog({ onUpload, children }: AudioUploadDialogProps
     setMood('');
     setSceneTypes([]);
     setTagsInput('');
+    setError(null);
     setUploading(false);
     setProgress(0);
     setOpen(false);
@@ -115,7 +171,7 @@ export function AudioUploadDialog({ onUpload, children }: AudioUploadDialogProps
             <input
               ref={fileInputRef}
               type="file"
-              accept="audio/mp3,audio/wav,audio/ogg,audio/mpeg,audio/webm,.mp3,.wav,.ogg"
+              accept={AUDIO_ACCEPT_VALUE}
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -128,6 +184,7 @@ export function AudioUploadDialog({ onUpload, children }: AudioUploadDialogProps
               <Upload className="mr-2 size-4" />
               {file ? file.name : 'Choose audio file...'}
             </Button>
+            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
           </div>
 
           {/* Name */}

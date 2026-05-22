@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { cn } from '../../lib/utils.js';
@@ -15,6 +15,20 @@ export interface AppShellProps {
   rightRailCollapsed?: boolean;
   onToggleLeftRail?: () => void;
   onToggleRightRail?: () => void;
+}
+
+function getSafeLocalStorage(): Storage | undefined {
+  if (typeof window === 'undefined') return undefined;
+
+  try {
+    const storage = window.localStorage;
+    const testKey = '__anvil_layout_storage_test__';
+    storage.setItem(testKey, '1');
+    storage.removeItem(testKey);
+    return storage;
+  } catch {
+    return undefined;
+  }
 }
 
 export function AppShell({
@@ -42,11 +56,12 @@ export function AppShell({
     ...(hasRight ? ['right-rail'] : []),
   ];
   const layoutKey = panelIds.join(':');
+  const layoutStorage = useMemo(getSafeLocalStorage, []);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'anvil-shell',
     panelIds,
-    storage: typeof window !== 'undefined' ? localStorage : undefined,
+    storage: layoutStorage,
   });
 
   return (
