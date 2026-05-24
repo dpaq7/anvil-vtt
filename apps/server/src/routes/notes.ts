@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import type { NoteScope as NoteAudienceScope } from '@anvil/types';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireCampaignMember } from '../security/authorization.js';
@@ -32,7 +33,10 @@ import {
   type NoteScope,
 } from '../repositories/notes.js';
 
-type ScopeResolver = (c: Context<AppEnv>) => NoteScope;
+type ScopeResolver = (
+  c: Context<AppEnv>,
+  requested?: NoteAudienceScope | null,
+) => NoteScope | Response | Promise<NoteScope | Response>;
 
 export const noteRoutes = new Hono<AppEnv>();
 export const personalNoteRoutes = new Hono<AppEnv>();
@@ -51,6 +55,60 @@ function bindScope(scope: NoteScope, userId: string, extra: unknown[] = []): unk
   return [...noteScopeBinds(scope, userId), ...extra];
 }
 
+function requestedNoteScope(value: unknown): NoteAudienceScope | null {
+  return value === 'director' || value === 'player' ? value : null;
+}
+
+function isResponse(value: NoteScope | Response): value is Response {
+  return value instanceof Response;
+}
+
+async function getAllowedCampaignNoteScopes(
+  c: Context<AppEnv>,
+  campaignId: string,
+  user: AuthUser,
+): Promise<NoteAudienceScope[]> {
+  const row = await c.env.DB.prepare(
+    `SELECT c.director_id, cm.role
+     FROM campaigns c
+     JOIN campaign_members cm ON cm.campaign_id = c.id AND cm.user_id = ?
+     WHERE c.id = ? AND c.deleted_at IS NULL`,
+  )
+    .bind(user.id, campaignId)
+    .first<{ director_id: string; role: string }>();
+
+  if (!row) return [];
+  if (row.director_id === user.id || row.role === 'director') return ['director', 'player'];
+  return ['player'];
+}
+
+async function resolveCampaignNoteScope(
+  c: Context<AppEnv>,
+  requested?: NoteAudienceScope | null,
+): Promise<NoteScope | Response> {
+  const campaignId = c.req.param('campaignId') ?? '';
+  const user = c.get('user') as AuthUser;
+  const allowedScopes = await getAllowedCampaignNoteScopes(c, campaignId, user);
+  const fallback = allowedScopes.includes(user.role as NoteAudienceScope)
+    ? user.role as NoteAudienceScope
+    : allowedScopes[0];
+  const audience = requested ?? requestedNoteScope(c.req.query('scope')) ?? fallback;
+  if (!audience || !allowedScopes.includes(audience)) {
+    return c.json({ error: 'Forbidden note scope' }, 403);
+  }
+  return campaignNoteScope(campaignId, audience);
+}
+
+noteRoutes.get('/:campaignId/note-scopes', async (c) => {
+  const campaignId = c.req.param('campaignId') ?? '';
+  const user = c.get('user') as AuthUser;
+  const scopes = await getAllowedCampaignNoteScopes(c, campaignId, user);
+  const defaultScope = scopes.includes(user.role as NoteAudienceScope)
+    ? user.role as NoteAudienceScope
+    : scopes[0] ?? 'player';
+  return c.json({ scopes, defaultScope });
+});
+
 function registerNoteHandlers(
   routes: Hono<AppEnv>,
   prefix: string,
@@ -59,7 +117,8 @@ function registerNoteHandlers(
   // ── Folder Routes ──
 
   routes.get(`${prefix}/note-folders`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const user = c.get('user') as AuthUser;
 
     await ensureAutoNoteFolders(c.env.DB, scope, user.id);
@@ -74,7 +133,6 @@ function registerNoteHandlers(
   });
 
   routes.post(`${prefix}/note-folders`, async (c) => {
-    const scope = resolveScope(c);
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
     if (rateLimitError) return rateLimitError;
@@ -84,6 +142,8 @@ function registerNoteHandlers(
     const parsed = parseCreateNoteFolderInput(raw.value);
     if (!parsed.ok) return jsonError(c, parsed);
     const body = parsed.value;
+    const scope = await resolveScope(c, body.scope);
+    if (isResponse(scope)) return scope;
 
     if (body.parentFolderId && !(await assertOwnedNoteFolder(c.env.DB, scope, user.id, body.parentFolderId))) {
       return c.json({ error: 'Parent folder not found' }, 404);
@@ -101,9 +161,9 @@ function registerNoteHandlers(
 
     if (scope.kind === 'campaign') {
       await c.env.DB.prepare(
-        'INSERT INTO note_folders (id, campaign_id, user_id, parent_folder_id, name, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO note_folders (id, campaign_id, user_id, scope, parent_folder_id, name, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-        .bind(id, scope.campaignId, user.id, body.parentFolderId ?? null, body.name, sortOrder)
+        .bind(id, scope.campaignId, user.id, scope.audience, body.parentFolderId ?? null, body.name, sortOrder)
         .run();
     } else {
       await c.env.DB.prepare(
@@ -120,7 +180,8 @@ function registerNoteHandlers(
   });
 
   routes.patch(`${prefix}/note-folders/:folderId`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const folderId = c.req.param('folderId');
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
@@ -175,7 +236,8 @@ function registerNoteHandlers(
   });
 
   routes.delete(`${prefix}/note-folders/:folderId`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const folderId = c.req.param('folderId');
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
@@ -195,7 +257,8 @@ function registerNoteHandlers(
   // ── Note Routes ──
 
   routes.get(`${prefix}/notes`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const user = c.get('user') as AuthUser;
 
     const results = await c.env.DB.prepare(
@@ -208,7 +271,8 @@ function registerNoteHandlers(
   });
 
   routes.get(`${prefix}/notes/search`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const user = c.get('user') as AuthUser;
     const q = normalizeNoteSearchQuery(c.req.query('q'));
 
@@ -227,7 +291,6 @@ function registerNoteHandlers(
   });
 
   routes.post(`${prefix}/notes`, async (c) => {
-    const scope = resolveScope(c);
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
     if (rateLimitError) return rateLimitError;
@@ -237,6 +300,8 @@ function registerNoteHandlers(
     const parsed = parseCreateNoteInput(raw.value);
     if (!parsed.ok) return jsonError(c, parsed);
     const body = parsed.value;
+    const scope = await resolveScope(c, body.scope);
+    if (isResponse(scope)) return scope;
 
     if (!(await assertOwnedNoteFolder(c.env.DB, scope, user.id, body.folderId))) {
       return c.json({ error: 'Folder not found' }, 404);
@@ -253,9 +318,9 @@ function registerNoteHandlers(
 
     if (scope.kind === 'campaign') {
       await c.env.DB.prepare(
-        'INSERT INTO notes (id, campaign_id, user_id, folder_id, title, content, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO notes (id, campaign_id, user_id, scope, folder_id, title, content, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
-        .bind(id, scope.campaignId, user.id, body.folderId, body.title, body.content ?? '', sortOrder)
+        .bind(id, scope.campaignId, user.id, scope.audience, body.folderId, body.title, body.content ?? '', sortOrder)
         .run();
     } else {
       await c.env.DB.prepare(
@@ -272,7 +337,8 @@ function registerNoteHandlers(
   });
 
   routes.patch(`${prefix}/notes/:noteId`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const noteId = c.req.param('noteId');
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
@@ -326,7 +392,8 @@ function registerNoteHandlers(
   });
 
   routes.delete(`${prefix}/notes/:noteId`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const noteId = c.req.param('noteId');
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
@@ -340,7 +407,8 @@ function registerNoteHandlers(
   });
 
   routes.put(`${prefix}/notes/reorder`, async (c) => {
-    const scope = resolveScope(c);
+    const scope = await resolveScope(c);
+    if (isResponse(scope)) return scope;
     const user = c.get('user') as AuthUser;
     const rateLimitError = await noteRateLimits.write(c, user.id);
     if (rateLimitError) return rateLimitError;
@@ -400,5 +468,5 @@ function registerNoteHandlers(
   });
 }
 
-registerNoteHandlers(noteRoutes, '/:campaignId', (c) => campaignNoteScope(c.req.param('campaignId')!));
+registerNoteHandlers(noteRoutes, '/:campaignId', resolveCampaignNoteScope);
 registerNoteHandlers(personalNoteRoutes, '/personal', () => personalNoteScope);
