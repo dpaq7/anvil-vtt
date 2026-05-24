@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import type {
   NoteFolder,
   Note,
+  NoteScope,
   CreateNoteFolderInput,
   UpdateNoteFolderInput,
   CreateNoteInput,
@@ -32,7 +33,7 @@ interface NotesState {
   error: string | null;
 
   // Actions — data fetching
-  loadAll: (notebookId: string) => Promise<void>;
+  loadAll: (notebookId: string, scope?: NoteScope) => Promise<void>;
 
   // Actions — folders
   createFolder: (notebookId: string, input: CreateNoteFolderInput) => Promise<NoteFolder>;
@@ -48,7 +49,7 @@ interface NotesState {
   reorderItems: (notebookId: string, input: ReorderNotesInput) => Promise<void>;
 
   // Actions — search
-  searchNotes: (notebookId: string, query: string) => Promise<void>;
+  searchNotes: (notebookId: string, query: string, scope?: NoteScope) => Promise<void>;
   clearSearch: () => void;
 
   // Actions — navigation
@@ -88,13 +89,14 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Data Fetching ──
 
-  loadAll: async (notebookId) => {
+  loadAll: async (notebookId, scope) => {
     set({ loading: true, error: null });
     try {
       const base = notebookApiBase(notebookId);
+      const scopeQuery = scope && notebookId !== PERSONAL_NOTEBOOK_ID ? `?scope=${scope}` : '';
       const [foldersRes, notesRes] = await Promise.all([
-        api.get<{ folders: NoteFolder[] }>(`${base}/note-folders`),
-        api.get<{ notes: Note[] }>(`${base}/notes`),
+        api.get<{ folders: NoteFolder[] }>(`${base}/note-folders${scopeQuery}`),
+        api.get<{ notes: Note[] }>(`${base}/notes${scopeQuery}`),
       ]);
       set({ folders: foldersRes.folders, notes: notesRes.notes, loading: false });
     } catch (e) {
@@ -245,7 +247,7 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Search ──
 
-  searchNotes: async (notebookId, query) => {
+  searchNotes: async (notebookId, query, scope) => {
     set({ searchQuery: query });
     if (!query.trim()) {
       set({ searchResults: null });
@@ -253,8 +255,10 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
     }
     try {
       const base = notebookApiBase(notebookId);
+      const params = new URLSearchParams({ q: query });
+      if (scope && notebookId !== PERSONAL_NOTEBOOK_ID) params.set('scope', scope);
       const { notes } = await api.get<{ notes: Note[] }>(
-        `${base}/notes/search?q=${encodeURIComponent(query)}`,
+        `${base}/notes/search?${params.toString()}`,
       );
       set({ searchResults: notes });
     } catch (e) {

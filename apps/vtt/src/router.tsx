@@ -63,6 +63,7 @@ const Assets = lazyWithChunkReload(() => import('./pages/Assets.js').then((modul
 const Notes = lazyWithChunkReload(() => import('./pages/Notes.js').then((module) => ({ default: module.Notes })));
 const Account = lazyWithChunkReload(() => import('./pages/Account.js').then((module) => ({ default: module.Account })));
 const SessionPage = lazyWithChunkReload(() => import('./pages/session/SessionPage.js').then((module) => ({ default: module.SessionPage })));
+const PhoneSessionPage = lazyWithChunkReload(() => import('./pages/session/PhoneSessionPage.js').then((module) => ({ default: module.PhoneSessionPage })));
 const LivePage = lazyWithChunkReload(() => import('./pages/LivePage.js').then((module) => ({ default: module.LivePage })));
 
 const routeFallback = (
@@ -173,6 +174,15 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         {routeChunk(<SessionPage />)}
+      </ProtectedRoute>
+    ),
+    errorElement: routeErrorElement,
+  },
+  {
+    path: '/app/session/:id/phone',
+    element: (
+      <ProtectedRoute>
+        {routeChunk(<PhoneSessionPage />)}
       </ProtectedRoute>
     ),
     errorElement: routeErrorElement,
