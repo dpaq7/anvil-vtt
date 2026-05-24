@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { X, Trash2, Map as MapIcon } from 'lucide-react';
+import { useState, useCallback } from "react";
+import { X, Trash2, Map as MapIcon } from "lucide-react";
 import {
   Button,
   Input,
@@ -9,31 +9,57 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@anvil/ui';
-import type { MapAsset, UpdateMapInput } from '@anvil/types';
+} from "@anvil/ui";
+import type { MapAsset, UpdateMapInput } from "@anvil/types";
+import {
+  BACKGROUND_SCENE_TYPES,
+  type BackgroundSceneType,
+} from "../../lib/scene-backgrounds.js";
 
 // ── Option lists for dropdowns ──
 
-const SCENE_TYPES = ['battle', 'story', 'montage', 'negotiation', 'respite'] as const;
-const GRID_TYPES = ['gridded', 'gridless', 'hex'] as const;
-const MAP_SIZES = ['small', 'medium', 'large'] as const;
+const SCENE_TYPES = [
+  "battle",
+  "story",
+  "montage",
+  "negotiation",
+  "respite",
+] as const;
+const GRID_TYPES = ["gridded", "gridless", "hex"] as const;
+const MAP_SIZES = ["small", "medium", "large"] as const;
 
 const TERRAIN_TAGS = [
-  'forest', 'cave', 'urban', 'dungeon', 'castle',
-  'ship', 'wilderness', 'underwater', 'planar',
+  "forest",
+  "cave",
+  "urban",
+  "dungeon",
+  "castle",
+  "ship",
+  "wilderness",
+  "underwater",
+  "planar",
 ] as const;
 
 const BIOMES = [
-  'arctic', 'desert', 'coastal', 'mountain',
-  'swamp', 'volcanic', 'grassland', 'underground',
+  "arctic",
+  "desert",
+  "coastal",
+  "mountain",
+  "swamp",
+  "volcanic",
+  "grassland",
+  "underground",
 ] as const;
 
-const SCENE_BADGE_VARIANT: Record<string, 'battle' | 'story' | 'montage' | 'negotiation' | 'respite'> = {
-  battle: 'battle',
-  story: 'story',
-  montage: 'montage',
-  negotiation: 'negotiation',
-  respite: 'respite',
+const SCENE_BADGE_VARIANT: Record<
+  string,
+  "battle" | "story" | "montage" | "negotiation" | "respite"
+> = {
+  battle: "battle",
+  story: "story",
+  montage: "montage",
+  negotiation: "negotiation",
+  respite: "respite",
 };
 
 // ── Component ──
@@ -45,24 +71,31 @@ export interface MapDetailPaneProps {
   onClose: () => void;
 }
 
-export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPaneProps) {
+export function MapDetailPane({
+  map,
+  onUpdate,
+  onDelete,
+  onClose,
+}: MapDetailPaneProps) {
   const [name, setName] = useState(map.name);
-  const [sceneType, setSceneType] = useState<string>(map.sceneType ?? '');
+  const [sceneType, setSceneType] = useState<string>(map.sceneType ?? "");
   const [gridType, setGridType] = useState<string>(map.gridType);
   const [size, setSize] = useState<string>(map.size);
   const [terrains, setTerrains] = useState<string[]>(map.terrains);
   const [biomes, setBiomes] = useState<string[]>(map.biomes);
+  const [tags, setTags] = useState<string[]>(map.tags);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Track dirty state
   const isDirty =
     name !== map.name ||
-    sceneType !== (map.sceneType ?? '') ||
+    sceneType !== (map.sceneType ?? "") ||
     gridType !== map.gridType ||
     size !== map.size ||
     JSON.stringify(terrains) !== JSON.stringify(map.terrains) ||
-    JSON.stringify(biomes) !== JSON.stringify(map.biomes);
+    JSON.stringify(biomes) !== JSON.stringify(map.biomes) ||
+    JSON.stringify(tags) !== JSON.stringify(map.tags);
 
   const handleSave = useCallback(async () => {
     if (!isDirty) return;
@@ -70,16 +103,41 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
     try {
       await onUpdate(map.id, {
         name: name !== map.name ? name : undefined,
-        sceneType: sceneType !== (map.sceneType ?? '') ? ((sceneType || null) as MapAsset['sceneType']) : undefined,
-        gridType: gridType !== map.gridType ? (gridType as MapAsset['gridType']) : undefined,
-        size: size !== map.size ? (size as MapAsset['size']) : undefined,
-        terrains: JSON.stringify(terrains) !== JSON.stringify(map.terrains) ? (terrains as MapAsset['terrains']) : undefined,
-        biomes: JSON.stringify(biomes) !== JSON.stringify(map.biomes) ? (biomes as MapAsset['biomes']) : undefined,
+        sceneType:
+          sceneType !== (map.sceneType ?? "")
+            ? ((sceneType || null) as MapAsset["sceneType"])
+            : undefined,
+        gridType:
+          gridType !== map.gridType
+            ? (gridType as MapAsset["gridType"])
+            : undefined,
+        size: size !== map.size ? (size as MapAsset["size"]) : undefined,
+        terrains:
+          JSON.stringify(terrains) !== JSON.stringify(map.terrains)
+            ? (terrains as MapAsset["terrains"])
+            : undefined,
+        biomes:
+          JSON.stringify(biomes) !== JSON.stringify(map.biomes)
+            ? (biomes as MapAsset["biomes"])
+            : undefined,
+        tags:
+          JSON.stringify(tags) !== JSON.stringify(map.tags) ? tags : undefined,
       });
     } finally {
       setSaving(false);
     }
-  }, [isDirty, name, sceneType, gridType, size, terrains, biomes, map, onUpdate]);
+  }, [
+    isDirty,
+    name,
+    sceneType,
+    gridType,
+    size,
+    terrains,
+    biomes,
+    tags,
+    map,
+    onUpdate,
+  ]);
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) {
@@ -101,6 +159,16 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
       prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b],
     );
   };
+
+  const toggleBackgroundTag = (tag: BackgroundSceneType) => {
+    setTags((prev) =>
+      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag],
+    );
+  };
+
+  const otherTags = tags.filter(
+    (tag) => !BACKGROUND_SCENE_TYPES.includes(tag as BackgroundSceneType),
+  );
 
   return (
     <div className="flex h-full w-80 flex-col border-l border-zinc-800 bg-zinc-950">
@@ -134,7 +202,9 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Name */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-zinc-400">Name</label>
+          <label className="mb-1 block text-xs font-medium text-zinc-400">
+            Name
+          </label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -145,11 +215,13 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Scene Type */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-zinc-400">Scene Type</label>
+          <label className="mb-1 block text-xs font-medium text-zinc-400">
+            Scene Type
+          </label>
           <Select
             value={sceneType}
             onValueChange={(v: string) => {
-              setSceneType(v === '__none__' ? '' : v);
+              setSceneType(v === "__none__" ? "" : v);
             }}
           >
             <SelectTrigger className="h-8 text-xs">
@@ -170,8 +242,13 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Grid Type */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-zinc-400">Grid Type</label>
-          <Select value={gridType} onValueChange={(v: string) => setGridType(v)}>
+          <label className="mb-1 block text-xs font-medium text-zinc-400">
+            Grid Type
+          </label>
+          <Select
+            value={gridType}
+            onValueChange={(v: string) => setGridType(v)}
+          >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -187,7 +264,9 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Size */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-zinc-400">Size</label>
+          <label className="mb-1 block text-xs font-medium text-zinc-400">
+            Size
+          </label>
           <Select value={size} onValueChange={(v: string) => setSize(v)}>
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
@@ -204,7 +283,9 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Terrain Tags — toggle chips */}
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-zinc-400">Terrain</label>
+          <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Terrain
+          </label>
           <div className="flex flex-wrap gap-1.5">
             {TERRAIN_TAGS.map((tag) => {
               const active = terrains.includes(tag);
@@ -215,8 +296,8 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
                   onClick={() => toggleTerrain(tag)}
                   className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${
                     active
-                      ? 'border-anvil-accent/50 bg-anvil-accent/15 text-anvil-accent'
-                      : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                      ? "border-anvil-accent/50 bg-anvil-accent/15 text-anvil-accent"
+                      : "border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
                   }`}
                 >
                   {tag}
@@ -228,7 +309,9 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Biomes — toggle chips */}
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-zinc-400">Biome</label>
+          <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Biome
+          </label>
           <div className="flex flex-wrap gap-1.5">
             {BIOMES.map((b) => {
               const active = biomes.includes(b);
@@ -239,8 +322,8 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
                   onClick={() => toggleBiome(b)}
                   className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${
                     active
-                      ? 'border-anvil-accent/50 bg-anvil-accent/15 text-anvil-accent'
-                      : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                      ? "border-anvil-accent/50 bg-anvil-accent/15 text-anvil-accent"
+                      : "border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
                   }`}
                 >
                   {b}
@@ -250,13 +333,43 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
           </div>
         </div>
 
-        {/* Current tags (read-only — user-defined from upload) */}
-        {map.tags.length > 0 && (
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Background Tags
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {BACKGROUND_SCENE_TYPES.map((tag) => {
+              const active = tags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleBackgroundTag(tag)}
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${
+                    active
+                      ? "border-anvil-accent/50 bg-anvil-accent/15 text-anvil-accent"
+                      : "border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
+                  }`}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {otherTags.length > 0 && (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Tags</label>
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+              Other Tags
+            </label>
             <div className="flex flex-wrap gap-1">
-              {map.tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-[9px] px-1.5 py-0">
+              {otherTags.map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="outline"
+                  className="text-[9px] px-1.5 py-0"
+                >
                   {tag}
                 </Badge>
               ))}
@@ -267,8 +380,13 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
         {/* Scene type badge preview */}
         {sceneType && (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Preview</label>
-            <Badge variant={SCENE_BADGE_VARIANT[sceneType] ?? 'secondary'} className="capitalize">
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+              Preview
+            </label>
+            <Badge
+              variant={SCENE_BADGE_VARIANT[sceneType] ?? "secondary"}
+              className="capitalize"
+            >
               {sceneType}
             </Badge>
           </div>
@@ -276,7 +394,11 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
 
         {/* Metadata */}
         <div className="space-y-1 text-[10px] text-zinc-600">
-          {map.width && map.height && <p>Dimensions: {map.width}&times;{map.height} squares</p>}
+          {map.width && map.height && (
+            <p>
+              Dimensions: {map.width}&times;{map.height} squares
+            </p>
+          )}
           <p>Created: {new Date(map.createdAt).toLocaleDateString()}</p>
           <p>Updated: {new Date(map.updatedAt).toLocaleDateString()}</p>
         </div>
@@ -289,18 +411,14 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
           disabled={!isDirty || saving}
           className="flex-1"
         >
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? "Saving..." : "Save"}
         </Button>
         <Button
           variant="destructive"
           onClick={handleDelete}
           className="shrink-0"
         >
-          {confirmDelete ? (
-            'Confirm?'
-          ) : (
-            <Trash2 className="size-4" />
-          )}
+          {confirmDelete ? "Confirm?" : <Trash2 className="size-4" />}
         </Button>
       </div>
     </div>
