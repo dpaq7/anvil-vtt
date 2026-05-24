@@ -48,6 +48,7 @@ app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISO
 app.get('/api/sessions/:id/ws', async (c) => {
   const sessionId = c.req.param('id');
   const token = c.req.query('token');
+  const clientKind = c.req.query('clientKind') === 'phone' ? 'phone' : 'desktop';
 
   if (!token) {
     return c.json({ error: 'Missing token' }, 401);
@@ -79,6 +80,7 @@ app.get('/api/sessions/:id/ws', async (c) => {
   wsUrl.searchParams.set('username', user.username);
   wsUrl.searchParams.set('avatarUrl', user.avatar_url ?? '');
   wsUrl.searchParams.set('role', row.role);
+  wsUrl.searchParams.set('clientKind', clientKind);
   wsUrl.searchParams.set('sessionId', sessionId);
   wsUrl.searchParams.set('campaignId', row.campaign_id);
   if (row.hero_id) {

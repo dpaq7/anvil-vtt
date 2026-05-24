@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import type {
   NoteFolder,
   Note,
+  NoteScope,
   CreateNoteFolderInput,
   UpdateNoteFolderInput,
   CreateNoteInput,
@@ -24,7 +25,7 @@ interface NotesState {
   error: string | null;
 
   // Actions — data fetching
-  loadAll: (campaignId: string) => Promise<void>;
+  loadAll: (campaignId: string, scope?: NoteScope) => Promise<void>;
 
   // Actions — folders
   createFolder: (campaignId: string, input: CreateNoteFolderInput) => Promise<NoteFolder>;
@@ -40,7 +41,7 @@ interface NotesState {
   reorderItems: (campaignId: string, input: ReorderNotesInput) => Promise<void>;
 
   // Actions — search
-  searchNotes: (campaignId: string, query: string) => Promise<void>;
+  searchNotes: (campaignId: string, query: string, scope?: NoteScope) => Promise<void>;
   clearSearch: () => void;
 
   // Actions — navigation
@@ -80,12 +81,13 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Data Fetching ──
 
-  loadAll: async (campaignId) => {
+  loadAll: async (campaignId, scope) => {
     set({ loading: true, error: null });
     try {
+      const scopeQuery = scope ? `?scope=${scope}` : '';
       const [foldersRes, notesRes] = await Promise.all([
-        api.get<{ folders: NoteFolder[] }>(`/api/campaigns/${campaignId}/note-folders`),
-        api.get<{ notes: Note[] }>(`/api/campaigns/${campaignId}/notes`),
+        api.get<{ folders: NoteFolder[] }>(`/api/campaigns/${campaignId}/note-folders${scopeQuery}`),
+        api.get<{ notes: Note[] }>(`/api/campaigns/${campaignId}/notes${scopeQuery}`),
       ]);
       set({ folders: foldersRes.folders, notes: notesRes.notes, loading: false });
     } catch (e) {
@@ -229,15 +231,17 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Search ──
 
-  searchNotes: async (campaignId, query) => {
+  searchNotes: async (campaignId, query, scope) => {
     set({ searchQuery: query });
     if (!query.trim()) {
       set({ searchResults: null });
       return;
     }
     try {
+      const params = new URLSearchParams({ q: query });
+      if (scope) params.set('scope', scope);
       const { notes } = await api.get<{ notes: Note[] }>(
-        `/api/campaigns/${campaignId}/notes/search?q=${encodeURIComponent(query)}`,
+        `/api/campaigns/${campaignId}/notes/search?${params.toString()}`,
       );
       set({ searchResults: notes });
     } catch (e) {

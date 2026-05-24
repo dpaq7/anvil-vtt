@@ -20,6 +20,7 @@ const Assets = lazy(() => import('./pages/Assets.js').then((module) => ({ defaul
 const Notes = lazy(() => import('./pages/Notes.js').then((module) => ({ default: module.Notes })));
 const Account = lazy(() => import('./pages/Account.js').then((module) => ({ default: module.Account })));
 const SessionPage = lazy(() => import('./pages/session/SessionPage.js').then((module) => ({ default: module.SessionPage })));
+const PhoneSessionPage = lazy(() => import('./pages/session/PhoneSessionPage.js').then((module) => ({ default: module.PhoneSessionPage })));
 const LivePage = lazy(() => import('./pages/LivePage.js').then((module) => ({ default: module.LivePage })));
 
 const routeFallback = (
@@ -118,6 +119,14 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         {routeChunk(<SessionPage />)}
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/app/session/:id/phone',
+    element: (
+      <ProtectedRoute>
+        {routeChunk(<PhoneSessionPage />)}
       </ProtectedRoute>
     ),
   },

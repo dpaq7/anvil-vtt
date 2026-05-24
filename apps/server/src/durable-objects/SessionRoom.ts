@@ -25,6 +25,8 @@ import type {
   TokenActionPowerRoll,
   TokenActionRequest,
   TokenActionResult,
+  HeroInventoryItemInput,
+  HeroTrackerOperation,
   DrawSteelDieResult,
   DrawSteelRollRequest,
   DrawSteelRollResult,
@@ -46,6 +48,7 @@ interface ConnectionMeta {
   username: string;
   avatarUrl: string | null;
   role: 'director' | 'player';
+  clientKind: 'desktop' | 'phone';
   heroId: string | null;
   ready: boolean;
   sessionId: string;
@@ -144,6 +147,7 @@ function encodeTags(meta: ConnectionMeta): string[] {
     `uid:${meta.userId}`,
     `u:${meta.username}`,
     `r:${meta.role}`,
+    `ck:${meta.clientKind}`,
     `sid:${meta.sessionId}`,
   ];
   if (meta.avatarUrl) tags.push(`av:${meta.avatarUrl}`);
@@ -163,6 +167,7 @@ function decodeTags(tags: string[]): ConnectionMeta | null {
   const userId = map.get('uid');
   const username = map.get('u');
   const role = map.get('r') as 'director' | 'player' | undefined;
+  const clientKind = map.get('ck') === 'phone' ? 'phone' : 'desktop';
   const sessionId = map.get('sid');
   if (!userId || !username || !role || !sessionId) return null;
   return {
@@ -170,6 +175,7 @@ function decodeTags(tags: string[]): ConnectionMeta | null {
     username,
     avatarUrl: map.get('av') ?? null,
     role,
+    clientKind,
     heroId: map.get('h') ?? null,
     ready: map.get('rdy') === '1',
     sessionId,
@@ -336,6 +342,26 @@ export class SessionRoom extends DurableObject<Env> {
     return connections;
   }
 
+  private hasDesktopAnchor(meta: ConnectionMeta): boolean {
+    if (meta.clientKind !== 'phone') return true;
+    return this.getConnections().some(({ meta: candidate }) =>
+      candidate.clientKind !== 'phone' &&
+      candidate.userId === meta.userId &&
+      candidate.sessionId === meta.sessionId
+    );
+  }
+
+  private sendPhoneAnchorStatus(ws: WebSocket, meta: ConnectionMeta): void {
+    if (meta.clientKind !== 'phone') return;
+    this.sendTo(ws, { type: 'phone_anchor_status', anchored: this.hasDesktopAnchor(meta) });
+  }
+
+  private broadcastPhoneAnchorStatus(): void {
+    for (const { ws, meta } of this.getConnections()) {
+      this.sendPhoneAnchorStatus(ws, meta);
+    }
+  }
+
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
@@ -372,6 +398,7 @@ export class SessionRoom extends DurableObject<Env> {
     const username = url.searchParams.get('username');
     const avatarUrl = url.searchParams.get('avatarUrl');
     const role = url.searchParams.get('role') as 'director' | 'player';
+    const clientKind = url.searchParams.get('clientKind') === 'phone' ? 'phone' : 'desktop';
     const heroId = url.searchParams.get('heroId');
     const sessionId = url.searchParams.get('sessionId');
     const campaignId = url.searchParams.get('campaignId');
@@ -391,6 +418,7 @@ export class SessionRoom extends DurableObject<Env> {
       username,
       avatarUrl,
       role,
+      clientKind,
       heroId,
       ready: false,
       sessionId,
@@ -404,6 +432,7 @@ export class SessionRoom extends DurableObject<Env> {
 
     // Broadcast updated participant list
     this.broadcastParticipants();
+    this.broadcastPhoneAnchorStatus();
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -431,12 +460,26 @@ export class SessionRoom extends DurableObject<Env> {
       return;
     }
 
+    if (meta.clientKind === 'phone' && msg.type !== 'ping' && msg.type !== 'request_state' && !this.hasDesktopAnchor(meta)) {
+      this.sendPhoneAnchorStatus(ws, meta);
+      this.sendTo(ws, {
+        type: 'error',
+        code: 'PHONE_ANCHOR_REQUIRED',
+        message: 'Open this session on desktop first to sync the phone companion.',
+      });
+      return;
+    }
+
     switch (msg.type) {
       case 'ping':
         this.sendTo(ws, { type: 'pong' });
         break;
 
       case 'request_state':
+        if (meta.clientKind === 'phone') {
+          this.sendPhoneAnchorStatus(ws, meta);
+          if (!this.hasDesktopAnchor(meta)) return;
+        }
         await this.sendState(ws);
         break;
 
@@ -591,6 +634,10 @@ export class SessionRoom extends DurableObject<Env> {
 
       case 'draw_steel_roll':
         this.handleDrawSteelRoll(meta, msg.roll);
+        break;
+
+      case 'hero_tracker_update':
+        this.handleHeroTrackerUpdate(ws, meta, msg.heroId, msg.op);
         break;
 
       case 'use_ability':
@@ -790,11 +837,13 @@ export class SessionRoom extends DurableObject<Env> {
     await this.persistActiveSceneSnapshot();
     // No Map to clean up — tags are on the socket itself
     this.broadcastParticipants();
+    this.broadcastPhoneAnchorStatus();
   }
 
   override async webSocketError(_ws: WebSocket): Promise<void> {
     await this.persistActiveSceneSnapshot();
     this.broadcastParticipants();
+    this.broadcastPhoneAnchorStatus();
   }
 
   /**
@@ -940,6 +989,9 @@ export class SessionRoom extends DurableObject<Env> {
 
   private createHeroEntity(hero: HeroEntityRow, index: number): SessionState['entities'][number] {
     const data = parseJson<Record<string, unknown>>(hero.data, {});
+    const state = data['state'] && typeof data['state'] === 'object'
+      ? data['state'] as Record<string, unknown>
+      : {};
     const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
     const selectedAbilityIds = parseJson<string[]>(hero.abilities, []);
     const heroClass = hero.hero_class && HeroLogic.isValidHeroClass(hero.hero_class)
@@ -951,7 +1003,13 @@ export class SessionRoom extends DurableObject<Env> {
       : 20;
     const maxRecoveries = heroClass ? HeroLogic.getMaxRecoveries(heroClass) : null;
     const resourceType = heroClass ? HeroLogic.getHeroicResourceType(heroClass) : null;
+    const startingResource = heroClass ? HeroLogic.getStartingHeroicResource(heroClass) : 0;
     const speed = HeroLogic.getBaseSpeed(hero.ancestry ?? '') + (hero.kit ? KitLogic.getKitSpeedBonus(hero.kit) : 0);
+    const inventory = Array.isArray(data['inventory'])
+      ? data['inventory']
+      : Array.isArray(state['inventory'])
+        ? state['inventory']
+        : [];
 
     return {
       id: hero.id,
@@ -967,11 +1025,27 @@ export class SessionRoom extends DurableObject<Env> {
       kit: hero.kit,
       portraitUrl: hero.portrait_url,
       maxStamina,
-      currentStamina: typeof data['staminaCurrent'] === 'number' ? data['staminaCurrent'] : maxStamina,
+      currentStamina: typeof data['staminaCurrent'] === 'number'
+        ? data['staminaCurrent']
+        : typeof data['currentStamina'] === 'number'
+          ? data['currentStamina']
+          : typeof state['currentStamina'] === 'number'
+            ? state['currentStamina']
+            : maxStamina,
       recoveriesMax: maxRecoveries,
-      recoveriesCurrent: typeof data['recoveriesCurrent'] === 'number' ? data['recoveriesCurrent'] : maxRecoveries,
-      heroicResource: heroClass ? HeroLogic.getStartingHeroicResource(heroClass) : 0,
+      recoveriesCurrent: typeof data['recoveriesCurrent'] === 'number'
+        ? data['recoveriesCurrent']
+        : typeof data['currentRecoveries'] === 'number'
+          ? data['currentRecoveries']
+          : maxRecoveries,
+      heroicResource: typeof data['heroicResource'] === 'number'
+        ? data['heroicResource']
+        : typeof state['heroicResource'] === 'number'
+          ? state['heroicResource']
+          : startingResource,
       heroicResourceName: resourceType ? HeroLogic.getHeroicResourceName(resourceType) : 'Resource',
+      victories: typeof data['victories'] === 'number' ? data['victories'] : 0,
+      inventory,
       speed,
       conditions: [],
       might: characteristics['might'] ?? 0,
@@ -1530,6 +1604,128 @@ export class SessionRoom extends DurableObject<Env> {
       });
     }
     return null;
+  }
+
+  private handleHeroTrackerUpdate(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    heroId: string,
+    op: HeroTrackerOperation,
+  ): void {
+    const entity = this.sessionState?.entities.find((candidate) => candidate.id === heroId);
+    if (!entity || entity.type !== 'hero') {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Hero not found' });
+      return;
+    }
+
+    if (meta.role === 'player' && (entity.id !== meta.heroId || entity['ownerUserId'] !== meta.userId)) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own hero tracker' });
+      return;
+    }
+
+    const changes: Record<string, unknown> = {};
+
+    switch (op.kind) {
+      case 'adjust_stamina': {
+        const current = this.numberFromEntity(entity, 'currentStamina', 0);
+        const max = this.numberFromEntity(entity, 'maxStamina', Math.max(0, current));
+        changes['currentStamina'] = this.clampInt(current + op.delta, 0, Math.max(0, max));
+        break;
+      }
+      case 'set_stamina': {
+        const max = this.numberFromEntity(entity, 'maxStamina', Math.max(0, op.value));
+        changes['currentStamina'] = this.clampInt(op.value, 0, Math.max(0, max));
+        break;
+      }
+      case 'adjust_recoveries': {
+        const current = this.numberFromEntity(entity, 'recoveriesCurrent', 0);
+        const max = this.numberFromEntity(entity, 'recoveriesMax', Math.max(0, current));
+        changes['recoveriesCurrent'] = this.clampInt(current + op.delta, 0, Math.max(0, max));
+        break;
+      }
+      case 'spend_recovery': {
+        const current = this.numberFromEntity(entity, 'recoveriesCurrent', 0);
+        changes['recoveriesCurrent'] = this.clampInt(current - 1, 0, Math.max(0, current));
+        break;
+      }
+      case 'adjust_heroic_resource': {
+        const current = this.numberFromEntity(entity, 'heroicResource', 0);
+        changes['heroicResource'] = this.clampInt(current + op.delta, 0, 99);
+        break;
+      }
+      case 'adjust_victories': {
+        const current = this.numberFromEntity(entity, 'victories', 0);
+        changes['victories'] = this.clampInt(current + op.delta, 0, 99);
+        break;
+      }
+      case 'inventory_add': {
+        const item = this.normalizeInventoryItem(op.item);
+        if (!item) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Inventory item needs a name' });
+          return;
+        }
+        changes['inventory'] = [...this.getInventory(entity), item];
+        break;
+      }
+      case 'inventory_update': {
+        const inventory = this.getInventory(entity);
+        const itemIndex = inventory.findIndex((item) => item.id === op.itemId);
+        if (itemIndex === -1) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Inventory item not found' });
+          return;
+        }
+        const next = [...inventory];
+        const updated = this.normalizeInventoryItem({ ...next[itemIndex], ...op.changes, id: op.itemId }, next[itemIndex]);
+        if (!updated) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Inventory item needs a name' });
+          return;
+        }
+        next[itemIndex] = updated;
+        changes['inventory'] = next;
+        break;
+      }
+      case 'inventory_remove':
+        changes['inventory'] = this.getInventory(entity).filter((item) => item.id !== op.itemId);
+        break;
+    }
+
+    if (Object.keys(changes).length === 0) return;
+    Object.assign(entity, changes);
+    this.broadcast({ type: 'entity_updated', entityId: heroId, changes });
+  }
+
+  private numberFromEntity(entity: SessionEntity, key: string, fallback: number): number {
+    const value = entity[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  }
+
+  private clampInt(value: number, min: number, max: number): number {
+    const normalized = Number.isFinite(value) ? Math.round(value) : min;
+    return Math.max(min, Math.min(max, normalized));
+  }
+
+  private getInventory(entity: SessionEntity): Array<Required<HeroInventoryItemInput>> {
+    const raw = entity['inventory'];
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((item) => this.normalizeInventoryItem(item as HeroInventoryItemInput))
+      .filter((item): item is Required<HeroInventoryItemInput> => item !== null);
+  }
+
+  private normalizeInventoryItem(
+    input: Partial<HeroInventoryItemInput>,
+    existing?: Required<HeroInventoryItemInput>,
+  ): Required<HeroInventoryItemInput> | null {
+    const name = typeof input.name === 'string' ? input.name.trim() : existing?.name ?? '';
+    if (!name) return null;
+    return {
+      id: existing?.id ?? (typeof input.id === 'string' && input.id.trim() ? input.id.trim() : crypto.randomUUID()),
+      name,
+      quantity: this.clampInt(typeof input.quantity === 'number' ? input.quantity : existing?.quantity ?? 1, 0, 999),
+      category: typeof input.category === 'string' && input.category.trim() ? input.category.trim() : existing?.category ?? 'misc',
+      description: typeof input.description === 'string' ? input.description : existing?.description ?? '',
+      notes: typeof input.notes === 'string' ? input.notes : existing?.notes ?? '',
+    };
   }
 
   /** Roll n d10 using crypto-secure, unbiased randomness. */

@@ -15,6 +15,7 @@ export type ClientMessage =
   | { type: 'combat_action'; action: CombatAction }
   | { type: 'token_action'; action: TokenActionRequest }
   | { type: 'draw_steel_roll'; roll: DrawSteelRollRequest }
+  | { type: 'hero_tracker_update'; heroId: string; op: HeroTrackerOperation }
   | { type: 'use_ability'; sourceId: string; targetId: string; abilityId: string }
   | { type: 'ready'; ready: boolean }
   | { type: 'select_hero'; heroId: string }
@@ -50,6 +51,7 @@ export type ClientMessage =
 // Server → Client
 export type ServerMessage =
   | { type: 'state'; state: SessionState }
+  | { type: 'phone_anchor_status'; anchored: boolean }
   | { type: 'scene_changed'; sceneId: string }
   | { type: 'scene_reverted'; sceneId: string }
   | { type: 'entity_created'; entity: EntityData }
@@ -228,6 +230,28 @@ export interface TokenActionResult {
   effects: TokenActionEffect[];
   summary: string;
   timestamp: number;
+}
+
+// ── Phone Companion Hero Tracker ──
+
+export type HeroTrackerOperation =
+  | { kind: 'adjust_stamina'; delta: number }
+  | { kind: 'set_stamina'; value: number }
+  | { kind: 'adjust_recoveries'; delta: number }
+  | { kind: 'spend_recovery' }
+  | { kind: 'adjust_heroic_resource'; delta: number }
+  | { kind: 'adjust_victories'; delta: number }
+  | { kind: 'inventory_add'; item: HeroInventoryItemInput }
+  | { kind: 'inventory_update'; itemId: string; changes: Partial<HeroInventoryItemInput> }
+  | { kind: 'inventory_remove'; itemId: string };
+
+export interface HeroInventoryItemInput {
+  id?: string;
+  name: string;
+  quantity?: number;
+  category?: string;
+  description?: string;
+  notes?: string;
 }
 
 // ── Draw Steel Dice + Shared Action Log ──
