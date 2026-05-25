@@ -27,6 +27,7 @@ import {
   Image as ImageIcon,
   Loader2,
   LogOut,
+  Music,
   NotebookText,
   Plus,
   RefreshCw,
@@ -52,6 +53,7 @@ import {
 } from '@anvil/ui';
 import type { HeroSummary, Note, NoteScope } from '@anvil/types';
 import { api } from '../../lib/api.js';
+import { assetDataUrl, credentialedMediaCrossOrigin } from '../../lib/api-url.js';
 import { normalizeInventory } from '../../lib/inventory.js';
 import { uploadFile } from '../../stores/assetsStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
@@ -195,6 +197,13 @@ function getNotePreview(note: Note): string {
 
 function isImageAsset(asset: AssetItem): boolean {
   return asset.uploaded_at !== null && Boolean(asset.content_type?.startsWith('image/'));
+}
+
+function isAudioAsset(asset: AssetItem): boolean {
+  return (
+    asset.uploaded_at !== null &&
+    (asset.type === 'audio' || Boolean(asset.content_type?.startsWith('audio/')))
+  );
 }
 
 function assetTypeForFile(file: File, fallback: AssetKind): AssetKind {
@@ -1230,6 +1239,8 @@ export function MobileNotes() {
 }
 
 function AssetThumb({ asset }: { asset: AssetItem }) {
+  if (isAudioAsset(asset)) return <AudioAssetCard asset={asset} className="col-span-2" />;
+
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">
       <div className="flex aspect-video items-center justify-center bg-zinc-800">
@@ -1249,6 +1260,44 @@ function AssetThumb({ asset }: { asset: AssetItem }) {
           <span className="truncate capitalize">{asset.type}</span>
           <span>{formatBytes(asset.file_size)}</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AudioAssetCard({
+  asset,
+  className,
+}: {
+  asset: AssetItem;
+  className?: string;
+}) {
+  const src = assetDataUrl(asset.id);
+  const crossOrigin = credentialedMediaCrossOrigin(src);
+
+  return (
+    <div className={cn('overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70', className)}>
+      <div className="flex items-start gap-3 p-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-zinc-400">
+          <Music className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-zinc-100">{asset.name}</p>
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-500">
+            <span className="capitalize">{asset.type}</span>
+            <span>{formatBytes(asset.file_size)}</span>
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-zinc-800 bg-zinc-950/55 p-3">
+        <audio
+          controls
+          preload="none"
+          src={src}
+          crossOrigin={crossOrigin}
+          className="h-10 w-full min-w-0"
+          aria-label={`Play ${asset.name}`}
+        />
       </div>
     </div>
   );
@@ -1299,6 +1348,8 @@ export function MobileAssets() {
   };
 
   const uploadedAssets = assets.filter((asset) => asset.uploaded_at !== null);
+  const audioAssets = uploadedAssets.filter(isAudioAsset);
+  const otherAssets = uploadedAssets.filter((asset) => !isAudioAsset(asset));
 
   return (
     <div className={mobileContainerClass()}>
@@ -1342,10 +1393,28 @@ export function MobileAssets() {
       ) : uploadedAssets.length === 0 ? (
         <EmptyState icon={ImageIcon} title="No uploaded assets" />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {uploadedAssets.map((asset) => (
-            <AssetThumb key={asset.id} asset={asset} />
-          ))}
+        <div className="grid gap-4">
+          {audioAssets.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <SectionHeader label="Audio" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                {audioAssets.map((asset) => (
+                  <AudioAssetCard key={asset.id} asset={asset} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {otherAssets.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <SectionHeader label="Files" />
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {otherAssets.map((asset) => (
+                  <AssetThumb key={asset.id} asset={asset} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>
