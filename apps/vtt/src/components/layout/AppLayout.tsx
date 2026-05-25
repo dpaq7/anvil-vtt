@@ -13,7 +13,6 @@ import {
   User,
   Clapperboard,
   Crown,
-  Smartphone,
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -45,7 +44,6 @@ type UserRole = 'director' | 'player';
 const DIRECTOR_NAV = [
   { label: 'Anvil', icon: AnvilIcon, to: '/app', end: true },
   { label: 'Live', icon: Clapperboard, to: '/app/live' },
-  { label: 'Mobile', icon: Smartphone, to: '/app/mobile' },
   { label: 'Campaigns', icon: Swords, to: '/app/campaigns' },
   { label: 'Assets', icon: Image, to: '/app/assets' },
   { label: 'Notes', icon: StickyNote, to: '/app/notes' },
@@ -54,7 +52,6 @@ const DIRECTOR_NAV = [
 const PLAYER_NAV = [
   { label: 'Anvil', icon: AnvilIcon, to: '/app', end: true },
   { label: 'Live', icon: Clapperboard, to: '/app/live' },
-  { label: 'Mobile', icon: Smartphone, to: '/app/mobile' },
   { label: 'Heroes', icon: User, to: '/app/heroes' },
   { label: 'Notes', icon: StickyNote, to: '/app/notes' },
 ] as const;

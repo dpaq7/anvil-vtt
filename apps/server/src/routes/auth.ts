@@ -176,7 +176,7 @@ async function createSession(c: Context<AppEnv>, userId: string) {
   return sessionId;
 }
 
-async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redirectPath = '/app') {
+async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redirectPath = '/app/mobile') {
   await createSession(c, userId);
 
   const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
@@ -443,7 +443,7 @@ authRoutes.get('/dev-login', async (c) => {
   }
 
   const next = c.req.query('next');
-  const redirectPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app';
+  const redirectPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app/mobile';
   if (c.req.query('format') === 'json') {
     await createSession(c, userId);
     return c.json({ ok: true, role, redirectPath });
