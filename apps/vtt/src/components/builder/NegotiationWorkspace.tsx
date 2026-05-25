@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@anvil/ui";
+import { BuilderRightPane } from "./BuilderRightPane.js";
 import { NegotiationSceneEditor } from "./NegotiationSceneEditor.js";
 import { NegotiationStage } from "../stages/NegotiationStage.js";
 import { SceneAudioPanel } from "../session/SceneAudioPanel.js";
@@ -22,6 +23,7 @@ interface NegotiationWorkspaceProps {
   onChange: (data: Record<string, unknown>) => void;
   scene: Scene;
   campaignId: string;
+  focusMode?: boolean;
 }
 
 // Map NPCAttitude to stage attitude format
@@ -53,6 +55,7 @@ export function NegotiationWorkspace({
   onChange,
   scene,
   campaignId,
+  focusMode = false,
 }: NegotiationWorkspaceProps) {
   // Parse template from data
   const template: NegotiationSceneTemplate | null = useMemo(() => {
@@ -126,9 +129,9 @@ export function NegotiationWorkspace({
   const backgroundMapAssetId = getSceneBackgroundMapAssetId(data);
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full overflow-hidden">
       {/* Main area: Live preview of NegotiationStage */}
-      <div className="flex-1 overflow-auto bg-zinc-950">
+      <div className="min-w-0 flex-1 overflow-auto bg-zinc-950">
         <SceneBackdrop backgroundUrl={backgroundUrl}>
           {hasNPC ? (
             <NegotiationStage {...stageProps} />
@@ -149,7 +152,7 @@ export function NegotiationWorkspace({
       </div>
 
       {/* Right sidebar: Reuse NegotiationSceneEditor */}
-      <div className="w-[420px] shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-900/80 p-4">
+      <BuilderRightPane focusMode={focusMode} defaultWidth={420} minWidth={340}>
         <Tabs defaultValue="setup" className="flex flex-col gap-4">
           <TabsList className="grid h-8 w-full grid-cols-2">
             <TabsTrigger value="setup" className="px-2 py-1 text-xs">
@@ -198,7 +201,7 @@ export function NegotiationWorkspace({
             />
           </TabsContent>
         </Tabs>
-      </div>
+      </BuilderRightPane>
     </div>
   );
 }

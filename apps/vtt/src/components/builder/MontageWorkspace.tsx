@@ -7,6 +7,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@anvil/ui";
+import { BuilderRightPane } from "./BuilderRightPane.js";
 import { MontageStage } from "../stages/MontageStage.js";
 import { SceneAudioPanel } from "../session/SceneAudioPanel.js";
 import { SceneBackdrop } from "../stages/SceneBackdrop.js";
@@ -22,6 +23,7 @@ interface MontageWorkspaceProps {
   onChange: (data: Record<string, unknown>) => void;
   scene: Scene;
   campaignId: string;
+  focusMode?: boolean;
 }
 
 interface MontageChallenge {
@@ -107,6 +109,7 @@ export function MontageWorkspace({
   onChange,
   scene,
   campaignId,
+  focusMode = false,
 }: MontageWorkspaceProps) {
   const challenges = useMemo<MontageChallenge[]>(() => {
     const raw = data["challenges"];
@@ -209,8 +212,8 @@ export function MontageWorkspace({
   }));
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 overflow-hidden bg-zinc-950">
+    <div className="relative flex h-full overflow-hidden">
+      <div className="min-w-0 flex-1 overflow-hidden bg-zinc-950">
         <SceneBackdrop backgroundUrl={backgroundUrl}>
           <MontageStage
             goal={montageData.goal}
@@ -230,7 +233,7 @@ export function MontageWorkspace({
         </SceneBackdrop>
       </div>
 
-      <div className="w-96 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-900/80 p-4">
+      <BuilderRightPane focusMode={focusMode} defaultWidth={384} minWidth={340}>
         <Tabs defaultValue="setup" className="flex flex-col gap-4">
           <TabsList className="grid h-8 w-full grid-cols-2">
             <TabsTrigger value="setup" className="px-2 py-1 text-xs">
@@ -524,7 +527,7 @@ export function MontageWorkspace({
             />
           </TabsContent>
         </Tabs>
-      </div>
+      </BuilderRightPane>
     </div>
   );
 }
