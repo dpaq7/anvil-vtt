@@ -181,13 +181,13 @@ export function SceneWorkspace({ scene, campaignId, onSave, onBeginCombat, focus
 
     switch (scene.type) {
       case 'story':
-        return <StoryWorkspace {...workspaceProps} />;
+        return <StoryWorkspace {...workspaceProps} focusMode={focusMode} />;
       case 'montage':
-        return <MontageWorkspace {...workspaceProps} />;
+        return <MontageWorkspace {...workspaceProps} focusMode={focusMode} />;
       case 'negotiation':
-        return <NegotiationWorkspace {...workspaceProps} />;
+        return <NegotiationWorkspace {...workspaceProps} focusMode={focusMode} />;
       case 'respite':
-        return <RespiteWorkspace {...workspaceProps} />;
+        return <RespiteWorkspace {...workspaceProps} focusMode={focusMode} />;
       case 'battle':
         return <BattleWorkspace {...workspaceProps} focusMode={focusMode} />;
       default:

@@ -11,6 +11,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@anvil/ui";
+import { BuilderRightPane } from "./BuilderRightPane.js";
 import { RespiteStage } from "../stages/RespiteStage.js";
 import { SceneAudioPanel } from "../session/SceneAudioPanel.js";
 import { SceneBackdrop } from "../stages/SceneBackdrop.js";
@@ -30,6 +31,7 @@ interface RespiteWorkspaceProps {
   onChange: (data: Record<string, unknown>) => void;
   scene: Scene;
   campaignId: string;
+  focusMode?: boolean;
 }
 
 interface RespiteProject {
@@ -87,6 +89,7 @@ export function RespiteWorkspace({
   onChange,
   scene,
   campaignId,
+  focusMode = false,
 }: RespiteWorkspaceProps) {
   // Parse activities from either string (legacy) or array (new format)
   const parseAvailableActivities = (): string[] => {
@@ -198,9 +201,9 @@ export function RespiteWorkspace({
   }));
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full overflow-hidden">
       {/* Main area: Live preview of RespiteStage */}
-      <div className="flex-1 overflow-auto bg-zinc-950">
+      <div className="min-w-0 flex-1 overflow-auto bg-zinc-950">
         <SceneBackdrop backgroundUrl={backgroundUrl}>
           <RespiteStage
             location={respiteData.location}
@@ -224,7 +227,7 @@ export function RespiteWorkspace({
       </div>
 
       {/* Right sidebar: Editor fields */}
-      <div className="w-96 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-900/80 p-4">
+      <BuilderRightPane focusMode={focusMode} defaultWidth={384} minWidth={340}>
         <Tabs defaultValue="setup" className="flex flex-col gap-4">
           <TabsList className="grid h-8 w-full grid-cols-2">
             <TabsTrigger value="setup" className="px-2 py-1 text-xs">
@@ -403,7 +406,7 @@ export function RespiteWorkspace({
             />
           </TabsContent>
         </Tabs>
-      </div>
+      </BuilderRightPane>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@anvil/ui";
+import { BuilderRightPane } from "./BuilderRightPane.js";
 import { StoryStage } from "../stages/StoryStage.js";
 import { SceneAudioPanel } from "../session/SceneAudioPanel.js";
 import { SceneBackdrop } from "../stages/SceneBackdrop.js";
@@ -18,6 +19,7 @@ interface StoryWorkspaceProps {
   onChange: (data: Record<string, unknown>) => void;
   scene: Scene;
   campaignId: string;
+  focusMode?: boolean;
 }
 
 interface StorySceneData {
@@ -34,6 +36,7 @@ export function StoryWorkspace({
   onChange,
   scene,
   campaignId,
+  focusMode = false,
 }: StoryWorkspaceProps) {
   // Extract typed data with defaults
   const storyData: StorySceneData = {
@@ -53,9 +56,9 @@ export function StoryWorkspace({
   const hasPreviewText = Boolean(storyData.readAloud || storyData.notes);
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full overflow-hidden">
       {/* Main area: Live preview of StoryStage */}
-      <div className="flex-1 overflow-auto bg-zinc-950">
+      <div className="min-w-0 flex-1 overflow-auto bg-zinc-950">
         <SceneBackdrop backgroundUrl={backgroundUrl}>
           {hasPreviewText ? (
             <StoryStage
@@ -77,7 +80,7 @@ export function StoryWorkspace({
       </div>
 
       {/* Right sidebar: Editor fields */}
-      <div className="w-80 shrink-0 overflow-y-auto border-l border-zinc-800 bg-zinc-900/80 p-4">
+      <BuilderRightPane focusMode={focusMode} defaultWidth={320} minWidth={300}>
         <Tabs defaultValue="setup" className="flex flex-col gap-4">
           <TabsList className="grid h-8 w-full grid-cols-2">
             <TabsTrigger value="setup" className="px-2 py-1 text-xs">
@@ -159,7 +162,7 @@ export function StoryWorkspace({
             />
           </TabsContent>
         </Tabs>
-      </div>
+      </BuilderRightPane>
     </div>
   );
 }
