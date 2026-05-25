@@ -145,6 +145,7 @@ export function BattleCanvas({
   const appRef = useRef<Application | null>(null);
   /** Flipped to true once PixiJS finishes async init so update effects re-run. */
   const [pixiReady, setPixiReady] = useState(false);
+  const [canvasError, setCanvasError] = useState<string | null>(null);
   const layersRef = useRef<{
     background: BackgroundLayer;
     grid: GridLayer;
@@ -200,6 +201,7 @@ export function BattleCanvas({
 
     const app = new Application();
     let mounted = true;
+    setCanvasError(null);
 
     void app
       .init({
@@ -208,9 +210,19 @@ export function BattleCanvas({
         antialias: true,
       })
       .then(() => {
-        if (!mounted) return;
+        if (!mounted) {
+          app.destroy(true);
+          return;
+        }
 
-        el.appendChild(app.canvas as HTMLCanvasElement);
+        const canvas = app.canvas as HTMLCanvasElement;
+        canvas.style.display = 'block';
+        canvas.style.touchAction = 'none';
+        canvas.style.userSelect = 'none';
+        canvas.style.setProperty('-webkit-user-select', 'none');
+        canvas.style.setProperty('-webkit-touch-callout', 'none');
+
+        el.appendChild(canvas);
         appRef.current = app;
 
         const world = new Container();
@@ -233,7 +245,7 @@ export function BattleCanvas({
 
         const viewport = new ViewportSystem(
           world,
-          app.canvas as HTMLCanvasElement,
+          canvas,
         );
         viewport.onZoomChange = (zoom) => onZoomChangeRef.current?.(zoom);
 
@@ -243,7 +255,7 @@ export function BattleCanvas({
         }
 
         const interaction = new InteractionManager(
-          app.canvas as HTMLCanvasElement,
+          canvas,
           viewport,
           tokens,
           cellSize,
@@ -307,6 +319,23 @@ export function BattleCanvas({
 
         // Signal that layers are ready so update effects re-run
         setPixiReady(true);
+      })
+      .catch((error: unknown) => {
+        if (!mounted) {
+          try {
+            app.destroy(true);
+          } catch {
+            /* Pixi may not be fully initialized after a failed init. */
+          }
+          return;
+        }
+        console.error('[BattleCanvas] PixiJS initialization failed', error);
+        try {
+          app.destroy(true);
+        } catch {
+          /* Pixi may not be fully initialized after a failed init. */
+        }
+        setCanvasError('Battle map could not start in this browser or device.');
       });
 
     return () => {
@@ -514,5 +543,13 @@ export function BattleCanvas({
     pixiReady,
   ]);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  if (canvasError) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-6 text-center text-sm text-zinc-400">
+        {canvasError}
+      </div>
+    );
+  }
+
+  return <div ref={containerRef} className="h-full w-full touch-none select-none" />;
 }

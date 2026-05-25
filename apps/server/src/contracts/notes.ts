@@ -1,6 +1,7 @@
 import type {
   CreateNoteFolderInput,
   CreateNoteInput,
+  NoteScope,
   ReorderNotesInput,
   UpdateNoteFolderInput,
   UpdateNoteInput,
@@ -18,6 +19,10 @@ const MAX_SORT_ORDER = 1_000_000;
 
 function idString(value: unknown): string | null {
   return trimString(value, MAX_ID_LENGTH);
+}
+
+function noteScope(value: unknown): NoteScope | undefined {
+  return value === 'director' || value === 'player' ? value : undefined;
 }
 
 function contentString(value: unknown): ValidationResult<string> {
@@ -43,7 +48,17 @@ export function parseCreateNoteFolderInput(raw: unknown): ValidationResult<Creat
   if (raw['parentFolderId'] !== undefined && raw['parentFolderId'] !== null && !parentFolderId) {
     return { ok: false, error: 'Invalid parent folder' };
   }
-  return { ok: true, value: { name, ...(parentFolderId ? { parentFolderId } : {}) } };
+  if (raw['scope'] !== undefined && !noteScope(raw['scope'])) {
+    return { ok: false, error: 'Invalid note scope' };
+  }
+  return {
+    ok: true,
+    value: {
+      name,
+      ...(noteScope(raw['scope']) ? { scope: noteScope(raw['scope']) } : {}),
+      ...(parentFolderId ? { parentFolderId } : {}),
+    },
+  };
 }
 
 export function parseUpdateNoteFolderInput(raw: unknown): ValidationResult<UpdateNoteFolderInput> {
@@ -81,7 +96,18 @@ export function parseCreateNoteInput(raw: unknown): ValidationResult<CreateNoteI
   if (!folderId) return { ok: false, error: 'Folder is required' };
   const content = contentString(raw['content']);
   if (!content.ok) return content;
-  return { ok: true, value: { title, folderId, content: content.value } };
+  if (raw['scope'] !== undefined && !noteScope(raw['scope'])) {
+    return { ok: false, error: 'Invalid note scope' };
+  }
+  return {
+    ok: true,
+    value: {
+      title,
+      ...(noteScope(raw['scope']) ? { scope: noteScope(raw['scope']) } : {}),
+      folderId,
+      content: content.value,
+    },
+  };
 }
 
 export function parseUpdateNoteInput(raw: unknown): ValidationResult<UpdateNoteInput> {

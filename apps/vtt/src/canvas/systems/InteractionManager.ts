@@ -56,6 +56,7 @@ export class InteractionManager {
   private dragEntityId: string | null = null;
   private isDirector: boolean;
   private _activeTool: ActiveTool = 'select';
+  private activePointerId: number | null = null;
 
   // Drag origin (for distance calculation)
   private dragOriginGrid: { gridX: number; gridY: number } | null = null;
@@ -176,6 +177,7 @@ export class InteractionManager {
   }
 
   private cancelCurrentInteraction(): void {
+    this.releaseActivePointer();
     this.dragging = false;
     this.dragEntityId = null;
     this.dragOriginGrid = null;
@@ -204,16 +206,43 @@ export class InteractionManager {
     this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.addEventListener('pointercancel', this.onPointerCancel);
     this.canvas.addEventListener('contextmenu', this.onContextMenu);
   }
 
   destroy(): void {
+    this.releaseActivePointer();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.canvas.style.cursor = '';
+  }
+
+  private capturePointer(pointerId: number): void {
+    try {
+      this.canvas.setPointerCapture(pointerId);
+      this.activePointerId = pointerId;
+    } catch {
+      this.activePointerId = pointerId;
+    }
+  }
+
+  private releaseActivePointer(): void {
+    const pointerId = this.activePointerId;
+    if (pointerId === null) return;
+
+    try {
+      if (this.canvas.hasPointerCapture(pointerId)) {
+        this.canvas.releasePointerCapture(pointerId);
+      }
+    } catch {
+      /* Pointer capture can already be gone after browser cancellation. */
+    }
+
+    this.activePointerId = null;
   }
 
   rebuildIndex(): void {
@@ -269,6 +298,9 @@ export class InteractionManager {
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return; // Left click only
     if (this._activeTool === 'pan') return; // Let ViewportSystem handle
+    if (this.activePointerId !== null) return;
+    this.capturePointer(e.pointerId);
+    e.preventDefault();
     const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
 
     switch (this._activeTool) {
@@ -292,6 +324,7 @@ export class InteractionManager {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (this._activeTool === 'pan') return;
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     switch (this._activeTool) {
       case 'select':
         this.handleSelectMove(e);
@@ -319,6 +352,7 @@ export class InteractionManager {
 
   private onPointerUp = (e: PointerEvent): void => {
     if (this._activeTool === 'pan') return;
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     switch (this._activeTool) {
       case 'select':
         this.handleSelectUp(e);
@@ -333,6 +367,12 @@ export class InteractionManager {
         this.handleFogUp(e);
         break;
     }
+    this.releaseActivePointer();
+  };
+
+  private onPointerCancel = (e: PointerEvent): void => {
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
+    this.cancelCurrentInteraction();
   };
 
   // --- Select tool ---
