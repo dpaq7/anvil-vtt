@@ -72,6 +72,46 @@ const Notes = lazyWithChunkReload(() =>
 const Account = lazyWithChunkReload(() =>
   import('./pages/Account.js').then((module) => ({ default: module.Account })),
 );
+const MobileAppLayout = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileAppLayout,
+  })),
+);
+const MobileHome = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileHome,
+  })),
+);
+const MobileCharacters = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileCharacters,
+  })),
+);
+const MobileHeroDetail = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileHeroDetail,
+  })),
+);
+const MobileNotes = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileNotes,
+  })),
+);
+const MobileAssets = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileAssets,
+  })),
+);
+const MobileCampaigns = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileCampaigns,
+  })),
+);
+const MobileAccount = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileAccount,
+  })),
+);
 const SessionPage = lazyWithChunkReload(() =>
   import('./pages/session/SessionPage.js').then((module) => ({
     default: module.SessionPage,
@@ -182,6 +222,55 @@ export const router = createBrowserRouter([
       {
         path: 'session/:id/lobby',
         element: routeChunk(<Lobby />),
+      },
+    ],
+  },
+  {
+    path: '/app/mobile',
+    element: (
+      <ProtectedRoute>
+        <ErrorBoundary label="mobile-app">
+          {routeChunk(<MobileAppLayout />)}
+        </ErrorBoundary>
+      </ProtectedRoute>
+    ),
+    errorElement: routeErrorElement,
+    children: [
+      {
+        index: true,
+        element: routeChunk(<MobileHome />),
+      },
+      {
+        path: 'heroes',
+        element: routeChunk(<MobileCharacters />),
+      },
+      {
+        path: 'heroes/new',
+        element: routeChunk(<HeroWizard />),
+      },
+      {
+        path: 'heroes/:id',
+        element: routeChunk(<MobileHeroDetail />),
+      },
+      {
+        path: 'notes',
+        element: routeChunk(<MobileNotes />),
+      },
+      {
+        path: 'assets',
+        element: routeChunk(<MobileAssets />),
+      },
+      {
+        path: 'campaigns',
+        element: routeChunk(<MobileCampaigns />),
+      },
+      {
+        path: 'account',
+        element: routeChunk(<MobileAccount />),
+      },
+      {
+        path: '*',
+        element: <Navigate to="/app/mobile" replace />,
       },
     ],
   },
