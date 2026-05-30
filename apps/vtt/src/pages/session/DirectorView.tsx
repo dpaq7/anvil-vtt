@@ -20,6 +20,8 @@ import { DamageDialog } from '../../components/session/DamageDialog.js';
 import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
 import { AssetPanel } from '../../components/session/AssetPanel.js';
 import { SceneAudioPanel } from '../../components/session/SceneAudioPanel.js';
+import { ActivePlayersPanel } from '../../components/session/ActivePlayersPanel.js';
+import { JoinCodePanel } from '../../components/session/JoinCodePanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
@@ -48,7 +50,7 @@ function clampGridOffset(value: number, cellSize: number): number {
 }
 
 type LeftRailTab = 'combat' | 'creatures' | 'tracking' | 'log';
-type RightRailTab = 'audio' | 'combat' | 'grid' | 'assets';
+type RightRailTab = 'audio' | 'players' | 'combat' | 'grid' | 'assets';
 
 const RAIL_TABS_LIST_CLASS =
   'flex h-9 w-full justify-start rounded-none border-b border-zinc-800 bg-zinc-950/40 p-0 px-2 pt-1';
@@ -157,7 +159,10 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
     return tabs;
   }, [actionLogCount, activeMontageTracking.length, combat, creatureCount, sceneType]);
   const rightRailTabs = useMemo<Array<{ value: RightRailTab; label: string }>>(() => {
-    const tabs: Array<{ value: RightRailTab; label: string }> = [{ value: 'audio', label: 'Audio' }];
+    const tabs: Array<{ value: RightRailTab; label: string }> = [
+      { value: 'audio', label: 'Audio' },
+      { value: 'players', label: 'Players' },
+    ];
     if (sceneType === 'battle') {
       tabs.push({ value: 'combat', label: combat ? 'Damage' : 'Combat' });
       tabs.push({ value: 'grid', label: 'Grid' });
@@ -641,6 +646,13 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
               onAudioChange={handleAudioChange}
               label="Now Playing"
             />
+          </TabsContent>
+
+          <TabsContent value="players" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-3`}>
+            <div className="flex flex-col gap-3">
+              <JoinCodePanel roomCode={sessionState.roomCode} />
+              <ActivePlayersPanel participants={participants} entities={entities} />
+            </div>
           </TabsContent>
 
           {sceneType && (

@@ -17,6 +17,11 @@ export interface AudioSyncPlayback {
   retryPlayback: () => Promise<boolean>;
 }
 
+export interface AudioSyncOptions {
+  volume?: number;
+  muted?: boolean;
+}
+
 const IDLE_PLAYBACK: Omit<AudioSyncPlayback, 'retryPlayback'> = {
   status: 'idle',
   error: null,
@@ -60,16 +65,22 @@ function describePlaybackFailure(error: unknown): Omit<AudioSyncPlayback, 'retry
  * This hook is designed for the **player** view. The director controls playback
  * via the SceneAudioPanel / AudioPlayer which has its own local Audio element.
  */
-export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4): AudioSyncPlayback {
+export function useAudioSync(
+  audioState: AudioLiveState | null,
+  options: number | AudioSyncOptions = 0.4,
+): AudioSyncPlayback {
+  const volume = typeof options === 'number' ? options : options.volume ?? 0.4;
+  const muted = typeof options === 'number' ? false : options.muted ?? false;
+  const outputVolume = muted ? 0 : volume;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastUrlRef = useRef<string | null>(null);
   const cleanupListenersRef = useRef<(() => void) | null>(null);
   const audioStateRef = useRef(audioState);
-  const volumeRef = useRef(volume);
+  const volumeRef = useRef(outputVolume);
   const [playback, setPlayback] = useState<Omit<AudioSyncPlayback, 'retryPlayback'>>(IDLE_PLAYBACK);
 
   audioStateRef.current = audioState;
-  volumeRef.current = volume;
+  volumeRef.current = outputVolume;
 
   const disposeAudio = useCallback(() => {
     cleanupListenersRef.current?.();
@@ -195,7 +206,7 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4): A
     if (!audio) return;
 
     audio.loop = loop;
-    audio.volume = volume;
+    audio.volume = outputVolume;
 
     if (playing && audio.paused) {
       void retryPlayback();
@@ -205,7 +216,7 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4): A
     } else if (!playing) {
       setPlayback({ status: 'paused', error: null, needsUserGesture: false });
     }
-  }, [attachAudio, audioState, disposeAudio, retryPlayback, volume]);
+  }, [attachAudio, audioState, disposeAudio, outputVolume, retryPlayback]);
 
   // Cleanup on unmount
   useEffect(() => {

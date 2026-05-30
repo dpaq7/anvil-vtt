@@ -101,6 +101,7 @@ export function ActionLogPanel({
 }
 
 function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
+  const rollModifiers = formatRollModifiers(entry);
   return (
     <article className="px-3 py-2 text-xs">
       <div className="flex items-start gap-2">
@@ -121,6 +122,11 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
               <span className="font-mono text-sm font-bold tabular-nums text-zinc-100">{entry.total}</span>
             </>
           )}
+          {rollModifiers.map((part) => (
+            <span key={part} className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+              {part}
+            </span>
+          ))}
           {entry.tier && (
             <span className="ml-auto rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
               T{entry.tier}
@@ -209,11 +215,36 @@ function formatRollExport(entry: ActionLogEntry): string {
     parts.push(`Total: ${entry.total}`);
   }
 
+  const modifiers = formatRollModifiers(entry);
+  if (modifiers.length > 0) {
+    parts.push(`Modifiers: ${modifiers.join(', ')}`);
+  }
+
   if (entry.tier) {
     parts.push(`Tier: T${entry.tier}`);
   }
 
   return parts.join(' | ');
+}
+
+function formatRollModifiers(entry: ActionLogEntry): string[] {
+  const parts: string[] = [];
+  if (entry.modifier !== undefined && entry.modifier !== 0) {
+    parts.push(`${entry.modifier >= 0 ? '+' : ''}${entry.modifier} mod`);
+  }
+  if (entry.edges) parts.push(`${entry.edges} edge${entry.edges === 1 ? '' : 's'}`);
+  if (entry.banes) parts.push(`${entry.banes} bane${entry.banes === 1 ? '' : 's'}`);
+  if (entry.rollState === 'double-edge' || entry.rollState === 'double-bane') {
+    parts.push(formatRollState(entry.rollState));
+  }
+  return parts;
+}
+
+function formatRollState(rollState: NonNullable<ActionLogEntry['rollState']>): string {
+  return rollState
+    .split('-')
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function formatDieExport(die: DrawSteelDieResult): string {

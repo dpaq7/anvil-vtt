@@ -18,6 +18,8 @@ export function FilmStrip({ scenes, activeSceneId, onSelectScene }: FilmStripPro
           <button
             key={scene.id}
             onClick={() => onSelectScene(scene.id)}
+            title={scene.name}
+            aria-label={scene.name}
             className={cn(
               'flex h-12 w-20 shrink-0 flex-col items-center justify-center rounded border transition',
               SCENE_BG_COLORS[sceneType],

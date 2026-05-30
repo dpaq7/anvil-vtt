@@ -296,6 +296,8 @@ export interface DrawSteelRollRequest {
   kind: DrawSteelRollKind;
   label?: string;
   modifier?: number;
+  edges?: number;
+  banes?: number;
   sourceId?: string;
 }
 
@@ -313,6 +315,9 @@ export interface DrawSteelRollResult {
   rollerName: string;
   dice: DrawSteelDieResult[];
   modifier: number;
+  edges: number;
+  banes: number;
+  rollState?: 'double-edge' | 'edge' | 'standard' | 'bane' | 'double-bane';
   total: number;
   tier?: 1 | 2 | 3;
   timestamp: number;
@@ -327,6 +332,10 @@ export interface ActionLogEntry {
   title: string;
   detail?: string;
   dice?: DrawSteelDieResult[];
+  modifier?: number;
+  edges?: number;
+  banes?: number;
+  rollState?: 'double-edge' | 'edge' | 'standard' | 'bane' | 'double-bane';
   total?: number;
   tier?: 1 | 2 | 3;
   timestamp: number;
@@ -365,6 +374,7 @@ export interface ParticipantInfo {
 export interface SessionState {
   sessionId: string;
   campaignId: string;
+  roomCode?: string | null;
   scenes: SceneRef[];
   activeSceneId: string | null;
   entities: EntityData[];
@@ -423,8 +433,13 @@ export interface ArgumentLogEntry {
   playerId: string;
   playerName: string;
   skillId: string;
+  characteristicId?: CharacteristicId;
   approachText: string;
   roll: number;
+  modifier?: number;
+  edges?: number;
+  banes?: number;
+  rollState?: 'double-edge' | 'edge' | 'standard' | 'bane' | 'double-bane';
   tier: 1 | 2 | 3;
   interestDelta: number;
   timestamp: number;

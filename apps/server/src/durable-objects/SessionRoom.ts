@@ -8,8 +8,10 @@ import {
   RollLogic,
   UniversalActions,
   WizardLogic,
+  findSkillByName,
+  skills as RULE_SKILLS,
 } from '@anvil/data';
-import type { LevelAdvancementChoices } from '@anvil/data';
+import type { LevelAdvancementChoices, Skill as RuleSkill } from '@anvil/data';
 import type { Env } from '../types.js';
 import type {
   CharacteristicId,
@@ -148,6 +150,10 @@ const MAX_INVENTORY_TEXT_LENGTH: number = WS_LIMITS.inventoryTextLength;
 const MAX_WS_MESSAGE_LENGTH: number = WS_LIMITS.messageBytes;
 const MAX_ENTITY_JSON_LENGTH: number = WS_LIMITS.entityJsonBytes;
 const MAX_PATCH_JSON_LENGTH: number = WS_LIMITS.patchJsonBytes;
+
+function formatCharacteristicName(value: CharacteristicId): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 const MAX_SCENE_SHAPE_POINTS: number = WS_LIMITS.sceneShapePoints;
 const MAX_STORY_TEXT_LENGTH: number = WS_LIMITS.storyTextLength;
 const MAX_APPROACH_TEXT_LENGTH: number = WS_LIMITS.approachTextLength;
@@ -448,11 +454,15 @@ function validateDrawSteelRoll(value: unknown): DrawSteelRollRequest | null {
   const kind = safeString(value['kind'], 40);
   if (kind !== 'power' && kind !== 'heroic-resource' && kind !== 'd6') return null;
   const modifier = value['modifier'] === undefined ? undefined : boundedInteger(value['modifier'], -100, 100);
-  if (modifier === null) return null;
+  const edges = value['edges'] === undefined ? undefined : boundedInteger(value['edges'], 0, 2);
+  const banes = value['banes'] === undefined ? undefined : boundedInteger(value['banes'], 0, 2);
+  if (modifier === null || edges === null || banes === null) return null;
   return {
     kind,
     ...(safeString(value['label'], 120) ? { label: safeString(value['label'], 120)! } : {}),
     ...(modifier !== undefined ? { modifier } : {}),
+    ...(edges !== undefined ? { edges } : {}),
+    ...(banes !== undefined ? { banes } : {}),
     ...(safeString(value['sourceId']) ? { sourceId: safeString(value['sourceId'])! } : {}),
   };
 }
@@ -1499,7 +1509,7 @@ export class SessionRoom extends DurableObject<Env> {
 
     const session = await db.prepare('SELECT * FROM game_sessions WHERE id = ?')
       .bind(sessionId)
-      .first<{ id: string; campaign_id: string; active_scene_id: string | null }>();
+      .first<{ id: string; campaign_id: string; active_scene_id: string | null; room_code: string | null }>();
     if (!session) return;
 
     const scenes = await db.prepare(
@@ -1544,6 +1554,7 @@ export class SessionRoom extends DurableObject<Env> {
     this.sessionState = {
       sessionId,
       campaignId: session.campaign_id,
+      roomCode: session.room_code,
       scenes: sceneRefs,
       activeSceneId,
       entities: activeScene ? this.createLiveEntitiesForScene(activeScene, heroEntities) : heroEntities,
@@ -2539,6 +2550,10 @@ export class SessionRoom extends DurableObject<Env> {
       title: this.clampLogText(entry.title, 140) ?? 'Action',
       detail: this.clampLogText(entry.detail, 500),
       dice: entry.dice,
+      modifier: entry.modifier,
+      edges: entry.edges,
+      banes: entry.banes,
+      rollState: entry.rollState,
       total: entry.total,
       tier: entry.tier,
       timestamp: entry.timestamp ?? Date.now(),
@@ -2574,10 +2589,23 @@ export class SessionRoom extends DurableObject<Env> {
     return Math.max(-100, Math.min(100, Math.trunc(value)));
   }
 
+  private normalizeRollEdgeBane(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(2, Math.trunc(value)));
+  }
+
   private normalizeRollLabel(value: unknown, fallback: string): string {
     if (typeof value !== 'string') return fallback;
     const label = value.trim();
     return label.length > 0 && label.length <= 60 ? label : fallback;
+  }
+
+  private formatRollDetail(modifier: number, edges = 0, banes = 0): string | undefined {
+    const parts: string[] = [];
+    if (modifier !== 0) parts.push(`Modifier ${modifier >= 0 ? '+' : ''}${modifier}`);
+    if (edges > 0) parts.push(`${edges} edge${edges === 1 ? '' : 's'}`);
+    if (banes > 0) parts.push(`${banes} bane${banes === 1 ? '' : 's'}`);
+    return parts.length > 0 ? parts.join(', ') : undefined;
   }
 
   private handleDrawSteelRoll(meta: ConnectionMeta, request: DrawSteelRollRequest): void {
@@ -2587,6 +2615,8 @@ export class SessionRoom extends DurableObject<Env> {
       : 'power';
     const timestamp = Date.now();
     const modifier = kind === 'power' ? this.normalizeRollModifier(roll.modifier) : 0;
+    const edges = kind === 'power' ? this.normalizeRollEdgeBane(roll.edges) : 0;
+    const banes = kind === 'power' ? this.normalizeRollEdgeBane(roll.banes) : 0;
     let result: DrawSteelRollResult;
 
     if (kind === 'heroic-resource') {
@@ -2600,6 +2630,8 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toHeroicResourceDice(values),
         modifier: 0,
+        edges: 0,
+        banes: 0,
         total,
         timestamp,
       };
@@ -2613,12 +2645,14 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toD6Dice([value]),
         modifier: 0,
+        edges: 0,
+        banes: 0,
         total: value,
         timestamp,
       };
     } else {
       const values = this.rollD10(2);
-      const total = values.reduce((sum, value) => sum + value, 0) + modifier;
+      const powerRoll = RollLogic.calculatePowerRoll(values, edges, banes, modifier);
       result = {
         id: this.createActionResultId('power-roll'),
         kind: 'power',
@@ -2627,8 +2661,11 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toPowerDice(values),
         modifier,
-        total,
-        tier: this.getTier(total),
+        edges,
+        banes,
+        rollState: powerRoll.rollState,
+        total: powerRoll.total,
+        tier: powerRoll.tier,
         timestamp,
       };
     }
@@ -2639,8 +2676,12 @@ export class SessionRoom extends DurableObject<Env> {
       actorId: meta.userId,
       actorName: meta.username,
       title: `${meta.username} rolled ${result.label}`,
-      detail: result.modifier === 0 ? undefined : `Modifier ${result.modifier >= 0 ? '+' : ''}${result.modifier}`,
+      detail: this.formatRollDetail(result.modifier, result.edges, result.banes),
       dice: result.dice,
+      modifier: result.modifier,
+      edges: result.edges,
+      banes: result.banes,
+      rollState: result.rollState,
       total: result.total,
       tier: result.tier,
       timestamp,
@@ -3022,6 +3063,10 @@ export class SessionRoom extends DurableObject<Env> {
       title,
       detail: detail || undefined,
       dice: result.powerRoll ? this.toPowerDice(result.powerRoll.dice) : undefined,
+      modifier: result.powerRoll?.modifier,
+      edges: result.powerRoll?.edges,
+      banes: result.powerRoll?.banes,
+      rollState: result.powerRoll?.rollState,
       total: result.powerRoll?.total,
       tier: result.powerRoll?.tier,
       timestamp: result.timestamp,
@@ -4035,6 +4080,41 @@ export class SessionRoom extends DurableObject<Env> {
     data['phase'] = phase;
   }
 
+  private resolveRuleSkill(skillId: string): RuleSkill | null {
+    const skill = findSkillByName(skillId);
+    if (skill) return skill;
+    const normalized = skillId.trim().toLowerCase();
+    return RULE_SKILLS.find((candidate) => candidate.id === normalized) ?? null;
+  }
+
+  private getHeroSkillIds(entity: SessionEntity | null | undefined): Set<string> {
+    const rawSkills = entity?.['skills'];
+    if (!Array.isArray(rawSkills)) return new Set();
+    const ids = rawSkills.flatMap((value) => {
+      if (typeof value !== 'string') return [];
+      const skill = this.resolveRuleSkill(value);
+      return skill ? [skill.id] : [];
+    });
+    return new Set(ids);
+  }
+
+  private getNegotiationActorHero(meta: ConnectionMeta): SessionEntity | null {
+    if (!this.sessionState) return null;
+    if (meta.heroId) {
+      const selectedHero = this.sessionState.entities.find((entity) => entity.id === meta.heroId && entity.type === 'hero');
+      if (selectedHero) return selectedHero;
+    }
+    return this.sessionState.entities.find((entity) => entity.type === 'hero' && entity['ownerUserId'] === meta.userId) ?? null;
+  }
+
+  private getNegotiationCharacteristicForSkill(skill: RuleSkill): CharacteristicId {
+    if (skill.id === 'read-person' || skill.id === 'empathize' || skill.id === 'gamble') return 'intuition';
+    if (skill.group === 'interpersonal') return 'presence';
+    if (skill.group === 'lore' || skill.group === 'crafting') return 'reason';
+    if (skill.group === 'exploration') return 'agility';
+    return 'intuition';
+  }
+
   // ── Negotiation Handlers ──
 
   private handleNegotiationArgument(
@@ -4045,24 +4125,51 @@ export class SessionRoom extends DurableObject<Env> {
   ): void {
     const neg = this.ensureNegotiationState();
     if (!neg || neg.phase !== 'active') return;
+    const skill = this.resolveRuleSkill(skillId);
+    if (!skill) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_SKILL', message: 'Choose a valid skill' });
+      return;
+    }
+
+    const hero = this.getNegotiationActorHero(meta);
+    if (meta.role !== 'director') {
+      const heroSkillIds = this.getHeroSkillIds(hero);
+      if (!hero || !heroSkillIds.has(skill.id)) {
+        this.sendTo(ws, { type: 'error', code: 'INVALID_SKILL', message: 'Choose one of your hero skills' });
+        return;
+      }
+    }
 
     const dice = this.rollD10(2);
-    const modifier = 0;
-    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
-    const tier = this.getTier(total);
+    const characteristicId = this.getNegotiationCharacteristicForSkill(skill);
+    const characteristicValue = hero ? this.getCharacteristicValue(hero, characteristicId) : 0;
+    const skillBonus = hero ? 2 : 0;
+    const roll = RollLogic.calculatePowerRoll(dice, 0, 0, characteristicValue, skillBonus);
+    const diceTotal = (dice[0] ?? 0) + (dice[1] ?? 0);
+    const modifier = roll.total - diceTotal;
+    const total = roll.total;
+    const tier = roll.tier;
     const interestDelta = tier === 3 ? 2 : tier === 2 ? 1 : -1;
 
     neg.interest = Math.max(0, Math.min(5, neg.interest + interestDelta));
     neg.patience = Math.max(0, neg.patience - 1);
-    if (neg.patience === 0) neg.phase = neg.interest >= 3 ? 'success' : 'failure';
+    if (neg.interest >= 5) neg.phase = 'success';
+    else if (neg.interest <= 0) neg.phase = 'failure';
+    else if (neg.patience === 0) neg.phase = neg.interest >= 3 ? 'success' : 'failure';
+    const safeApproachText = this.clampLogText(approachText, 500) ?? '';
 
     const entry: ArgumentLogEntry = {
       id: `arg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       playerId: meta.userId,
       playerName: meta.username,
-      skillId,
-      approachText,
+      skillId: skill.id,
+      characteristicId,
+      approachText: safeApproachText,
       roll: total,
+      modifier,
+      edges: 0,
+      banes: 0,
+      rollState: roll.rollState,
       tier,
       interestDelta,
       timestamp: Date.now(),
@@ -4073,9 +4180,18 @@ export class SessionRoom extends DurableObject<Env> {
       id: `log-${entry.id}`,
       actorId: meta.userId,
       actorName: meta.username,
-      title: `${meta.username} made a ${skillId} argument`,
-      detail: `${approachText} - interest ${interestDelta >= 0 ? '+' : ''}${interestDelta}, patience -1`,
+      title: `${meta.username} made a ${skill.name} argument`,
+      detail: [
+        safeApproachText,
+        `${formatCharacteristicName(characteristicId)} ${modifier >= 0 ? '+' : ''}${modifier}`,
+        `interest ${interestDelta >= 0 ? '+' : ''}${interestDelta}`,
+        'patience -1',
+      ].filter(Boolean).join(' - '),
       dice: this.toPowerDice(dice),
+      modifier,
+      edges: 0,
+      banes: 0,
+      rollState: roll.rollState,
       total,
       tier,
       timestamp: entry.timestamp,

@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessageSquare, Dice5 } from 'lucide-react';
-import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
-import { NegotiationLogic, skills } from '@anvil/data';
+import { Button, Card, CardHeader, CardTitle, CardContent, cn } from '@anvil/ui';
+import { NegotiationLogic, findSkillByName, skills } from '@anvil/data';
 import type { ArgumentLogEntry } from '../../types/protocol.js';
 
 // ---------------------------------------------------------------------------
@@ -59,6 +59,8 @@ export interface NegotiationStageProps {
 
   // Player callback
   onMakeArgument?: (skillId: string, approachText: string) => void;
+  availableSkillIds?: string[];
+  showPlayerArgumentPanel?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ function PitfallItem({ pitfall, isDirector, onReveal }: PitfallItemProps) {
 }
 
 function ArgumentLogItem({ entry }: { entry: ArgumentLogEntry }) {
-  const skill = skills.find((s) => s.id === entry.skillId);
+  const skill = findSkillByName(entry.skillId);
   const deltaColor =
     entry.interestDelta > 0
       ? 'text-emerald-400'
@@ -198,6 +200,89 @@ function ArgumentLogItem({ entry }: { entry: ArgumentLogEntry }) {
   );
 }
 
+export interface NegotiationArgumentPanelProps {
+  availableSkillIds?: string[];
+  onMakeArgument: (skillId: string, approachText: string) => void;
+  className?: string;
+}
+
+export function NegotiationArgumentPanel({
+  availableSkillIds,
+  onMakeArgument,
+  className,
+}: NegotiationArgumentPanelProps) {
+  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+  const [approachText, setApproachText] = useState<string>('');
+  const availableSkills = useMemo(() => resolveNegotiationSkills(availableSkillIds), [availableSkillIds]);
+
+  useEffect(() => {
+    if (selectedSkillId && !availableSkills.some((skill) => skill.id === selectedSkillId)) {
+      setSelectedSkillId('');
+    }
+  }, [availableSkills, selectedSkillId]);
+
+  const handleArgument = useCallback(() => {
+    if (!selectedSkillId) return;
+    onMakeArgument(selectedSkillId, approachText);
+    setApproachText('');
+  }, [selectedSkillId, approachText, onMakeArgument]);
+
+  return (
+    <Card className={cn('w-full', className)}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <MessageSquare className="size-4 text-purple-400" />
+          Make an Argument
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-zinc-400">
+            Hero Skill
+          </label>
+          <select
+            value={selectedSkillId}
+            onChange={(e) => setSelectedSkillId(e.target.value)}
+            className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-purple-500"
+          >
+            <option value="">Choose a skill...</option>
+            {availableSkills.map((skill) => (
+              <option key={skill.id} value={skill.id}>
+                {skill.name}
+              </option>
+            ))}
+          </select>
+          {availableSkillIds && availableSkills.length === 0 && (
+            <p className="mt-1 text-[11px] text-zinc-500">This hero has no trained skills available.</p>
+          )}
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-zinc-400">
+            Your Approach (optional)
+          </label>
+          <textarea
+            value={approachText}
+            onChange={(e) => setApproachText(e.target.value)}
+            placeholder="Describe how you're making your argument..."
+            rows={2}
+            className="w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-purple-500"
+          />
+        </div>
+
+        <Button
+          onClick={handleArgument}
+          disabled={!selectedSkillId}
+          className="bg-purple-600 hover:bg-purple-700"
+        >
+          <Dice5 className="mr-1.5 size-4" />
+          Make Argument
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -222,20 +307,13 @@ export function NegotiationStage({
   onRevealPitfall,
   onEndNegotiation,
   onMakeArgument,
+  availableSkillIds,
+  showPlayerArgumentPanel = true,
 }: NegotiationStageProps) {
   // Clamp values for display
   const displayInterest = NegotiationLogic.clampInterest(interest, maxInterest);
   const displayPatience = NegotiationLogic.clampPatience(patience, maxPatience);
   const isActive = phase === 'active';
-
-  // Player argument state
-  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
-  const [approachText, setApproachText] = useState<string>('');
-
-  // Get interpersonal skills for negotiation
-  const interpersonalSkills = useMemo(() => {
-    return skills.filter((s) => s.group === 'interpersonal');
-  }, []);
 
   // Get outcome text based on current interest
   const outcomeText = useMemo(() => {
@@ -264,12 +342,6 @@ export function NegotiationStage({
   const handlePatienceDown = useCallback(() => {
     if (patience > 0) onPatienceChange?.(-1);
   }, [patience, onPatienceChange]);
-
-  const handleArgument = useCallback(() => {
-    if (!selectedSkillId || !onMakeArgument) return;
-    onMakeArgument(selectedSkillId, approachText);
-    setApproachText('');
-  }, [selectedSkillId, approachText, onMakeArgument]);
 
   // Get initials for avatar fallback
   const initials = useMemo(() => {
@@ -412,59 +484,10 @@ export function NegotiationStage({
       </div>
 
       {/* Player argument panel */}
-      {!isDirector && isActive && onMakeArgument && (
-        <Card className="mx-auto w-full max-w-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <MessageSquare className="size-4 text-purple-400" />
-              Make an Argument
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {/* Skill picker — interpersonal skills are most relevant for negotiation */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                Interpersonal Skill
-              </label>
-              <select
-                value={selectedSkillId}
-                onChange={(e) => setSelectedSkillId(e.target.value)}
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-purple-500"
-              >
-                <option value="">Choose a skill...</option>
-                {interpersonalSkills.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Approach text */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                Your Approach (optional)
-              </label>
-              <textarea
-                value={approachText}
-                onChange={(e) => setApproachText(e.target.value)}
-                placeholder="Describe how you're making your argument..."
-                rows={2}
-                className="w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-purple-500"
-              />
-            </div>
-
-            {/* Roll button */}
-            <Button
-              onClick={handleArgument}
-              disabled={!selectedSkillId}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <Dice5 className="mr-1.5 size-4" />
-              Make Argument
-            </Button>
-          </CardContent>
-        </Card>
+      {!isDirector && isActive && onMakeArgument && showPlayerArgumentPanel && (
+        <div className="mx-auto w-full max-w-lg">
+          <NegotiationArgumentPanel availableSkillIds={availableSkillIds} onMakeArgument={onMakeArgument} />
+        </div>
       )}
 
       {/* Motivations & Pitfalls */}
@@ -579,4 +602,18 @@ function getInterestLevelColor(level: number): string {
   if (level === 3) return 'bg-yellow-500/20 text-yellow-400';
   if (level === 4) return 'bg-emerald-500/20 text-emerald-400';
   return 'bg-blue-500/20 text-blue-400';
+}
+
+function resolveNegotiationSkills(availableSkillIds?: string[]) {
+  if (!availableSkillIds) {
+    return skills.filter((skill) => skill.group === 'interpersonal');
+  }
+
+  const seen = new Set<string>();
+  return availableSkillIds.flatMap((skillId) => {
+    const skill = findSkillByName(skillId);
+    if (!skill || seen.has(skill.id)) return [];
+    seen.add(skill.id);
+    return [skill];
+  });
 }

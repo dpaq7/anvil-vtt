@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Expand, Minimize2, Volume2, VolumeX } from 'lucide-react';
 import { AppShell, Tabs, TabsContent, TabsList, TabsTrigger } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
+import { findSkillByName } from '@anvil/data';
 import type { SessionState, ClientMessage, AbilityResult } from '../../types/protocol.js';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
 import { parseMontageData, parseNegotiationData, parseRespiteData, parseBattleData } from '../../lib/scene-data.js';
@@ -16,9 +17,11 @@ import { AbilityPanel } from '../../components/session/AbilityPanel.js';
 import { ActionLogPanel } from '../../components/session/ActionLogPanel.js';
 import { PlayerHeroCommandBar, PlayerHeroSheetPanel } from '../../components/session/PlayerHeroLiveSheet.js';
 import type { CharacterInventoryItem } from '../../lib/inventory.js';
+import { ActivePlayersPanel } from '../../components/session/ActivePlayersPanel.js';
+import { LiveAudioPanel } from '../../components/session/LiveAudioPanel.js';
 import { StoryStage } from '../../components/stages/StoryStage.js';
 import { MontageStage } from '../../components/stages/MontageStage.js';
-import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
+import { NegotiationArgumentPanel, NegotiationStage } from '../../components/stages/NegotiationStage.js';
 import { RespiteStage } from '../../components/stages/RespiteStage.js';
 import { BattleStage } from '../../components/stages/BattleStage.js';
 
@@ -29,19 +32,31 @@ interface PlayerViewProps {
   combatLog: AbilityResult[];
 }
 
-type RightRailTab = 'sheet' | 'abilities' | 'turn' | 'combat' | 'log';
+type RightRailTab = 'skills' | 'sheet' | 'abilities' | 'turn' | 'combat' | 'log' | 'players' | 'audio';
 
 const RAIL_TABS_LIST_CLASS =
   'flex h-9 w-full justify-start overflow-x-auto rounded-none border-b border-zinc-800 bg-zinc-950/40 p-0 px-2 pt-1';
 const RAIL_TAB_TRIGGER_CLASS =
   'h-8 min-w-16 shrink-0 whitespace-nowrap rounded-b-none rounded-t-md border border-transparent border-b-0 px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 transition data-[state=active]:border-zinc-700 data-[state=active]:bg-zinc-900 data-[state=active]:text-zinc-100 data-[state=inactive]:hover:bg-zinc-800/50 data-[state=inactive]:hover:text-zinc-300';
 const RAIL_TAB_CONTENT_CLASS = 'mt-0 min-h-0 flex-1 overflow-hidden focus-visible:ring-0';
+const RIGHT_RAIL_LABELS: Record<RightRailTab, string> = {
+  skills: 'Skills',
+  sheet: 'Sheet',
+  abilities: 'Abilities',
+  turn: 'Turn',
+  combat: 'Combat',
+  log: 'Log',
+  players: 'Players',
+  audio: 'Audio',
+};
 
 export function PlayerView({ sessionState, connectionStatus, send, combatLog }: PlayerViewProps) {
   const user = useAuthStore((s) => s.user);
 
   // Sync server audio commands to local HTML5 Audio playback
-  const audioPlayback = useAudioSync(sessionState.audio);
+  const [audioVolume, setAudioVolume] = useState(0.4);
+  const [audioMuted, setAudioMuted] = useState(false);
+  const audioPlayback = useAudioSync(sessionState.audio, { volume: audioVolume, muted: audioMuted });
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
@@ -59,6 +74,7 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   const me = participants.find((p) => p.userId === user?.id);
   const heroEntity = entities.find((e) => e.id === me?.heroId) ?? entities.find((e) => e.type === 'hero');
   const heroEntityId = heroEntity?.id ?? null;
+  const heroSkillIds = useMemo(() => getHeroSkillIds(heroEntity), [heroEntity]);
 
   // Hero combat state
   const isMyTurn = combat?.activeEntityId === heroEntityId;
@@ -104,10 +120,13 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
   }, [turnActions]);
 
   const rightRailTabs = useMemo<RightRailTab[]>(() => {
-    const tabs: RightRailTab[] = ['sheet'];
+    const tabs: RightRailTab[] = [];
+    if (sceneType === 'negotiation') tabs.push('skills');
+    tabs.push('sheet');
     if (heroAbilities.length > 0) tabs.push('abilities');
     if (combat) tabs.push('turn', 'combat');
     if (sceneType) tabs.push('log');
+    tabs.push('players', 'audio');
     return tabs;
   }, [combat, heroAbilities.length, sceneType]);
 
@@ -116,6 +135,13 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
       setRightRailTab(rightRailTabs[0] ?? 'sheet');
     }
   }, [rightRailTab, rightRailTabs]);
+
+  useEffect(() => {
+    if (sceneType === 'negotiation') {
+      setRightRailCollapsed(false);
+      setRightRailTab('skills');
+    }
+  }, [activeSceneId, sceneType]);
 
   const openRightRailTab = useCallback((tab: RightRailTab) => {
     setRightRailCollapsed(false);
@@ -329,6 +355,8 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
             isDirector={false}
             argumentLog={liveNeg?.argumentLog}
             onMakeArgument={handleNegotiationArgument}
+            availableSkillIds={heroSkillIds}
+            showPlayerArgumentPanel={false}
           />
         );
       }
@@ -464,22 +492,22 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
       rightRail={focusMode ? undefined : (
         <Tabs value={rightRailTab} onValueChange={(value) => setRightRailTab(value as RightRailTab)} className="flex h-full min-h-0 flex-col overflow-hidden">
           <TabsList className={RAIL_TABS_LIST_CLASS}>
-            {rightRailTabs.includes('sheet') && (
-              <TabsTrigger value="sheet" className={RAIL_TAB_TRIGGER_CLASS}>Sheet</TabsTrigger>
-            )}
-            {rightRailTabs.includes('abilities') && (
-              <TabsTrigger value="abilities" className={RAIL_TAB_TRIGGER_CLASS}>Abilities</TabsTrigger>
-            )}
-            {rightRailTabs.includes('turn') && (
-              <TabsTrigger value="turn" className={RAIL_TAB_TRIGGER_CLASS}>Turn</TabsTrigger>
-            )}
-            {rightRailTabs.includes('combat') && (
-              <TabsTrigger value="combat" className={RAIL_TAB_TRIGGER_CLASS}>Combat</TabsTrigger>
-            )}
-            {rightRailTabs.includes('log') && (
-              <TabsTrigger value="log" className={RAIL_TAB_TRIGGER_CLASS}>Log</TabsTrigger>
-            )}
+            {rightRailTabs.map((tab) => (
+              <TabsTrigger key={tab} value={tab} className={RAIL_TAB_TRIGGER_CLASS}>
+                {RIGHT_RAIL_LABELS[tab]}
+              </TabsTrigger>
+            ))}
           </TabsList>
+
+          {sceneType === 'negotiation' && (
+            <TabsContent value="skills" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-3`}>
+              <NegotiationArgumentPanel
+                availableSkillIds={heroSkillIds}
+                onMakeArgument={handleNegotiationArgument}
+                className="border-zinc-800 bg-zinc-900/70"
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="sheet" className={RAIL_TAB_CONTENT_CLASS}>
             <PlayerHeroSheetPanel
@@ -555,6 +583,25 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
               className="h-full border-0"
             />
           </TabsContent>
+
+          <TabsContent value="players" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-3`}>
+            <ActivePlayersPanel participants={participants} entities={entities} currentUserId={user?.id} />
+          </TabsContent>
+
+          <TabsContent value="audio" className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-3`}>
+            <LiveAudioPanel
+              audio={sessionState.audio}
+              volume={audioVolume}
+              muted={audioMuted}
+              playing={audioPlayback.status === 'playing'}
+              blocked={audioPlayback.needsUserGesture}
+              onVolumeChange={setAudioVolume}
+              onMutedChange={setAudioMuted}
+              onRetry={() => {
+                void audioPlayback.retryPlayback();
+              }}
+            />
+          </TabsContent>
         </Tabs>
       )}
       rightRailCollapsed={rightRailCollapsed}
@@ -569,4 +616,16 @@ export function PlayerView({ sessionState, connectionStatus, send, combatLog }: 
       {renderStage()}
     </AppShell>
   );
+}
+
+function getHeroSkillIds(heroEntity: SessionState['entities'][number] | undefined): string[] {
+  const rawSkills = heroEntity?.['skills'];
+  if (!Array.isArray(rawSkills)) return [];
+  const seen = new Set<string>();
+  for (const value of rawSkills) {
+    if (typeof value !== 'string') continue;
+    const skill = findSkillByName(value);
+    if (skill) seen.add(skill.id);
+  }
+  return [...seen];
 }
