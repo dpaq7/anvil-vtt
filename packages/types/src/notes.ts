@@ -2,8 +2,6 @@
 
 export type NoteScope = 'director' | 'player';
 
-export type NoteScope = 'director' | 'player';
-
 export interface NoteFolder {
   id: string;
   campaignId: string; // Campaign id, or the personal notebook id for personal notes.

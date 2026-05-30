@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, type SyntheticEvent } from 'react';
 import { Application, Container } from 'pixi.js';
 import { BackgroundLayer } from './layers/BackgroundLayer.js';
 import { GridLayer } from './layers/GridLayer.js';
@@ -15,6 +15,33 @@ import type { DrawingData } from './layers/DrawingLayer.js';
 import type { TerrainZoneData } from './layers/TerrainLayer.js';
 import type { FogZoneData } from './layers/FogLayer.js';
 
+type RendererPreference = 'webgl' | 'canvas';
+
+interface BattleCanvasFallbackProps {
+  cols: number;
+  rows: number;
+  cellSize: number;
+  entities: EntityData[];
+  selectedEntityId: string | null;
+  selectedEntityIds: string[];
+  backgroundUrl?: string | null;
+  isDirector: boolean;
+  drawings: DrawingData[];
+  terrain: TerrainZoneData[];
+  fogZones: FogZoneData[];
+  onSelectEntity: (entityId: string | null) => void;
+  onTokenHover?: (
+    entityId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
+  onTokenRightClick?: (
+    entityId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
+}
+
 const getEntityTokenSize = (entity: EntityData): number => {
   const rawSize = entity['size'];
   const size =
@@ -25,6 +52,252 @@ const getEntityTokenSize = (entity: EntityData): number => {
         : 1;
   return Number.isFinite(size) ? Math.max(1, size) : 1;
 };
+
+const tokenColorForType = (type: string): string => {
+  if (type === 'hero') return '#3b82f6';
+  if (type === 'monster') return '#ef4444';
+  return '#8b5cf6';
+};
+
+const formatErrorForLog = (error: unknown): string => {
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  return String(error);
+};
+
+function BattleCanvasFallback({
+  cols,
+  rows,
+  cellSize,
+  entities,
+  selectedEntityId,
+  selectedEntityIds,
+  backgroundUrl,
+  isDirector,
+  drawings,
+  terrain,
+  fogZones,
+  onSelectEntity,
+  onTokenHover,
+  onTokenRightClick,
+}: BattleCanvasFallbackProps) {
+  const [backgroundSize, setBackgroundSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const gridWidth = Math.max(1, cols * cellSize);
+  const gridHeight = Math.max(1, rows * cellSize);
+  const worldWidth = backgroundSize?.width ?? gridWidth;
+  const worldHeight = backgroundSize?.height ?? gridHeight;
+  const scaleX = worldWidth / gridWidth;
+  const scaleY = worldHeight / gridHeight;
+  const selectedSet = new Set(selectedEntityIds);
+  if (selectedEntityId) selectedSet.add(selectedEntityId);
+
+  const handleBackgroundLoad = useCallback(
+    (event: SyntheticEvent<HTMLImageElement>) => {
+      const image = event.currentTarget;
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        setBackgroundSize({
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+      }
+    },
+    [],
+  );
+
+  const scalePointList = (points: number[]): string => {
+    const scaled: string[] = [];
+    for (let i = 0; i < points.length - 1; i += 2) {
+      scaled.push(`${points[i]! * scaleX},${points[i + 1]! * scaleY}`);
+    }
+    return scaled.join(' ');
+  };
+
+  return (
+    <div className="relative h-full w-full overflow-auto bg-zinc-950">
+      <div
+        className="relative"
+        style={{ width: worldWidth, height: worldHeight }}
+        onClick={() => onSelectEntity(null)}
+      >
+        {backgroundUrl ? (
+          <img
+            src={backgroundUrl}
+            alt=""
+            draggable={false}
+            onLoad={handleBackgroundLoad}
+            className="absolute inset-0 h-full w-full select-none object-fill"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-zinc-900" />
+        )}
+
+        {terrain.map((zone) => {
+          const color = `#${(zone.color ?? 0x3b82f6).toString(16).padStart(6, '0')}`;
+          return (
+            <div
+              key={zone.id}
+              className="pointer-events-none absolute border text-[11px] font-semibold text-white/85"
+              style={{
+                left: zone.x * cellSize * scaleX,
+                top: zone.y * cellSize * scaleY,
+                width: zone.w * cellSize * scaleX,
+                height: zone.h * cellSize * scaleY,
+                borderColor: color,
+                backgroundColor: `${color}33`,
+              }}
+            >
+              <span className="absolute left-1 top-0.5 rounded bg-zinc-950/70 px-1">
+                {zone.name}
+              </span>
+            </div>
+          );
+        })}
+
+        {drawings.length > 0 && (
+          <svg
+            className="pointer-events-none absolute inset-0"
+            width={worldWidth}
+            height={worldHeight}
+            viewBox={`0 0 ${worldWidth} ${worldHeight}`}
+          >
+            {drawings.map((drawing) => {
+              if (drawing.color === 'none') return null;
+              if (
+                (drawing.type === 'freehand' || drawing.type === 'line') &&
+                drawing.points.length >= 4
+              ) {
+                return (
+                  <polyline
+                    key={drawing.id}
+                    points={scalePointList(drawing.points)}
+                    fill="none"
+                    stroke={drawing.color}
+                    strokeWidth={Math.max(
+                      1,
+                      drawing.width * ((scaleX + scaleY) / 2),
+                    )}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                );
+              }
+              if (drawing.type === 'rect' && drawing.points.length >= 4) {
+                const [x, y, w, h] = drawing.points as [
+                  number,
+                  number,
+                  number,
+                  number,
+                ];
+                return (
+                  <rect
+                    key={drawing.id}
+                    x={x * scaleX}
+                    y={y * scaleY}
+                    width={w * scaleX}
+                    height={h * scaleY}
+                    fill={`${drawing.color}22`}
+                    stroke={drawing.color}
+                    strokeWidth={Math.max(
+                      1,
+                      drawing.width * ((scaleX + scaleY) / 2),
+                    )}
+                  />
+                );
+              }
+              if (drawing.type === 'circle' && drawing.points.length >= 3) {
+                const [cx, cy, r] = drawing.points as [
+                  number,
+                  number,
+                  number,
+                ];
+                return (
+                  <circle
+                    key={drawing.id}
+                    cx={cx * scaleX}
+                    cy={cy * scaleY}
+                    r={r * ((scaleX + scaleY) / 2)}
+                    fill={`${drawing.color}22`}
+                    stroke={drawing.color}
+                    strokeWidth={Math.max(
+                      1,
+                      drawing.width * ((scaleX + scaleY) / 2),
+                    )}
+                  />
+                );
+              }
+              return null;
+            })}
+          </svg>
+        )}
+
+        {entities.map((entity) => {
+          const size = getEntityTokenSize(entity);
+          const tokenSize = Math.max(
+            28,
+            size * cellSize * Math.min(scaleX, scaleY),
+          );
+          const color = tokenColorForType(entity.type);
+          const selected = selectedSet.has(entity.id);
+          return (
+            <button
+              key={entity.id}
+              type="button"
+              title={entity.name}
+              className="absolute flex -translate-x-1 -translate-y-1 items-center justify-center rounded-full border-2 text-[10px] font-bold text-white shadow-lg shadow-zinc-950/50"
+              style={{
+                left: entity.x * cellSize * scaleX,
+                top: entity.y * cellSize * scaleY,
+                width: tokenSize,
+                height: tokenSize,
+                borderColor: selected ? '#ffffff' : '#09090b',
+                backgroundColor: `${color}dd`,
+                outline: selected ? `2px solid ${color}` : 'none',
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectEntity(entity.id);
+              }}
+              onMouseMove={(event) =>
+                onTokenHover?.(entity.id, event.clientX, event.clientY)
+              }
+              onMouseLeave={(event) =>
+                onTokenHover?.(null, event.clientX, event.clientY)
+              }
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onTokenRightClick?.(entity.id, event.clientX, event.clientY);
+              }}
+            >
+              {entity.name.slice(0, 2).toUpperCase()}
+            </button>
+          );
+        })}
+
+        {fogZones.map((zone) => (
+          <div
+            key={zone.id}
+            className="pointer-events-none absolute bg-black"
+            style={{
+              left: zone.x * cellSize * scaleX,
+              top: zone.y * cellSize * scaleY,
+              width: zone.w * cellSize * scaleX,
+              height: zone.h * cellSize * scaleY,
+              opacity: isDirector ? 0.5 : 1,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="pointer-events-none absolute left-3 top-3 rounded border border-amber-400/30 bg-zinc-950/90 px-3 py-2 text-xs text-amber-100 shadow-lg">
+        Limited map mode: the browser could not start the accelerated battle
+        renderer.
+      </div>
+    </div>
+  );
+}
 
 export interface BattleCanvasProps {
   cols: number;
@@ -199,17 +472,56 @@ export function BattleCanvas({
     if (!containerRef.current) return;
     const el = containerRef.current;
 
-    const app = new Application();
+    const createApp = async (
+      preference: RendererPreference,
+    ): Promise<Application> => {
+      const nextApp = new Application();
+      try {
+        await nextApp.init({
+          width: Math.max(1, el.clientWidth || 1),
+          height: Math.max(1, el.clientHeight || 1),
+          resizeTo: el,
+          backgroundColor: 0x1a1a2e,
+          antialias: preference === 'webgl',
+          preference: [preference],
+          failIfMajorPerformanceCaveat: false,
+        });
+        return nextApp;
+      } catch (error) {
+        try {
+          nextApp.destroy(true);
+        } catch {
+          /* Pixi may not be fully initialized after a failed init. */
+        }
+        throw error;
+      }
+    };
+
     let mounted = true;
     setCanvasError(null);
 
-    void app
-      .init({
-        resizeTo: el,
-        backgroundColor: 0x1a1a2e,
-        antialias: true,
-      })
-      .then(() => {
+    void (async () => {
+        let app: Application;
+        let webglError: unknown = null;
+        try {
+          app = await createApp('webgl');
+        } catch (error) {
+          webglError = error;
+          console.warn(
+            '[BattleCanvas] WebGL renderer failed; retrying canvas renderer',
+            webglError,
+          );
+          try {
+            app = await createApp('canvas');
+          } catch (canvasRendererError) {
+            console.error('[BattleCanvas] Renderer initialization failed', {
+              webgl: formatErrorForLog(webglError),
+              canvas: formatErrorForLog(canvasRendererError),
+            });
+            throw canvasRendererError;
+          }
+        }
+
         if (!mounted) {
           app.destroy(true);
           return;
@@ -319,22 +631,17 @@ export function BattleCanvas({
 
         // Signal that layers are ready so update effects re-run
         setPixiReady(true);
-      })
-      .catch((error: unknown) => {
+      })().catch((error: unknown) => {
         if (!mounted) {
-          try {
-            app.destroy(true);
-          } catch {
-            /* Pixi may not be fully initialized after a failed init. */
-          }
           return;
         }
         console.error('[BattleCanvas] PixiJS initialization failed', error);
         try {
-          app.destroy(true);
+          appRef.current?.destroy(true);
         } catch {
           /* Pixi may not be fully initialized after a failed init. */
         }
+        appRef.current = null;
         setCanvasError('Battle map could not start in this browser or device.');
       });
 
@@ -545,9 +852,22 @@ export function BattleCanvas({
 
   if (canvasError) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-6 text-center text-sm text-zinc-400">
-        {canvasError}
-      </div>
+      <BattleCanvasFallback
+        cols={cols}
+        rows={rows}
+        cellSize={cellSize}
+        entities={entities}
+        selectedEntityId={selectedEntityId}
+        selectedEntityIds={selectedEntityIds}
+        backgroundUrl={backgroundUrl}
+        isDirector={isDirector}
+        drawings={drawings}
+        terrain={terrain}
+        fogZones={fogZones}
+        onSelectEntity={onSelectEntity}
+        onTokenHover={onTokenHover}
+        onTokenRightClick={onTokenRightClick}
+      />
     );
   }
 
