@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { cn } from '@anvil/ui';
+import type { ReactNode } from "react";
+import { cn } from "@anvil/ui";
 
 interface SceneBackdropProps {
   backgroundUrl?: string | null;
@@ -14,7 +14,7 @@ export function SceneBackdrop({
 }: SceneBackdropProps) {
   return (
     <div
-      className={cn('relative h-full overflow-hidden bg-zinc-950', className)}
+      className={cn("relative h-full overflow-hidden bg-zinc-950", className)}
     >
       {backgroundUrl ? (
         <>

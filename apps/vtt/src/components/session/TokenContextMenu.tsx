@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Minus, Plus, X, Sword } from 'lucide-react';
 import { StaminaBar, Badge, Button, ScrollArea } from '@anvil/ui';
 import type { EntityData, ClientMessage } from '../../types/protocol.js';
+import { AbilityBlock } from '../drawsteel/AbilityBlock.js';
+import { drawSteelAbilityFromLike } from '../drawsteel/abilityData.js';
 
 /** Condition emojis for Draw Steel's 9 conditions */
 const CONDITION_EMOJIS: Record<string, string> = {
@@ -28,6 +30,8 @@ const TYPE_BADGE_COLORS: Record<string, string> = {
 interface MonsterFeature {
   name: string;
   feature_type: string;
+  ability_type?: string;
+  cost?: string;
   usage?: string;
   distance?: string;
   target?: string;
@@ -304,35 +308,12 @@ export function TokenContextMenu({ entity, entities, selectedTargetId, x, y, isD
             )}
             <div className="flex flex-col gap-1">
               {abilities.map((ability) => (
-                <button
+                <AbilityBlock
                   key={ability.name}
-                  type="button"
+                  ability={drawSteelAbilityFromLike(ability)}
+                  compact
                   onClick={() => handleUseAbility(ability.name)}
-                  className="group rounded border border-zinc-800 bg-zinc-800/50 px-2 py-1.5 text-left transition hover:border-zinc-600 hover:bg-zinc-800"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100">
-                      {ability.name}
-                    </span>
-                    {ability.usage && (
-                      <span className="text-[9px] text-zinc-600">{ability.usage}</span>
-                    )}
-                  </div>
-                  {ability.distance && (
-                    <span className="text-[10px] text-zinc-500">
-                      {ability.distance}{ability.target ? ` • ${ability.target}` : ''}
-                    </span>
-                  )}
-                  {ability.keywords && ability.keywords.length > 0 && (
-                    <div className="mt-0.5 flex flex-wrap gap-0.5">
-                      {ability.keywords.slice(0, 4).map((kw) => (
-                        <span key={kw} className="rounded bg-zinc-700/50 px-1 py-0 text-[8px] text-zinc-500">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </button>
+                />
               ))}
             </div>
           </div>

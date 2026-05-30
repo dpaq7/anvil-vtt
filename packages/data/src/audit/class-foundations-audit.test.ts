@@ -32,6 +32,7 @@ interface SourceClass {
 
   // Characteristics
   startingCharacteristics: Record<string, number>;
+  characteristicArrays: number[][];
   potencyCharacteristic: string;
 
   // Heroic resource
@@ -45,6 +46,19 @@ interface SourceClass {
   subclassNames: string[];
 }
 
+const TWO_FIXED_CHARACTERISTIC_ARRAYS = [
+  [2, -1, -1],
+  [1, 1, -1],
+  [1, 0, 0],
+];
+
+const ONE_FIXED_CHARACTERISTIC_ARRAYS = [
+  [2, 2, -1, -1],
+  [2, 1, 1, -1],
+  [2, 1, 0, 0],
+  [1, 1, 1, 0],
+];
+
 /**
  * Ground-truth class data extracted from:
  *   docs/rules_data/data-rules-md/Classes/*.md
@@ -56,11 +70,12 @@ const SOURCE_CLASSES: SourceClass[] = [
     id: 'beastheart',
     name: 'Beastheart',
     role: 'Striker',
-    masterClass: false,
+    masterClass: true,
     startingStamina: 21,
     staminaPerLevel: 12,
     startingRecoveries: 12,
     startingCharacteristics: { might: 2, intuition: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     potencyCharacteristic: 'might',
     heroicResourceName: 'Ferocity',
     heroicResourceType: 'ferocity',
@@ -79,6 +94,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 12,
     // Source: "You start with a Might of 2 and a Presence of 2"
     startingCharacteristics: { might: 2, presence: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Presence − 2" ... "Strong Potency: Presence"
     potencyCharacteristic: 'presence',
     // Source: "Heroic Resource called wrath"
@@ -99,6 +115,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "You start with an Intuition of 2"
     startingCharacteristics: { intuition: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Intuition - 2" ... "Strong Potency: Intuition"
     potencyCharacteristic: 'intuition',
     // Source: "Heroic Resource called piety"
@@ -125,6 +142,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "You start with a Reason of 2"
     startingCharacteristics: { reason: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Reason − 2" ... "Strong Potency: Reason"
     potencyCharacteristic: 'reason',
     // Source: "Heroic Resource called essence"
@@ -145,6 +163,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 10,
     // Source: "You start with a Might of 2 and an Agility of 2"
     startingCharacteristics: { might: 2, agility: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Might − 2" ... "Strong Potency: Might"
     potencyCharacteristic: 'might',
     // Source: "Heroic Resource called ferocity"
@@ -165,6 +184,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "You start with an Agility of 2 and an Intuition of 2"
     startingCharacteristics: { agility: 2, intuition: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Intuition − 2" ... "Strong Potency: Intuition"
     potencyCharacteristic: 'intuition',
     // Source: "Heroic Resource called discipline"
@@ -185,6 +205,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "You start with an Agility of 2"
     startingCharacteristics: { agility: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Agility − 2" ... "Strong Potency: Agility"
     potencyCharacteristic: 'agility',
     // Source: "Heroic Resource called insight"
@@ -205,6 +226,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "Starting Reason: 2"
     startingCharacteristics: { reason: 2 },
+    characteristicArrays: ONE_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak: Reason - 2" ... "Strong: Reason"
     potencyCharacteristic: 'reason',
     // Source: "Resource: Essence"
@@ -225,6 +247,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 10,
     // Source: "You start with a Might of 2 and a Reason of 2"
     startingCharacteristics: { might: 2, reason: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Reason − 2" ... "Strong Potency: Reason"
     potencyCharacteristic: 'reason',
     // Source: "Heroic Resource called focus"
@@ -245,6 +268,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "You start with a Reason of 2 and a Presence of 2"
     startingCharacteristics: { reason: 2, presence: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Reason − 2" ... "Strong Potency: Reason"
     potencyCharacteristic: 'reason',
     // Source: "Heroic Resource called clarity"
@@ -265,6 +289,7 @@ const SOURCE_CLASSES: SourceClass[] = [
     startingRecoveries: 8,
     // Source: "You start with an Agility of 2 and a Presence of 2"
     startingCharacteristics: { agility: 2, presence: 2 },
+    characteristicArrays: TWO_FIXED_CHARACTERISTIC_ARRAYS,
     // Source: "Weak Potency: Presence − 2" ... "Strong Potency: Presence"
     potencyCharacteristic: 'presence',
     // Source: "Heroic Resource called drama"
@@ -355,6 +380,11 @@ for (const source of SOURCE_CLASSES) {
       expect(codeChars.length).toBe(Object.keys(source.startingCharacteristics).length);
     });
 
+    it(`should have correct remaining characteristic arrays`, () => {
+      const cls = GameData.getClass(source.id as any);
+      expect(cls?.baseStats.characteristicArrays).toEqual(source.characteristicArrays);
+    });
+
     // Heroic resource
     it(`should have heroic resource name "${source.heroicResourceName}"`, () => {
       const cls = GameData.getClass(source.id as any) as any;
@@ -421,6 +451,13 @@ describe('Audit: Class Foundations — class-definitions.ts ↔ GameData consist
 
       expect(def.potencyCharacteristic).toBe(cls?.potencyCharacteristic);
     });
+
+    it(`${source.name}: classDefinitions characteristic arrays match GameData`, () => {
+      const def = classDefinitions[source.id as keyof typeof classDefinitions];
+      const cls = GameData.getClass(source.id as any);
+
+      expect(def.characteristicArrays).toEqual(cls?.baseStats.characteristicArrays);
+    });
   }
 });
 
@@ -452,10 +489,9 @@ describe('Audit: Class Foundations — hero-logic.ts cross-checks', () => {
 // ============================================================
 
 describe('Audit: Class Foundations — Cross-class checks', () => {
-  it('only Summoner should be a master class', () => {
+  it('Beastheart and Summoner should be master classes', () => {
     const masterClasses = GameData.getAllClasses().filter((c) => c.masterClass);
-    expect(masterClasses.length).toBe(1);
-    expect(masterClasses[0].id).toBe('summoner');
+    expect(masterClasses.map((cls) => cls.id).sort()).toEqual(['beastheart', 'summoner']);
   });
 
   it('each class role should be one of Defender/Controller/Striker/Support', () => {

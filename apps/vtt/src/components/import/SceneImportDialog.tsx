@@ -1,15 +1,26 @@
 import { useRef, useState } from 'react';
 import { FileJson, PackagePlus, Upload } from 'lucide-react';
-import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger } from '@anvil/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from '@anvil/ui';
 import { MCDM_DRAW_STEEL_DEMO_CAMPAIGN } from '@anvil/data';
 import type { SceneImportDocument } from '@anvil/types';
 
 interface SceneImportDialogProps {
   buttonLabel?: string;
+  buttonClassName?: string;
   onImport: (document: SceneImportDocument) => Promise<void>;
 }
 
-export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: SceneImportDialogProps) {
+export function SceneImportDialog({
+  buttonLabel = 'Scene Import',
+  buttonClassName,
+  onImport,
+}: SceneImportDialogProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -37,10 +48,12 @@ export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: Sc
 
     try {
       const parsed = JSON.parse(await file.text()) as unknown;
-      const document = parsed && typeof parsed === 'object' && 'document' in parsed
-        ? (parsed as { document?: SceneImportDocument }).document
-        : parsed as SceneImportDocument;
-      if (!document || typeof document !== 'object') throw new Error('Import JSON must contain a scene import document');
+      const document =
+        parsed && typeof parsed === 'object' && 'document' in parsed
+          ? (parsed as { document?: SceneImportDocument }).document
+          : (parsed as SceneImportDocument);
+      if (!document || typeof document !== 'object')
+        throw new Error('Import JSON must contain a scene import document');
       await runImport(document);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid JSON file');
@@ -52,7 +65,7 @@ export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: Sc
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button size="sm" variant="outline" className={buttonClassName}>
           <Upload className="size-4" />
           {buttonLabel}
         </Button>
@@ -73,9 +86,11 @@ export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: Sc
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/json,.json"
+            accept="application/json,application/vnd.anvil.scene-import+json,.json,.anv"
             className="hidden"
-            onChange={(event) => void handleFileSelected(event.target.files?.[0])}
+            onChange={(event) =>
+              void handleFileSelected(event.target.files?.[0])
+            }
           />
           <Button
             type="button"
@@ -85,12 +100,20 @@ export function SceneImportDialog({ buttonLabel = 'Scene Import', onImport }: Sc
             className="justify-start"
           >
             <FileJson className="size-4" />
-            Import JSON File
+            Import .anv or JSON File
           </Button>
 
-          {fileName ? <p className="text-xs text-zinc-500">{fileName}</p> : null}
-          {error ? <p className="rounded-md border border-red-900/60 bg-red-950/30 p-2 text-sm text-red-300">{error}</p> : null}
-          {importing ? <p className="text-sm text-zinc-500">Importing...</p> : null}
+          {fileName ? (
+            <p className="text-xs text-zinc-500">{fileName}</p>
+          ) : null}
+          {error ? (
+            <p className="rounded-md border border-red-900/60 bg-red-950/30 p-2 text-sm text-red-300">
+              {error}
+            </p>
+          ) : null}
+          {importing ? (
+            <p className="text-sm text-zinc-500">Importing...</p>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

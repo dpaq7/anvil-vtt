@@ -1,0 +1,8 @@
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.anvilvtt.ca https://cdn.discordapp.com https://lh3.googleusercontent.com; media-src 'self' blob: https://api.anvilvtt.ca; connect-src 'self' https://api.anvilvtt.ca wss://api.anvilvtt.ca http://localhost:8787 ws://localhost:8787; form-action 'self'; upgrade-insecure-requests
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY

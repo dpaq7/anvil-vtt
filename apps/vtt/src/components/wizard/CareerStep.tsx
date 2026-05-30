@@ -10,6 +10,7 @@ interface Props {
 
 export function CareerStep({ character, onChange }: Props) {
   const careers = GameData.getAllCareers();
+  const selectedCareer = character.career ? GameData.getCareer(character.career) : null;
 
   return (
     <div>
@@ -28,7 +29,14 @@ export function CareerStep({ character, onChange }: Props) {
                   ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20'
                   : 'border-creator-border hover:border-creator-text-muted hover:bg-creator-card-hover'
               )}
-              onClick={() => onChange({ career: c.id })}
+              onClick={() =>
+                onChange({
+                  career: c.id,
+                  incitingIncident: c.incitingIncident,
+                  careerPerk: null,
+                  careerSkillChoices: [],
+                })
+              }
             >
               <CardHeader className="py-3">
                 <div className="flex items-center justify-between">
@@ -48,8 +56,31 @@ export function CareerStep({ character, onChange }: Props) {
         })}
       </div>
 
-      {character.career && (
-        <div className="mt-6">
+      {selectedCareer && (
+        <div className="mt-6 space-y-4">
+          <Card className="border-creator-border bg-creator-card">
+            <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-creator-text-muted">Skills</div>
+                <div className="mt-1 text-sm text-creator-text">{selectedCareer.skills.join(', ') || '-'}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-creator-text-muted">Languages</div>
+                <div className="mt-1 text-sm text-creator-text">{selectedCareer.languages.join(', ') || '-'}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-creator-text-muted">Perk</div>
+                <div className="mt-1 text-sm capitalize text-creator-text">{selectedCareer.perkType}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-creator-text-muted">Resources</div>
+                <div className="mt-1 text-sm text-creator-text">
+                  Renown {selectedCareer.renown} / Wealth {selectedCareer.wealth} / Projects {selectedCareer.projectPoints}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <label className="text-sm text-zinc-400">
             Inciting Incident
             <Input
@@ -59,6 +90,13 @@ export function CareerStep({ character, onChange }: Props) {
               placeholder="What drove you to become a hero?"
             />
           </label>
+          <button
+            type="button"
+            className="rounded-md border border-creator-border px-3 py-2 text-left text-sm text-creator-text-muted transition hover:border-creator-text-muted hover:text-creator-text"
+            onClick={() => onChange({ incitingIncident: selectedCareer.incitingIncident })}
+          >
+            Use suggested incident: {selectedCareer.incitingIncident}
+          </button>
         </div>
       )}
     </div>

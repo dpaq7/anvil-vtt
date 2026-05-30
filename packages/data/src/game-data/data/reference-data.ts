@@ -340,62 +340,68 @@ export const upbringingOptions: CultureOption[] = [
   { type: 'noble', name: 'Noble', skills: ['Interpersonal'] },
 ];
 
+function getCultureOption(options: CultureOption[], type: CultureOption['type']): CultureOption {
+  const option = options.find((candidate) => candidate.type === type);
+  if (!option) {
+    throw new Error(`Unknown culture option: ${type}`);
+  }
+  return option;
+}
+
+function createCulture(
+  id: string,
+  name: string,
+  description: string,
+  type: Culture['type'],
+  environment?: CultureOption['type'],
+  organization?: CultureOption['type'],
+  upbringing?: CultureOption['type'],
+  language?: string,
+): Culture {
+  return {
+    id,
+    name,
+    description,
+    type,
+    environment: environment ? getCultureOption(environmentOptions, environment) : undefined,
+    organization: organization ? getCultureOption(organizationOptions, organization) : undefined,
+    upbringing: upbringing ? getCultureOption(upbringingOptions, upbringing) : undefined,
+    language,
+  };
+}
+
 // Pre-built cultures for quick selection
 export const cultures: Culture[] = [
-  {
-    id: 'urban-bureaucratic-academic',
-    name: 'Urban Scholar',
-    description: 'Raised in a city with formal education and bureaucratic structure.',
-    environment: environmentOptions[3], // urban
-    organization: organizationOptions[0], // bureaucratic
-    upbringing: upbringingOptions[0], // academic
-    language: 'Caelian',
-  },
-  {
-    id: 'rural-communal-labor',
-    name: 'Village Laborer',
-    description: 'Grew up in a rural community working the land.',
-    environment: environmentOptions[1], // rural
-    organization: organizationOptions[1], // communal
-    upbringing: upbringingOptions[2], // labor
-    language: 'Caelian',
-  },
-  {
-    id: 'nomadic-communal-martial',
-    name: 'Wandering Warrior',
-    description: 'Part of a nomadic tribe with martial traditions.',
-    environment: environmentOptions[0], // nomadic
-    organization: organizationOptions[1], // communal
-    upbringing: upbringingOptions[4], // martial
-    language: 'Caelian',
-  },
-  {
-    id: 'urban-bureaucratic-noble',
-    name: 'City Noble',
-    description: 'Born into privilege in an urban center.',
-    environment: environmentOptions[3], // urban
-    organization: organizationOptions[0], // bureaucratic
-    upbringing: upbringingOptions[5], // noble
-    language: 'Caelian',
-  },
-  {
-    id: 'wilderness-communal-martial',
-    name: 'Frontier Guard',
-    description: 'Raised on the frontier, defending against threats.',
-    environment: environmentOptions[4], // wilderness
-    organization: organizationOptions[1], // communal
-    upbringing: upbringingOptions[4], // martial
-    language: 'Caelian',
-  },
-  {
-    id: 'secluded-communal-academic',
-    name: 'Monastery Scholar',
-    description: 'Educated in a secluded religious or academic community.',
-    environment: environmentOptions[2], // secluded
-    organization: organizationOptions[1], // communal
-    upbringing: upbringingOptions[0], // academic
-    language: 'Caelian',
-  },
+  createCulture('devil', 'Devil', 'Urban, bureaucratic, academic.', 'ancestral', 'urban', 'bureaucratic', 'academic', 'Anjali'),
+  createCulture('dragon-knight', 'Dragon Knight', 'Secluded, bureaucratic, martial.', 'ancestral', 'secluded', 'bureaucratic', 'martial', 'Vastariax'),
+  createCulture('dwarf', 'Dwarf', 'Secluded, bureaucratic, creative.', 'ancestral', 'secluded', 'bureaucratic', 'creative', 'Zaliac'),
+  createCulture('hakaan', 'Hakaan', 'Rural, communal, labor.', 'ancestral', 'rural', 'communal', 'labor', 'Vhoric'),
+  createCulture('high-elf', 'High Elf', 'Secluded, bureaucratic, martial.', 'ancestral', 'secluded', 'bureaucratic', 'martial', 'Hyrallic'),
+  createCulture('human', 'Human', 'Urban, communal, labor.', 'ancestral', 'urban', 'communal', 'labor', 'Vaslorian'),
+  createCulture('memonek', 'Memonek', 'Nomadic, communal, academic.', 'ancestral', 'nomadic', 'communal', 'academic', 'Axiomatic'),
+  createCulture('orc', 'Orc', 'Wilderness, communal, creative.', 'ancestral', 'wilderness', 'communal', 'creative', 'Kalliak'),
+  createCulture('polder', 'Polder', 'Urban, communal, creative.', 'ancestral', 'urban', 'communal', 'creative', 'Khoursirian'),
+  createCulture('time-raider', 'Time Raider', 'Nomadic, communal, martial.', 'ancestral', 'nomadic', 'communal', 'martial', 'Voll'),
+  createCulture('wode-elf', 'Wode Elf', 'Wilderness, bureaucratic, martial.', 'ancestral', 'wilderness', 'bureaucratic', 'martial', 'Yllyric'),
+
+  createCulture('artisan-guild', 'Artisan Guild', 'Urban, bureaucratic, creative.', 'professional', 'urban', 'bureaucratic', 'creative'),
+  createCulture('borderland-homestead', 'Borderland Homestead', 'Wilderness, communal, labor.', 'professional', 'wilderness', 'communal', 'labor'),
+  createCulture('college-conclave', 'College Conclave', 'Urban, bureaucratic, academic.', 'professional', 'urban', 'bureaucratic', 'academic'),
+  createCulture('criminal-gang', 'Criminal Gang', 'Urban, communal, lawless.', 'professional', 'urban', 'communal', 'lawless'),
+  createCulture('farming-village', 'Farming Village', 'Rural, bureaucratic, labor.', 'professional', 'rural', 'bureaucratic', 'labor'),
+  createCulture('herding-community', 'Herding Community', 'Nomadic, communal, labor.', 'professional', 'nomadic', 'communal', 'labor'),
+  createCulture('knightly-order', 'Knightly Order', 'Secluded, bureaucratic, martial.', 'professional', 'secluded', 'bureaucratic', 'martial'),
+  createCulture('mercenary-band', 'Mercenary Band', 'Nomadic, bureaucratic, martial.', 'professional', 'nomadic', 'bureaucratic', 'martial'),
+  createCulture('merchant-caravan', 'Merchant Caravan', 'Nomadic, bureaucratic, creative.', 'professional', 'nomadic', 'bureaucratic', 'creative'),
+  createCulture('monastic-order', 'Monastic Order', 'Secluded, bureaucratic, academic.', 'professional', 'secluded', 'bureaucratic', 'academic'),
+  createCulture('noble-house', 'Noble House', 'Urban, bureaucratic, noble.', 'professional', 'urban', 'bureaucratic', 'noble'),
+  createCulture('outlaw-band', 'Outlaw Band', 'Wilderness, communal, lawless.', 'professional', 'wilderness', 'communal', 'lawless'),
+  createCulture('pauper-neighborhood', 'Pauper Neighborhood', 'Urban, communal, labor.', 'professional', 'urban', 'communal', 'labor'),
+  createCulture('pirate-crew', 'Pirate Crew', 'Nomadic, communal, lawless.', 'professional', 'nomadic', 'communal', 'lawless'),
+  createCulture('telepathic-hive', 'Telepathic Hive', 'Secluded, communal, creative.', 'professional', 'secluded', 'communal', 'creative'),
+  createCulture('traveling-entertainers', 'Traveling Entertainers', 'Nomadic, communal, creative.', 'professional', 'nomadic', 'communal', 'creative'),
+
+  createCulture('bespoke-culture', 'Bespoke Culture', 'Choose any Environment, Organization, and Upbringing.', 'bespoke'),
 ];
 
 // ============================================================================

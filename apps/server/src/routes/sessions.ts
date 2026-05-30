@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { sessionRateLimits } from '../security/rate-limits.js';
 
 export const sessionRoutes = new Hono<AppEnv>();
 
@@ -9,6 +10,9 @@ sessionRoutes.use('/*', authMiddleware);
 
 const LIVE_STATUSES = ['lobby', 'active'] as const;
 const VALID_STATUSES = ['draft', 'lobby', 'active', 'paused', 'completed'] as const;
+const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const ROOM_CODE_LENGTH = 10;
+const ROOM_CODE_ATTEMPTS = 8;
 
 interface SessionAccessRow {
   id: string;
@@ -25,7 +29,7 @@ interface MembershipRow {
 }
 
 function normalizeRoomCode(code: string): string {
-  return code.trim().toUpperCase();
+  return code.trim().replace(/\s+/g, '').toUpperCase();
 }
 
 function isLiveStatus(status: string): boolean {
@@ -68,10 +72,51 @@ async function assertHeroOwnership(c: Context<AppEnv>, heroId: string | null | u
   return hero !== null;
 }
 
+function makeRoomCode(): string {
+  const bytes = new Uint8Array(ROOM_CODE_LENGTH);
+  crypto.getRandomValues(bytes);
+  let code = '';
+  for (const byte of bytes) code += ROOM_CODE_CHARS[byte % ROOM_CODE_CHARS.length];
+  return code;
+}
+
+async function generateUniqueRoomCode(c: Context<AppEnv>, sessionId: string): Promise<string | null> {
+  for (let attempt = 0; attempt < ROOM_CODE_ATTEMPTS; attempt += 1) {
+    const roomCode = makeRoomCode();
+    const duplicate = await c.env.DB.prepare(
+      `SELECT id FROM game_sessions
+       WHERE room_code = ? AND id <> ? AND status IN ('lobby', 'active')
+       LIMIT 1`,
+    )
+      .bind(roomCode, sessionId)
+      .first<{ id: string }>();
+    if (!duplicate) return roomCode;
+  }
+  return null;
+}
+
+async function enforceSessionAdmissionLimit(
+  c: Context<AppEnv>,
+  namespace: string,
+  user: AuthUser,
+): Promise<Response | null> {
+  return namespace === 'room-code-lookup'
+    ? sessionRateLimits.roomCodeLookup(c, user.id)
+    : sessionRateLimits.roomCodeJoin(c, user.id);
+}
+
 // Lookup session by room code. Auth is required by the router middleware, but campaign membership is not:
 // a valid live room code is the session-level invitation for players to join.
 sessionRoutes.get('/sessions/by-code/:code', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const rateLimitError = await enforceSessionAdmissionLimit(c, 'room-code-lookup', user);
+  if (rateLimitError) return rateLimitError;
+
   const code = normalizeRoomCode(c.req.param('code'));
+  if (!new RegExp(`^[${ROOM_CODE_CHARS}]{${ROOM_CODE_LENGTH}}$`).test(code)) {
+    return c.json({ error: 'Invalid room code' }, 404);
+  }
+
   const session = await c.env.DB.prepare(
     `SELECT gs.id, gs.name, gs.campaign_id, gs.status, c.name as campaign_name
      FROM game_sessions gs JOIN campaigns c ON gs.campaign_id = c.id
@@ -249,9 +294,7 @@ sessionRoutes.put('/sessions/:id/go-live', async (c) => {
   if (!session || session.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
   if (isLiveStatus(session.status)) return c.json({ error: 'Session is already live' }, 400);
 
-  const body = await c.req.json<{ roomCode: string; sceneId?: string | null }>();
-  const roomCode = normalizeRoomCode(body.roomCode ?? '');
-  if (!/^[A-Z0-9]{6}$/.test(roomCode)) return c.json({ error: 'Room code must be 6 letters or numbers' }, 400);
+  const body = await c.req.json<{ sceneId?: string | null }>();
 
   const otherLive = await c.env.DB.prepare(
     `SELECT id FROM game_sessions
@@ -262,14 +305,8 @@ sessionRoutes.put('/sessions/:id/go-live', async (c) => {
     .first<{ id: string }>();
   if (otherLive) return c.json({ error: 'Campaign already has a live session' }, 409);
 
-  const duplicateCode = await c.env.DB.prepare(
-    `SELECT id FROM game_sessions
-     WHERE room_code = ? AND id <> ? AND status IN ('lobby', 'active')
-     LIMIT 1`,
-  )
-    .bind(roomCode, sessionId)
-    .first<{ id: string }>();
-  if (duplicateCode) return c.json({ error: 'Room code is already in use' }, 409);
+  const roomCode = await generateUniqueRoomCode(c, sessionId);
+  if (!roomCode) return c.json({ error: 'Could not allocate room code' }, 503);
 
   let activeSceneId = body.sceneId?.trim() || null;
   if (activeSceneId) {
@@ -296,7 +333,7 @@ sessionRoutes.put('/sessions/:id/go-live', async (c) => {
     .bind(roomCode, activeSceneId, sessionId)
     .run();
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, roomCode });
 });
 
 // Start session (from lobby to active)
@@ -360,6 +397,9 @@ sessionRoutes.post('/sessions/:id/end', async (c) => {
 // Join session
 sessionRoutes.post('/sessions/:id/join', async (c) => {
   const user = c.get('user') as AuthUser;
+  const rateLimitError = await enforceSessionAdmissionLimit(c, 'session-join', user);
+  if (rateLimitError) return rateLimitError;
+
   const sessionId = c.req.param('id');
   const body = await c.req.json<{ hero_id?: string | null }>();
 

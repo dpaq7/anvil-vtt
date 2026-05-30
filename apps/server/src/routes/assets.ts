@@ -2,20 +2,19 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import {
+  extensionForContentType,
+  isAllowedAssetContentType,
+  isAllowedAssetType,
+  MAX_ASSET_FILE_SIZE,
+  shouldServeAssetAsAttachment,
+} from '../lib/assets.js';
+import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES, PENDING_UPLOAD_TTL_HOURS } from '../lib/quotas.js';
+import { assetRateLimits } from '../security/rate-limits.js';
 
 export const assetRoutes = new Hono<AppEnv>();
 
 assetRoutes.use('/*', authMiddleware);
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const VALID_TYPES = ['map', 'token', 'portrait', 'handout', 'audio', 'other'] as const;
-const ACTIVE_CONTENT_TYPES = new Set([
-  'application/xhtml+xml',
-  'application/xml',
-  'image/svg+xml',
-  'text/html',
-  'text/xml',
-]);
 
 interface AssetRow {
   id: string;
@@ -27,35 +26,34 @@ interface AssetRow {
   file_size: number | null;
 }
 
-function extensionForContentType(contentType: string): string {
-  const normalized = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
-  const known: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'audio/mpeg': 'mp3',
-    'audio/mp3': 'mp3',
-    'audio/wav': 'wav',
-    'audio/x-wav': 'wav',
-    'audio/ogg': 'ogg',
-    'audio/webm': 'webm',
-    'application/pdf': 'pdf',
-  };
-  return known[normalized] ?? 'bin';
-}
-
-function isAllowedContentType(assetType: string, contentType: string): boolean {
-  const normalized = contentType.toLowerCase().split(';')[0]?.trim() ?? '';
-  if (!normalized || ACTIVE_CONTENT_TYPES.has(normalized)) return false;
-  if (assetType === 'map' || assetType === 'token' || assetType === 'portrait') return normalized.startsWith('image/');
-  if (assetType === 'audio') return normalized.startsWith('audio/');
-  if (assetType === 'handout') return normalized.startsWith('image/') || normalized === 'application/pdf' || normalized === 'text/plain' || normalized === 'text/markdown';
-  return normalized.startsWith('image/') || normalized.startsWith('audio/') || normalized === 'application/pdf' || normalized === 'application/octet-stream';
-}
-
 function safeAttachmentName(name: string): string {
   return name.replace(/[\r\n"\\/]/g, '_').trim() || 'asset';
+}
+
+async function cleanupPendingUploads(c: Context<AppEnv>, userId: string): Promise<void> {
+  await c.env.DB.prepare(
+    `DELETE FROM assets
+     WHERE user_id = ? AND uploaded_at IS NULL AND created_at < datetime('now', ?)`,
+  )
+    .bind(userId, `-${PENDING_UPLOAD_TTL_HOURS} hours`)
+    .run();
+}
+
+async function enforceAssetQuota(c: Context<AppEnv>, userId: string, incomingBytes: number, excludingAssetId?: string): Promise<Response | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN file_size ELSE 0 END), 0) AS used_bytes,
+       COUNT(*) AS asset_count
+     FROM assets
+     WHERE user_id = ? AND (? IS NULL OR id <> ?)`,
+  )
+    .bind(userId, excludingAssetId ?? null, excludingAssetId ?? null)
+    .first<{ used_bytes: number | null; asset_count: number }>();
+  const usedBytes = row?.used_bytes ?? 0;
+  const assetCount = row?.asset_count ?? 0;
+  if (assetCount >= MAX_USER_ASSETS) return c.json({ error: 'Asset limit reached' }, 403);
+  if (usedBytes + incomingBytes > MAX_USER_STORAGE_BYTES) return c.json({ error: 'Storage quota exceeded' }, 403);
+  return null;
 }
 
 async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: string): Promise<boolean> {
@@ -64,6 +62,7 @@ async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: strin
     .first<{ id: string }>();
   if (row) return true;
 
+  const assetPattern = `%${assetId}%`;
   const linked = await c.env.DB.prepare(
     `SELECT 1
      FROM campaign_members cm
@@ -73,10 +72,27 @@ async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: strin
        OR EXISTS (SELECT 1 FROM custom_terrain ct WHERE ct.asset_id = ? AND ct.campaign_id = cm.campaign_id)
        OR EXISTS (SELECT 1 FROM monster_portraits mp WHERE mp.asset_id = ? AND mp.campaign_id = cm.campaign_id)
        OR EXISTS (SELECT 1 FROM npcs n WHERE n.portrait_asset_id = ? AND n.campaign_id = cm.campaign_id)
+       OR EXISTS (
+         SELECT 1
+         FROM campaign_members hcm
+         JOIN heroes h ON h.id = hcm.hero_id
+         WHERE hcm.campaign_id = cm.campaign_id
+           AND (h.portrait_asset_id = ? OR h.data LIKE ?)
+           AND h.deleted_at IS NULL
+       )
+       OR EXISTS (
+         SELECT 1
+         FROM session_participants sp
+         JOIN game_sessions gs ON gs.id = sp.game_session_id
+         JOIN heroes h ON h.id = sp.hero_id
+         WHERE gs.campaign_id = cm.campaign_id
+           AND (h.portrait_asset_id = ? OR h.data LIKE ?)
+           AND h.deleted_at IS NULL
+       )
      )
      LIMIT 1`,
   )
-    .bind(userId, assetId, assetId, assetId, assetId, assetId)
+    .bind(userId, assetId, assetId, assetId, assetId, assetId, assetId, assetPattern, assetId, assetPattern)
     .first<{ 1: number }>();
   return linked !== null;
 }
@@ -101,15 +117,22 @@ function parseRange(rangeHeader: string | null, size: number): { start: number; 
 // Register an asset before uploading bytes to R2.
 assetRoutes.post('/upload', async (c) => {
   const user = c.get('user') as AuthUser;
+  const rateLimitError = await assetRateLimits.uploadRegister(c, user.id);
+  if (rateLimitError) return rateLimitError;
+
+  await cleanupPendingUploads(c, user.id);
+
   const body = await c.req.json<{ name: string; type: string; contentType: string; size?: number }>();
 
-  if (!VALID_TYPES.includes(body.type as (typeof VALID_TYPES)[number])) return c.json({ error: 'Invalid type' }, 400);
+  if (!isAllowedAssetType(body.type)) return c.json({ error: 'Invalid type' }, 400);
   if (!body.name?.trim()) return c.json({ error: 'Name is required' }, 400);
   if (!body.contentType?.trim()) return c.json({ error: 'Content type is required' }, 400);
-  if (!isAllowedContentType(body.type, body.contentType)) return c.json({ error: 'File type is not allowed for this asset' }, 400);
-  if (body.size !== undefined && (!Number.isFinite(body.size) || body.size <= 0 || body.size > MAX_FILE_SIZE)) {
+  if (!isAllowedAssetContentType(body.type, body.contentType)) return c.json({ error: 'File type is not allowed for this asset' }, 400);
+  if (body.size === undefined || !Number.isFinite(body.size) || body.size <= 0 || body.size > MAX_ASSET_FILE_SIZE) {
     return c.json({ error: 'File is too large' }, 400);
   }
+  const quotaError = await enforceAssetQuota(c, user.id, body.size);
+  if (quotaError) return quotaError;
 
   const id = crypto.randomUUID();
   const ext = extensionForContentType(body.contentType);
@@ -128,6 +151,9 @@ assetRoutes.post('/upload', async (c) => {
 // Complete upload (client uploads bytes in a second request)
 assetRoutes.put('/:id/data', async (c) => {
   const user = c.get('user') as AuthUser;
+  const rateLimitError = await assetRateLimits.uploadData(c, user.id);
+  if (rateLimitError) return rateLimitError;
+
   const assetId = c.req.param('id');
 
   const asset = await c.env.DB.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?')
@@ -136,12 +162,14 @@ assetRoutes.put('/:id/data', async (c) => {
   if (!asset) return c.json({ error: 'Not found' }, 404);
 
   const contentType = c.req.header('content-type') ?? asset.content_type ?? 'application/octet-stream';
-  if (!isAllowedContentType(asset.type, contentType)) return c.json({ error: 'File type is not allowed for this asset' }, 400);
+  if (!isAllowedAssetContentType(asset.type, contentType)) return c.json({ error: 'File type is not allowed for this asset' }, 400);
 
   const data = await c.req.arrayBuffer();
   if (data.byteLength === 0) return c.json({ error: 'File is empty' }, 400);
-  if (data.byteLength > MAX_FILE_SIZE) return c.json({ error: 'File is too large' }, 400);
+  if (data.byteLength > MAX_ASSET_FILE_SIZE) return c.json({ error: 'File is too large' }, 400);
   if (asset.file_size !== null && asset.file_size !== data.byteLength) return c.json({ error: 'Upload size mismatch' }, 400);
+  const quotaError = await enforceAssetQuota(c, user.id, data.byteLength, assetId);
+  if (quotaError) return quotaError;
 
   await c.env.ASSETS.put(asset.storage_key, data, {
     httpMetadata: { contentType },
@@ -170,13 +198,14 @@ assetRoutes.get('/:id/data', async (c) => {
 
   const size = asset.file_size ?? object.size;
   const range = parseRange(c.req.header('range') ?? null, size);
-  const contentType = object.httpMetadata?.contentType ?? asset.content_type ?? 'application/octet-stream';
+  const rawContentType = object.httpMetadata?.contentType ?? asset.content_type ?? 'application/octet-stream';
+  const contentType = isAllowedAssetContentType(asset.type, rawContentType) ? rawContentType : 'application/octet-stream';
   const headers = new Headers();
   headers.set('Content-Type', contentType);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Cache-Control', 'private, max-age=3600');
   headers.set('Accept-Ranges', 'bytes');
-  if (asset.type === 'handout' || asset.type === 'other') {
+  if (shouldServeAssetAsAttachment(asset.type, rawContentType)) {
     headers.set('Content-Disposition', `attachment; filename="${safeAttachmentName(asset.name)}"`);
   }
 
@@ -209,6 +238,49 @@ assetRoutes.get('/', async (c) => {
   return c.json({ assets: results.results });
 });
 
+// Update owned asset metadata. Campaign-linked records keep their subtype-specific
+// metadata in the owning map/audio/etc. endpoints.
+assetRoutes.patch('/:id', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const assetId = c.req.param('id');
+  const body = await c.req.json<{ name?: string; type?: string }>();
+
+  const asset = await c.env.DB.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<AssetRow>();
+  if (!asset) return c.json({ error: 'Not found' }, 404);
+
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+
+  if (body.name !== undefined) {
+    if (!body.name.trim()) return c.json({ error: 'Name is required' }, 400);
+    sets.push('name = ?');
+    vals.push(body.name.trim());
+  }
+
+  if (body.type !== undefined) {
+    if (!isAllowedAssetType(body.type)) return c.json({ error: 'Invalid type' }, 400);
+    if (!asset.content_type || !isAllowedAssetContentType(body.type, asset.content_type)) {
+      return c.json({ error: 'File type is not allowed for this asset type' }, 400);
+    }
+    sets.push('type = ?');
+    vals.push(body.type);
+  }
+
+  if (sets.length > 0) {
+    vals.push(assetId);
+    await c.env.DB.prepare(`UPDATE assets SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
+  }
+
+  const updated = await c.env.DB.prepare('SELECT * FROM assets WHERE id = ? AND user_id = ?')
+    .bind(assetId, user.id)
+    .first<AssetRow>();
+  if (!updated) return c.json({ error: 'Not found' }, 404);
+
+  return c.json({ asset: updated });
+});
+
 // Delete an owned unlinked asset. Linked campaign asset cleanup goes through the owning campaign record.
 assetRoutes.delete('/:id', async (c) => {
   const user = c.get('user') as AuthUser;
@@ -226,9 +298,11 @@ assetRoutes.delete('/:id', async (c) => {
       OR EXISTS (SELECT 1 FROM custom_terrain WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM monster_portraits WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM npcs WHERE portrait_asset_id = ?)
+      OR EXISTS (SELECT 1 FROM heroes WHERE portrait_asset_id = ? AND deleted_at IS NULL)
+      OR EXISTS (SELECT 1 FROM heroes WHERE data LIKE ? AND deleted_at IS NULL)
      LIMIT 1`,
   )
-    .bind(assetId, assetId, assetId, assetId, assetId)
+    .bind(assetId, assetId, assetId, assetId, assetId, assetId, `%${assetId}%`)
     .first<{ 1: number }>();
   if (linked) return c.json({ error: 'Asset is in use' }, 409);
 

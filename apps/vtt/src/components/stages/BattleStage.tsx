@@ -1,25 +1,294 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react';
+import { Dices, GripVertical } from 'lucide-react';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import { BattleToolbar } from '../builder/BattleToolbar.js';
 import { ViewportControls } from '../builder/ViewportControls.js';
 import type { BattleTool, FogBrushMode } from '../builder/BattleToolbar.js';
 import type { ViewportSystem } from '../../canvas/systems/ViewportSystem.js';
-import type { EntityData, CombatState, ClientMessage, AbilityResult } from '../../types/protocol.js';
+import type {
+  EntityData,
+  CombatState,
+  ClientMessage,
+  AbilityResult,
+} from '../../types/protocol.js';
 import type { DrawingData } from '../../canvas/layers/DrawingLayer.js';
 import type { FogZoneData } from '../../canvas/layers/FogLayer.js';
 import type { TerrainZoneData } from '../../canvas/layers/TerrainLayer.js';
+import { BattleTurnTracker } from '../session/BattleTurnTracker.js';
 import { DiceTray } from '../session/DiceTray.js';
+import { DiceRollControls } from '../session/DiceRollControls.js';
 import { TokenTooltip } from '../session/TokenTooltip.js';
 import { TokenContextMenu } from '../session/TokenContextMenu.js';
+import { TerrainContextMenu } from '../session/TerrainContextMenu.js';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function splitFogZoneAroundCell(
+  zone: FogZoneData,
+  gridX: number,
+  gridY: number,
+): FogZoneData[] {
+  const zoneRight = zone.x + zone.w;
+  const zoneBottom = zone.y + zone.h;
+  if (
+    gridX < zone.x ||
+    gridX >= zoneRight ||
+    gridY < zone.y ||
+    gridY >= zoneBottom
+  ) {
+    return [zone];
+  }
+
+  const pieces: FogZoneData[] = [];
+  const addPiece = (x: number, y: number, w: number, h: number) => {
+    if (w <= 0 || h <= 0) return;
+    pieces.push({ id: generateId(), x, y, w, h });
+  };
+
+  addPiece(zone.x, zone.y, zone.w, gridY - zone.y);
+  addPiece(zone.x, gridY + 1, zone.w, zoneBottom - gridY - 1);
+  addPiece(zone.x, gridY, gridX - zone.x, 1);
+  addPiece(gridX + 1, gridY, zoneRight - gridX - 1, 1);
+
+  return pieces;
+}
+
+type StageDockEdge = 'top' | 'bottom' | 'left' | 'right';
+
+interface StagePanelPlacement {
+  edge: StageDockEdge;
+  offset: number;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (min > max) return 0.5;
+  return Math.max(min, Math.min(max, value));
+}
+
+function isInitiativePending(combat: CombatState): boolean {
+  return (
+    combat.initiativeRoll === null ||
+    combat.firstSide === null ||
+    combat.activeSide === null
+  );
+}
+
+function loadPanelPlacement(
+  storageKey: string,
+  fallback: StagePanelPlacement,
+): StagePanelPlacement {
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<StagePanelPlacement>;
+    if (
+      (parsed.edge === 'top' ||
+        parsed.edge === 'bottom' ||
+        parsed.edge === 'left' ||
+        parsed.edge === 'right') &&
+      typeof parsed.offset === 'number' &&
+      Number.isFinite(parsed.offset)
+    ) {
+      return { edge: parsed.edge, offset: clamp(parsed.offset, 0.05, 0.95) };
+    }
+  } catch {
+    // Ignore invalid persisted panel placement.
+  }
+
+  return fallback;
+}
+
+function savePanelPlacement(
+  storageKey: string,
+  placement: StagePanelPlacement,
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(placement));
+  } catch {
+    // Ignore localStorage failures; controls still move for the current drag.
+  }
+}
+
+function styleForPanelPlacement(
+  placement: StagePanelPlacement,
+  inset: number,
+): CSSProperties {
+  switch (placement.edge) {
+    case 'bottom':
+      return {
+        bottom: inset,
+        left: `${placement.offset * 100}%`,
+        transform: 'translateX(-50%)',
+      };
+    case 'left':
+      return {
+        left: inset,
+        top: `${placement.offset * 100}%`,
+        transform: 'translateY(-50%)',
+      };
+    case 'right':
+      return {
+        right: inset,
+        top: `${placement.offset * 100}%`,
+        transform: 'translateY(-50%)',
+      };
+    case 'top':
+    default:
+      return {
+        top: inset,
+        left: `${placement.offset * 100}%`,
+        transform: 'translateX(-50%)',
+      };
+  }
+}
+
+interface FloatingStagePanelProps {
+  children: ReactNode;
+  storageKey: string;
+  initialPlacement: StagePanelPlacement;
+  stageRef: { current: HTMLDivElement | null };
+  inset?: number;
+  label: string;
+}
+
+function FloatingStagePanel({
+  children,
+  storageKey,
+  initialPlacement,
+  stageRef,
+  inset = 12,
+  label,
+}: FloatingStagePanelProps) {
+  const [placement, setPlacement] = useState(() =>
+    loadPanelPlacement(storageKey, initialPlacement),
+  );
+  const [dragPosition, setDragPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const snapToNearestEdge = useCallback(
+    (x: number, y: number, width: number, height: number) => {
+      const stage = stageRef.current;
+      if (!stage) return placement;
+
+      const stageWidth = Math.max(1, stage.clientWidth);
+      const stageHeight = Math.max(1, stage.clientHeight);
+      const centerX = x + width / 2;
+      const centerY = y + height / 2;
+      const distances: Record<StageDockEdge, number> = {
+        top: centerY,
+        bottom: stageHeight - centerY,
+        left: centerX,
+        right: stageWidth - centerX,
+      };
+      const edge = (Object.entries(distances).sort(
+        (a, b) => a[1] - b[1],
+      )[0]?.[0] ?? 'top') as StageDockEdge;
+      const horizontalMin = Math.min(0.5, (width / 2 + 8) / stageWidth);
+      const verticalMin = Math.min(0.5, (height / 2 + 8) / stageHeight);
+      const offset =
+        edge === 'top' || edge === 'bottom'
+          ? clamp(centerX / stageWidth, horizontalMin, 1 - horizontalMin)
+          : clamp(centerY / stageHeight, verticalMin, 1 - verticalMin);
+
+      return { edge, offset };
+    },
+    [placement, stageRef],
+  );
+
+  const startDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const panel = panelRef.current;
+      const stage = stageRef.current;
+      if (!panel || !stage) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const stageRect = stage.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const start = {
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        x: panelRect.left - stageRect.left,
+        y: panelRect.top - stageRect.top,
+        width: panelRect.width,
+        height: panelRect.height,
+      };
+      let latest = { x: start.x, y: start.y };
+      setDragPosition(latest);
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const maxX = Math.max(0, stage.clientWidth - start.width);
+        const maxY = Math.max(0, stage.clientHeight - start.height);
+        latest = {
+          x: clamp(start.x + moveEvent.clientX - start.pointerX, 0, maxX),
+          y: clamp(start.y + moveEvent.clientY - start.pointerY, 0, maxY),
+        };
+        setDragPosition(latest);
+      };
+
+      const handleUp = () => {
+        window.removeEventListener('pointermove', handleMove);
+        window.removeEventListener('pointerup', handleUp);
+        const nextPlacement = snapToNearestEdge(
+          latest.x,
+          latest.y,
+          start.width,
+          start.height,
+        );
+        setPlacement(nextPlacement);
+        savePanelPlacement(storageKey, nextPlacement);
+        setDragPosition(null);
+      };
+
+      window.addEventListener('pointermove', handleMove);
+      window.addEventListener('pointerup', handleUp, { once: true });
+    },
+    [snapToNearestEdge, stageRef, storageKey],
+  );
+
+  const style = dragPosition
+    ? { left: dragPosition.x, top: dragPosition.y, transform: 'none' }
+    : styleForPanelPlacement(placement, inset);
+
+  return (
+    <div
+      ref={panelRef}
+      className="pointer-events-auto absolute z-30 flex items-center gap-1"
+      style={style}
+    >
+      <button
+        type="button"
+        className="flex size-7 cursor-grab items-center justify-center rounded-md border border-zinc-800 bg-zinc-950/85 text-zinc-500 shadow-lg backdrop-blur transition hover:border-zinc-600 hover:text-zinc-200 active:cursor-grabbing"
+        title={`Move ${label}; release near an edge to stick`}
+        aria-label={`Move ${label}`}
+        onPointerDown={startDrag}
+      >
+        <GripVertical className="size-3.5" />
+      </button>
+      {children}
+    </div>
+  );
 }
 
 interface BattleStageProps {
   entities: EntityData[];
   combat: CombatState | null;
   selectedEntityId: string | null;
+  selectedEntityIds?: string[];
   isDirector: boolean;
   cols?: number;
   rows?: number;
@@ -31,15 +300,23 @@ interface BattleStageProps {
   terrain?: TerrainZoneData[];
   gridOpacity?: number;
   gridColor?: string;
+  gridCellSize?: number;
+  gridOffsetX?: number;
+  gridOffsetY?: number;
   combatLog?: AbilityResult[];
   entityNames?: Map<string, string>;
+  focusEntityRequest?: { entityId: string; nonce: number } | null;
   onSelectEntity: (entityId: string | null) => void;
+  onSelectEntities?: (entityIds: string[]) => void;
+  onRollInitiative?: () => void;
   send: (msg: ClientMessage) => void;
 }
 
 export function BattleStage({
   entities,
+  combat,
   selectedEntityId,
+  selectedEntityIds,
   isDirector,
   cols = 30,
   rows = 20,
@@ -51,9 +328,15 @@ export function BattleStage({
   terrain = [],
   gridOpacity = 0.4,
   gridColor = '#444444',
+  gridCellSize = cellSize,
+  gridOffsetX = 0,
+  gridOffsetY = 0,
   combatLog,
   entityNames,
+  focusEntityRequest,
   onSelectEntity,
+  onSelectEntities,
+  onRollInitiative,
   send,
 }: BattleStageProps) {
   // Tool state (director only)
@@ -66,7 +349,10 @@ export function BattleStage({
 
   // Viewport
   const [zoom, setZoom] = useState(1);
-  const [bgNaturalSize, setBgNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [bgNaturalSize, setBgNaturalSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const viewportRef = useRef<ViewportSystem | null>(null);
   const prevToolRef = useRef<BattleTool>('select');
 
@@ -75,14 +361,34 @@ export function BattleStage({
   // left/top must be relative to the container, not the viewport.
   const stageRef = useRef<HTMLDivElement>(null);
 
-  // Multi-select state
-  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+  // Multi-select state. Parent views own selection when they need to synchronize
+  // tracker clicks with the map; the local fallback keeps the stage usable alone.
+  const [localSelectedEntityIds, setLocalSelectedEntityIds] = useState<
+    string[]
+  >([]);
+  const currentSelectedEntityIds = selectedEntityIds ?? localSelectedEntityIds;
 
   // Token hover / context menu overlays
-  const [hoverInfo, setHoverInfo] = useState<{ entityId: string; x: number; y: number } | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ entityId: string; x: number; y: number } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{
+    entityId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    entityId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [terrainMenu, setTerrainMenu] = useState<{
+    terrainId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  const entityMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
+  const entityMap = useMemo(
+    () => new Map(entities.map((e) => [e.id, e])),
+    [entities],
+  );
 
   /** Convert viewport-relative coords to container-relative coords for overlays. */
   const toLocal = useCallback((viewportX: number, viewportY: number) => {
@@ -110,6 +416,7 @@ export function BattleStage({
       if (entityId) {
         const { x, y } = toLocal(screenX, screenY);
         setContextMenu({ entityId, x, y });
+        setTerrainMenu(null);
         setHoverInfo(null); // hide tooltip when context menu opens
       } else {
         // Right-clicked on empty space — close any open context menu
@@ -123,22 +430,53 @@ export function BattleStage({
     setContextMenu(null);
   }, []);
 
+  const handleTerrainRightClick = useCallback(
+    (terrainId: string | null, screenX: number, screenY: number) => {
+      if (terrainId) {
+        const { x, y } = toLocal(screenX, screenY);
+        setTerrainMenu({ terrainId, x, y });
+        setContextMenu(null);
+        setHoverInfo(null);
+      } else {
+        setTerrainMenu(null);
+      }
+    },
+    [toLocal],
+  );
+
+  const handleCloseTerrainMenu = useCallback(() => {
+    setTerrainMenu(null);
+  }, []);
+
   const handleMoveEntity = useCallback(
     (entityId: string, x: number, y: number) => {
       if (!entityMap.has(entityId)) {
         onSelectEntity(null);
+        if (onSelectEntities) onSelectEntities([]);
+        else setLocalSelectedEntityIds([]);
         return;
       }
       send({ type: 'move_token', entityId, x, y });
     },
-    [entityMap, onSelectEntity, send],
+    [entityMap, onSelectEntities, onSelectEntity, send],
+  );
+
+  const handleSelectEntity = useCallback(
+    (entityId: string | null) => {
+      onSelectEntity(entityId);
+      const nextIds = entityId ? [entityId] : [];
+      if (onSelectEntities) onSelectEntities(nextIds);
+      else setLocalSelectedEntityIds(nextIds);
+    },
+    [onSelectEntities, onSelectEntity],
   );
 
   const handleMultiSelectEntities = useCallback(
     (entityIds: string[]) => {
-      setSelectedEntityIds(entityIds);
+      if (onSelectEntities) onSelectEntities(entityIds);
+      else setLocalSelectedEntityIds(entityIds);
     },
-    [],
+    [onSelectEntities],
   );
 
   const handleMultiMoveEntities = useCallback(
@@ -156,7 +494,13 @@ export function BattleStage({
   const handleDrawingAdd = useCallback(
     (points: number[], color: string, width: number) => {
       if (color === 'none') return; // Blank color — no stroke
-      const drawing = { id: generateId(), type: 'freehand', points, color, width };
+      const drawing = {
+        id: generateId(),
+        type: 'freehand',
+        points,
+        color,
+        width,
+      };
       send({ type: 'scene_drawing_add', drawing });
     },
     [send],
@@ -183,6 +527,20 @@ export function BattleStage({
       send({ type: 'scene_fog_remove', fogId });
     },
     [send],
+  );
+
+  const handleFogRevealCell = useCallback(
+    (gridX: number, gridY: number) => {
+      for (const zone of fogZones) {
+        const pieces = splitFogZoneAroundCell(zone, gridX, gridY);
+        if (pieces.length === 1 && pieces[0] === zone) continue;
+        send({ type: 'scene_fog_remove', fogId: zone.id });
+        for (const piece of pieces) {
+          send({ type: 'scene_fog_add', fog: piece });
+        }
+      }
+    },
+    [fogZones, send],
   );
 
   const handleClearFog = useCallback(() => {
@@ -215,6 +573,38 @@ export function BattleStage({
     [send],
   );
 
+  const handleTerrainUpdate = useCallback(
+    (terrainZone: TerrainZoneData) => {
+      send({ type: 'scene_terrain_update', terrain: terrainZone });
+    },
+    [send],
+  );
+
+  const handleToggleTerrainHidden = useCallback(
+    (terrainZone: TerrainZoneData) => {
+      send({
+        type: 'scene_terrain_update',
+        terrain: { ...terrainZone, hidden: !terrainZone.hidden },
+      });
+    },
+    [send],
+  );
+
+  useEffect(() => {
+    const entityId = focusEntityRequest?.entityId;
+    if (!entityId) return;
+    const entity = entityMap.get(entityId);
+    if (!entity) return;
+    const size =
+      typeof entity['size'] === 'number' ? (entity['size'] as number) : 1;
+    viewportRef.current?.centerOnGrid(
+      entity.x + Math.max(1, size) / 2,
+      entity.y + Math.max(1, size) / 2,
+      cellSize,
+      1,
+    );
+  }, [cellSize, entityMap, focusEntityRequest]);
+
   // Keyboard shortcuts (director only)
   useEffect(() => {
     if (!isDirector) return;
@@ -232,13 +622,27 @@ export function BattleStage({
       }
 
       switch (e.key.toLowerCase()) {
-        case 'h': setActiveTool('pan'); return;
-        case 'v': setActiveTool('select'); return;
-        case 'd': setActiveTool('draw'); return;
-        case 'f': setActiveTool('fog'); return;
-        case 't': setActiveTool('terrain'); return;
-        case 'e': setActiveTool('eraser'); return;
-        case 'g': setGridVisible((v) => !v); return;
+        case 'h':
+          setActiveTool('pan');
+          return;
+        case 'v':
+          setActiveTool('select');
+          return;
+        case 'd':
+          setActiveTool('draw');
+          return;
+        case 'f':
+          setActiveTool('fog');
+          return;
+        case 't':
+          setActiveTool('terrain');
+          return;
+        case 'e':
+          setActiveTool('eraser');
+          return;
+        case 'g':
+          setGridVisible((v) => !v);
+          return;
       }
 
       // Zoom shortcuts
@@ -283,12 +687,12 @@ export function BattleStage({
         cellSize={cellSize}
         entities={entities}
         selectedEntityId={selectedEntityId}
-        selectedEntityIds={selectedEntityIds}
+        selectedEntityIds={currentSelectedEntityIds}
         backgroundUrl={backgroundUrl}
         isDirector={isDirector}
         heroPosition={heroPosition}
         fogZones={fogZones}
-        onSelectEntity={onSelectEntity}
+        onSelectEntity={handleSelectEntity}
         onMoveEntity={handleMoveEntity}
         onMultiSelectEntities={handleMultiSelectEntities}
         onMultiMoveEntities={handleMultiMoveEntities}
@@ -301,22 +705,88 @@ export function BattleStage({
         onDrawingAdd={handleDrawingAdd}
         onDrawingRemove={handleDrawingRemove}
         onTerrainAdd={handleTerrainAdd}
+        onTerrainUpdate={handleTerrainUpdate}
         onTerrainRemove={handleTerrainRemove}
+        onTerrainRightClick={handleTerrainRightClick}
         onFogAdd={handleFogAdd}
         onFogRemove={handleFogRemove}
+        onFogRevealCell={handleFogRevealCell}
         fogBrushMode={fogBrushMode}
         fogBrushSize={fogBrushSize}
         gridVisible={gridVisible}
         gridOpacity={gridOpacity}
         gridColor={gridColor}
+        gridCellSize={gridCellSize}
+        gridOffsetX={gridOffsetX}
+        gridOffsetY={gridOffsetY}
         onTokenHover={handleTokenHover}
         onTokenRightClick={handleTokenRightClick}
         onZoomChange={setZoom}
         onBackgroundLoaded={(info) =>
-          setBgNaturalSize({ width: info.naturalWidth, height: info.naturalHeight })
+          setBgNaturalSize({
+            width: info.naturalWidth,
+            height: info.naturalHeight,
+          })
         }
         viewportRef={viewportRef}
       />
+
+      {combat && isInitiativePending(combat) && (
+        <div className="pointer-events-none absolute inset-x-4 top-20 z-30 flex justify-center">
+          <div className="pointer-events-auto max-w-sm rounded-lg border border-amber-500/40 bg-zinc-950/90 p-4 text-center shadow-2xl backdrop-blur">
+            <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-amber-500/15 text-amber-200">
+              <Dices className="size-5" />
+            </div>
+            <p className="mt-3 text-sm font-semibold text-zinc-100">
+              Players roll initiative
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
+              Roll 1d10. On 6 or higher, heroes act first.
+            </p>
+            {isDirector || !onRollInitiative ? (
+              <p className="mt-3 rounded border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs text-zinc-400">
+                Waiting for a player to roll.
+              </p>
+            ) : (
+              <button
+                type="button"
+                className="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-amber-500 px-4 text-sm font-semibold text-anvil-ink transition hover:bg-amber-400"
+                onClick={onRollInitiative}
+              >
+                Roll d10
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {combat && (
+        <FloatingStagePanel
+          storageKey="anvil-session-stage-turn-tracker"
+          initialPlacement={{ edge: 'top', offset: 0.5 }}
+          stageRef={stageRef}
+          label="turn tracker"
+        >
+          <BattleTurnTracker
+            combat={combat}
+            entities={entities}
+            onRollInitiative={
+              isInitiativePending(combat) ? undefined : onRollInitiative
+            }
+            className="pointer-events-auto"
+          />
+        </FloatingStagePanel>
+      )}
+
+      <FloatingStagePanel
+        storageKey="anvil-session-stage-dice-controls"
+        initialPlacement={{ edge: 'top', offset: 0.5 }}
+        stageRef={stageRef}
+        inset={52}
+        label="dice controls"
+      >
+        <DiceRollControls send={send} className="pointer-events-auto" />
+      </FloatingStagePanel>
 
       {/* Floating toolbar — director only */}
       {isDirector && (
@@ -338,16 +808,25 @@ export function BattleStage({
         />
       )}
 
-      <ViewportControls
-        zoom={zoom}
-        onZoomIn={() => viewportRef.current?.zoomIn()}
-        onZoomOut={() => viewportRef.current?.zoomOut()}
-        onFitToMap={() => {
-          const fitW = bgNaturalSize?.width ?? cols * cellSize;
-          const fitH = bgNaturalSize?.height ?? rows * cellSize;
-          viewportRef.current?.fitToRect(fitW, fitH);
-        }}
-      />
+      <FloatingStagePanel
+        storageKey="anvil-session-stage-viewport-controls"
+        initialPlacement={{ edge: 'right', offset: 0.86 }}
+        stageRef={stageRef}
+        inset={16}
+        label="zoom controls"
+      >
+        <ViewportControls
+          zoom={zoom}
+          className="flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm"
+          onZoomIn={() => viewportRef.current?.zoomIn()}
+          onZoomOut={() => viewportRef.current?.zoomOut()}
+          onFitToMap={() => {
+            const fitW = bgNaturalSize?.width ?? cols * cellSize;
+            const fitH = bgNaturalSize?.height ?? rows * cellSize;
+            viewportRef.current?.fitToRect(fitW, fitH);
+          }}
+        />
+      </FloatingStagePanel>
 
       {/* Dice roll overlay */}
       {combatLog && entityNames && (
@@ -376,6 +855,18 @@ export function BattleStage({
           onClose={handleCloseContextMenu}
         />
       )}
+
+      {terrainMenu &&
+        terrain.find((zone) => zone.id === terrainMenu.terrainId) && (
+          <TerrainContextMenu
+            terrain={terrain.find((zone) => zone.id === terrainMenu.terrainId)!}
+            x={terrainMenu.x}
+            y={terrainMenu.y}
+            onToggleHidden={handleToggleTerrainHidden}
+            onDelete={handleTerrainRemove}
+            onClose={handleCloseTerrainMenu}
+          />
+        )}
     </div>
   );
 }

@@ -1,19 +1,42 @@
 # Anvil VTT
 
+[![Status: active beta](https://img.shields.io/badge/status-active%20beta-c28f2c)](#project-status)
+[![Build: passing locally](https://img.shields.io/badge/build-passing%20locally-2ea44f)](#build-and-validation)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Acknowledgements
+
+Anvil is an independent fan-built tool for **Draw Steel**. It is not affiliated with, sponsored by, or endorsed by MCDM Productions, LLC. DRAW STEEL © 2024 MCDM Productions, LLC.
+
+- [MCDM Productions](https://www.mcdmproductions.com/) for creating Draw Steel.
+- [Andy Aiken and Forge Steel](https://github.com/andyaiken/forgesteel) for showing how useful focused Draw Steel tooling can be.
+- [Steel Compendium](https://github.com/SteelCompendium) for making Draw Steel rules data easier to explore, reference, and adapt.
+
 Anvil is a virtual tabletop for **Draw Steel**, built around a director-style campaign workflow. Directors organize campaigns into modules, sessions, and playable scenes, then run those scenes live for players through focused interfaces for battle, story, montage, negotiation, and respite play.
 
-The app is currently in active product development. Core workflows are functional, but the project is still pre-release: data coverage, import/export workflows, deployment hardening, and broad test coverage are still evolving.
+The app is in active beta development. Core director, player, campaign, live-session, notes, asset, and hero workflows are functional, but data coverage, import/export workflows, deployment hardening, and broad automated test coverage are still evolving.
+
+## Project Status
+
+- **Stage:** active beta / pre-release.
+- **Production frontend:** `https://anvilvtt.ca`, served as a Vite static app through Cloudflare Pages.
+- **Production API:** `https://api.anvilvtt.ca`, served as a Cloudflare Worker custom domain with Durable Objects, D1, and R2 bindings configured in `apps/server/wrangler.toml`.
+- **Build status:** local validation is passing with `pnpm typecheck` and `pnpm deploy:check` as of May 21, 2026.
+- **Hosted CI:** no GitHub Actions workflow is checked in yet; build status is currently verified locally before release/merge.
 
 ## Tech Stack
 
-- **Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS, shared `@anvil/ui` components
+- **Frontend:** React 19, React Router 7, TypeScript, Vite 7, Tailwind CSS 4, shared `@anvil/ui` components, Radix UI primitives, and Lucide icons
 - **Canvas:** PixiJS 8 for tactical maps, grid rendering, token layers, terrain, drawings, and fog
-- **State:** React state, Zustand stores, and XState scene flow where it fits
+- **Rich Text & Notes:** TipTap, Markdown conversion, nested notebooks, personal notes, and campaign notes
+- **State & Flow:** React state, Zustand stores, XState scene flow where it fits, and typed shared protocol models
 - **Backend:** Cloudflare Workers, Hono, Durable Objects, D1, and R2
 - **Real-time:** WebSockets through Durable Objects for live sessions
 - **Auth:** Discord and Google OAuth through Worker-managed D1 sessions, with development-only local login
+- **Telemetry:** client crash reports, manual issue reports, sanitized breadcrumbs, API failure reporting, and optional webhook forwarding
 - **Data:** Workspace packages for Draw Steel rules data, compendium data, typed scene/session/campaign models, and reusable game logic
-- **Tooling:** pnpm workspaces, TypeScript project builds, Wrangler, Vite, ESLint, Vitest
+- **Deployment:** Cloudflare Pages for the VTT frontend and Cloudflare Workers for the API/session backend
+- **Tooling:** pnpm workspaces, Turbo, TypeScript project builds, Wrangler, Vite, ESLint, and Vitest
 
 ## Monorepo Layout
 
@@ -74,8 +97,6 @@ Scene Import uses a structured JSON document with this shape:
 
 The `data` object is native Anvil scene data. Battle scenes can include map URLs, grid settings, tokens, terrain, fog, drawings, difficulty, notes, and hero starting areas. Montage and negotiation scenes map to their mode-specific live state templates.
 
-Directors can import the bundled **MCDM Draw Steel Demo Scenes** pack from the campaign list, or append imported scenes from inside an existing campaign.
-
 ## Getting Started
 
 Requirements:
@@ -106,12 +127,25 @@ Local URLs:
 Useful checks:
 
 ```bash
+pnpm typecheck
+pnpm deploy:check
 pnpm --filter @anvil/types typecheck
 pnpm --filter @anvil/data typecheck
 pnpm --filter @anvil/server typecheck
 pnpm --filter @anvil/vtt typecheck
 pnpm --filter @anvil/vtt build
 ```
+
+## Build And Validation
+
+Current local validation status:
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| `pnpm typecheck` | Passing | Runs Turbo typechecks across `@anvil/types`, `@anvil/data`, `@anvil/ui`, `@anvil/server`, and `@anvil/vtt`. |
+| `pnpm deploy:check` | Passing | Runs the Worker dry-run build and the VTT TypeScript/Vite production build. |
+
+There is not yet a committed GitHub Actions workflow, so the README build badge reflects the latest local validation rather than a hosted CI run.
 
 ## Scene Modes
 
@@ -125,7 +159,7 @@ pnpm --filter @anvil/vtt build
 
 ## Deployment
 
-Deployment notes, required Cloudflare bindings/secrets, environment variables, migration order, and beta smoke checks are tracked in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Deployment notes, required Cloudflare bindings/secrets, environment variables, migration order, and beta smoke checks are tracked in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The VTT frontend is built from `apps/vtt/dist` and deployed to Cloudflare Pages; the API/session backend deploys from `apps/server` to Cloudflare Workers.
 
 ```bash
 pnpm deploy:check

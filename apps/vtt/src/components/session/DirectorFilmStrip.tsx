@@ -1,14 +1,11 @@
 import { useMemo } from 'react';
 import { SceneTypeIcon, SCENE_BG_COLORS, SCENE_BORDER_COLORS, cn } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
-import type { CombatState, EntityData, SceneRef } from '../../types/protocol.js';
-import { BattleTurnTracker } from './BattleTurnTracker.js';
+import type { SceneRef } from '../../types/protocol.js';
 
 interface DirectorFilmStripProps {
   scenes: SceneRef[];
   activeSceneId: string | null;
-  combat: CombatState | null;
-  entities: EntityData[];
   onSelectScene: (sceneId: string) => void;
 }
 
@@ -48,8 +45,6 @@ function SceneChip({
 export function DirectorFilmStrip({
   scenes,
   activeSceneId,
-  combat,
-  entities,
   onSelectScene,
 }: DirectorFilmStripProps) {
   const { mainScenes, respiteScene } = useMemo(() => {
@@ -81,13 +76,6 @@ export function DirectorFilmStrip({
           <span className="text-xs text-zinc-600">No scenes</span>
         )}
       </div>
-
-      {combat && (
-        <>
-          <div className="h-6 w-px shrink-0 bg-zinc-800" />
-          <BattleTurnTracker combat={combat} entities={entities} />
-        </>
-      )}
 
       {/* Spacer pushes respite to the right */}
       <div className="flex-1" />

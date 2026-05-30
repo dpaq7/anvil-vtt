@@ -8,7 +8,7 @@ export function Auth() {
       <div className="flex w-full max-w-xs flex-col gap-3">
         <a
           href={`${API_BASE}/api/auth/google`}
-          className="rounded-lg bg-white px-6 py-3 text-center font-medium text-zinc-950 transition hover:bg-zinc-200"
+          className="rounded-lg bg-white px-6 py-3 text-center font-medium text-anvil-ink transition hover:bg-zinc-200"
         >
           Continue with Google
         </a>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import type { ClientMessage, ServerMessage, SessionState, AbilityResult } from '../types/protocol.js';
 import { csrfHeaders } from '../lib/csrf.js';
+import { addBreadcrumb } from '../lib/bug-reporting.js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 export type SessionClientKind = 'desktop' | 'phone';
@@ -50,6 +51,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         }
         break;
       case 'scene_changed':
+        addBreadcrumb({ category: 'session', message: 'Scene changed' });
         setState((prev) => prev ? { ...prev, activeSceneId: msg.sceneId } : prev);
         break;
       case 'scene_reverted':
@@ -114,9 +116,11 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         setState((prev) => prev ? { ...prev, participants: msg.participants } : prev);
         break;
       case 'session_started':
+        addBreadcrumb({ category: 'session', message: 'Session started' });
         setSessionStarted(true);
         break;
       case 'session_ended':
+        addBreadcrumb({ category: 'session', message: 'Session ended' });
         setState(null);
         setError('Session has ended.');
         toast.info('The session has ended.');
@@ -127,6 +131,11 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
           // The next state update corrects the canvas, so avoid a noisy transient toast.
           break;
         }
+        addBreadcrumb({
+          category: 'session',
+          message: 'Server sent session error',
+          data: { code: msg.code ?? null, message: msg.message ?? null },
+        });
         setError(msg.message);
         toast.error(msg.message ?? 'Server error');
         break;
@@ -201,6 +210,25 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
               if (s.id !== prev.activeSceneId) return s;
               const data = s.data ?? {};
               const terrain = Array.isArray(data['terrain']) ? [...(data['terrain'] as unknown[])] : [];
+              if (!terrain.some((zone) => typeof zone === 'object' && zone !== null && 'id' in zone && zone.id === msg.terrain.id)) {
+                terrain.push(msg.terrain);
+              }
+              return { ...s, data: { ...data, terrain } };
+            }),
+          };
+        });
+        break;
+      case 'scene_terrain_updated':
+        setState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            scenes: prev.scenes.map((s) => {
+              if (s.id !== prev.activeSceneId) return s;
+              const data = s.data ?? {};
+              const terrain = Array.isArray(data['terrain'])
+                ? (data['terrain'] as { id: string }[]).map((zone) => zone.id === msg.terrain.id ? msg.terrain : zone)
+                : [];
               if (!terrain.some((zone) => typeof zone === 'object' && zone !== null && 'id' in zone && zone.id === msg.terrain.id)) {
                 terrain.push(msg.terrain);
               }
@@ -330,6 +358,11 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     } catch (err) {
       if (!mountedRef.current) return;
       console.error('[WS] failed to get token:', err);
+      addBreadcrumb({
+        category: 'session',
+        message: 'WebSocket token request failed',
+        data: { message: err instanceof Error ? err.message : 'Failed to authenticate' },
+      });
       setError(err instanceof Error ? err.message : 'Failed to authenticate');
       setStatus('disconnected');
       return;
@@ -352,6 +385,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         ws.close();
         return;
       }
+      addBreadcrumb({ category: 'session', message: 'WebSocket connected' });
       setStatus('connected');
       retriesRef.current = 0;
       ws.send(JSON.stringify({ type: 'request_state' } satisfies ClientMessage));
@@ -366,16 +400,26 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
       }
     };
 
-    ws.onclose = (_event) => {
+    ws.onclose = (event) => {
       wsRef.current = null;
       if (!mountedRef.current) return;
       if (retriesRef.current < MAX_RETRIES) {
         const delay = BASE_DELAY * Math.pow(2, retriesRef.current);
         retriesRef.current++;
+        addBreadcrumb({
+          category: 'session',
+          message: 'WebSocket closed, reconnecting',
+          data: { code: event.code, retry: retriesRef.current },
+        });
         setStatus('reconnecting');
         toast.warning('Connection lost. Reconnecting...');
         timerRef.current = setTimeout(() => { void connect(); }, delay);
       } else {
+        addBreadcrumb({
+          category: 'session',
+          message: 'WebSocket disconnected',
+          data: { code: event.code, retries: retriesRef.current },
+        });
         setStatus('disconnected');
         setError('Connection lost. Please refresh.');
         toast.error('Connection lost. Please refresh the page.');
@@ -383,6 +427,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     };
 
     ws.onerror = () => {
+      addBreadcrumb({ category: 'session', message: 'WebSocket error' });
       ws.close();
     };
   }, [sessionId, handleMessage, clientKind]);
@@ -392,6 +437,11 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
       wsRef.current.send(JSON.stringify(msg));
     } else {
       console.warn('[WS] message dropped (socket not open):', msg.type);
+      addBreadcrumb({
+        category: 'session',
+        message: 'WebSocket message dropped',
+        data: { type: msg.type },
+      });
       toast.warning('Not connected. Action could not be sent.');
     }
   }, []);

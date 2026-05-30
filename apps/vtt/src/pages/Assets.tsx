@@ -29,6 +29,7 @@ import { BestiaryTable } from '../components/assets/BestiaryTable.js';
 import { TerrainGrid } from '../components/assets/TerrainGrid.js';
 import { AudioGrid } from '../components/assets/AudioGrid.js';
 import { AudioUploadDialog } from '../components/assets/AudioUploadDialog.js';
+import { PictureGrid, type PictureAsset, type UpdatePictureAssetInput } from '../components/assets/PictureGrid.js';
 import { ALL_TERRAINS, loadMonsters, isMonsterStatblock, FORGESTEEL_MONSTERS } from '@anvil/data';
 import type { HeroSummary, AssetFolder, SceneType } from '@anvil/types';
 import type { CompendiumMonster } from '@anvil/data';
@@ -174,6 +175,8 @@ export function Assets() {
     loadCustomTerrain,
     loadAudio,
     createAudio,
+    updateAudio,
+    deleteAudio,
     addSceneMonster,
     monsterPortraits,
     loadMonsterPortraits,
@@ -186,6 +189,9 @@ export function Assets() {
 
   // ── Heroes (loaded separately, not stored in assets store) ──
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
+  const [pictureAssets, setPictureAssets] = useState<PictureAsset[]>([]);
+  const [picturesLoading, setPicturesLoading] = useState(false);
+  const [picturesError, setPicturesError] = useState<string | null>(null);
 
   // ── Scenes for add-to-scene dropdown ──
   const [scenes, setScenes] = useState<Array<{ id: string; name: string; sceneType: string }>>([]);
@@ -209,6 +215,26 @@ export function Assets() {
       .catch(() => setMonsters([]));
   }, []);
 
+  const loadPictures = useCallback(async () => {
+    setPicturesLoading(true);
+    setPicturesError(null);
+    try {
+      const { assets } = await api.get<{ assets: PictureAsset[] }>('/api/assets');
+      setPictureAssets(
+        assets.filter((asset) =>
+          asset.uploaded_at !== null &&
+          asset.type !== 'map' &&
+          (asset.content_type?.toLowerCase().startsWith('image/') ?? false),
+        ),
+      );
+    } catch (err) {
+      setPicturesError(err instanceof Error ? err.message : 'Failed to load pictures');
+      setPictureAssets([]);
+    } finally {
+      setPicturesLoading(false);
+    }
+  }, []);
+
   // ── Load campaign data when campaign changes ──
   useEffect(() => {
     if (!campaignId) return;
@@ -217,6 +243,7 @@ export function Assets() {
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
     loadMonsterPortraits(campaignId);
+    void loadPictures();
 
     // Heroes (user-scoped, not campaign-scoped)
     api
@@ -248,7 +275,7 @@ export function Assets() {
         setScenes(allScenes);
       })
       .catch(() => setScenes([]));
-  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio, loadMonsterPortraits]);
+  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio, loadMonsterPortraits, loadPictures]);
 
   // ── Reload current data ──
   const reloadData = useCallback(() => {
@@ -258,11 +285,22 @@ export function Assets() {
     loadCustomTerrain(campaignId);
     loadAudio(campaignId);
     loadMonsterPortraits(campaignId);
+    void loadPictures();
     api
       .get<HeroSummary[]>('/api/heroes')
       .then((data) => setHeroes(data))
       .catch(() => setHeroes([]));
-  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio, loadMonsterPortraits]);
+  }, [campaignId, loadMaps, loadNpcs, loadCustomTerrain, loadAudio, loadMonsterPortraits, loadPictures]);
+
+  const handleUpdatePicture = useCallback(async (assetId: string, input: UpdatePictureAssetInput) => {
+    const { asset } = await api.patch<{ asset: PictureAsset }>(`/api/assets/${assetId}`, input);
+    setPictureAssets((current) => current.map((item) => (item.id === assetId ? asset : item)));
+  }, []);
+
+  const handleDeletePicture = useCallback(async (assetId: string) => {
+    await api.delete(`/api/assets/${assetId}`);
+    setPictureAssets((current) => current.filter((item) => item.id !== assetId));
+  }, []);
 
   // ── NPC create dialog ──
   const [npcDialogOpen, setNpcDialogOpen] = useState(false);
@@ -275,17 +313,41 @@ export function Assets() {
     setNpcDialogOpen(false);
   }, [campaignId, newNpcName, createNpc]);
 
+  const handleHeroPortraitSave = useCallback(async (heroId: string, assetId: string) => {
+    await api.put(`/api/heroes/${heroId}`, { portraitAssetId: assetId });
+    const portraitUrl = `/api/assets/${assetId}/data`;
+    setHeroes((current) =>
+      current.map((hero) =>
+        hero.id === heroId
+          ? { ...hero, portraitAssetId: assetId, portraitUrl }
+          : hero,
+      ),
+    );
+  }, []);
+
+  const handleHeroPortraitRemove = useCallback(async (heroId: string) => {
+    await api.put(`/api/heroes/${heroId}`, { portraitAssetId: null, portraitUrl: null });
+    setHeroes((current) =>
+      current.map((hero) =>
+        hero.id === heroId
+          ? { ...hero, portraitAssetId: null, portraitUrl: null }
+          : hero,
+      ),
+    );
+  }, []);
+
   // ── Counts for sidebar ──
   const counts = useMemo(
     () => ({
       heroes: heroes.length,
       npcs: npcs.length,
+      pictures: pictureAssets.length,
       maps: maps.length,
       bestiary: monsters.length,
       terrain: ALL_TERRAINS.length + customTerrain.length,
       audio: audioAssets.length,
     }),
-    [heroes, npcs, maps, monsters, customTerrain, audioAssets],
+    [heroes, npcs, pictureAssets, maps, monsters, customTerrain, audioAssets],
   ) as Record<AssetFolder, number>;
 
   // ── Selected NPC for detail pane ──
@@ -336,7 +398,7 @@ export function Assets() {
   // ── Content pane ──
   const renderContent = () => {
     // Loading state
-    if (loading) {
+    if (loading || (selectedFolder === 'pictures' && picturesLoading)) {
       return <SkeletonGrid />;
     }
 
@@ -360,6 +422,8 @@ export function Assets() {
           <HeroGrid
             heroes={heroes}
             onSelect={(id) => setSelectedItemId(id)}
+            onPortraitSave={handleHeroPortraitSave}
+            onPortraitRemove={handleHeroPortraitRemove}
             selectedId={selectedItemId}
           />
         );
@@ -386,6 +450,27 @@ export function Assets() {
             npcs={npcs}
             onSelect={(id) => setSelectedItemId(id)}
             selectedId={selectedItemId}
+          />
+        );
+
+      case 'pictures':
+        if (picturesError) {
+          return (
+            <EmptyState
+              message={picturesError}
+              action={
+                <Button size="sm" variant="secondary" onClick={() => void loadPictures()}>
+                  <RefreshCw className="mr-1 size-3.5" /> Retry
+                </Button>
+              }
+            />
+          );
+        }
+        return (
+          <PictureGrid
+            assets={pictureAssets}
+            onUpdate={handleUpdatePicture}
+            onDelete={handleDeletePicture}
           />
         );
 
@@ -425,6 +510,8 @@ export function Assets() {
               <MapGrid
                 maps={filteredMaps}
                 onSelect={(id) => setSelectedItemId(id)}
+                onUpdate={(mapId, input) => updateMap(campaignId, mapId, input)}
+                onDelete={(mapId) => deleteMap(campaignId, mapId)}
                 selectedId={selectedItemId}
               />
             )}
@@ -478,6 +565,8 @@ export function Assets() {
           <AudioGrid
             audioAssets={audioAssets}
             onSelect={(id) => setSelectedItemId(id)}
+            onUpdate={(audioId, input) => updateAudio(campaignId, audioId, input)}
+            onDelete={(audioId) => deleteAudio(campaignId, audioId)}
             selectedId={selectedItemId}
           />
         );
@@ -594,7 +683,10 @@ export function Assets() {
           <ErrorBanner
             message={error}
             onRetry={reloadData}
-            onDismiss={clearError}
+            onDismiss={() => {
+              clearError();
+              setPicturesError(null);
+            }}
           />
         )}
 

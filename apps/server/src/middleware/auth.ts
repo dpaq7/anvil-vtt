@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
+import { auditSecurityEvent } from '../security/audit.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CSRF_HEADER = 'X-CSRF-Token';
@@ -10,6 +11,7 @@ const CSRF_HEADER = 'X-CSRF-Token';
 export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   const sessionId = getSessionCookie(c);
   if (!sessionId) {
+    auditSecurityEvent(c, { type: 'auth_missing_session', severity: 'info' });
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
@@ -22,6 +24,7 @@ export async function authMiddleware(c: Context<AppEnv>, next: Next) {
     .first<{ id: string; username: string; avatar_url: string | null; role: string | null }>();
 
   if (!row) {
+    auditSecurityEvent(c, { type: 'auth_invalid_session', severity: 'info' });
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
@@ -53,6 +56,7 @@ export async function csrfMiddleware(c: Context<AppEnv>, next: Next) {
   const token = c.req.header(CSRF_HEADER);
   const expected = await createCsrfToken(sessionId, c.env);
   if (!token || !expected || !constantTimeEqual(token, expected)) {
+    auditSecurityEvent(c, { type: 'csrf_invalid', severity: 'warn' });
     return c.json({ error: 'Invalid CSRF token' }, 403);
   }
 
@@ -98,9 +102,11 @@ function validateOrigin(c: Context<AppEnv>): Response | null {
     const frontendOrigin = c.env.FRONTEND_URL ? new URL(c.env.FRONTEND_URL).origin : requestOrigin;
     if (origin === requestOrigin || origin === frontendOrigin) return null;
   } catch {
+    auditSecurityEvent(c, { type: 'csrf_invalid_origin', severity: 'warn' });
     return c.json({ error: 'Invalid request origin' }, 403);
   }
 
+  auditSecurityEvent(c, { type: 'csrf_invalid_origin', severity: 'warn' });
   return c.json({ error: 'Invalid request origin' }, 403);
 }
 

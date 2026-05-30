@@ -17,7 +17,12 @@ import type { FogZoneData } from './layers/FogLayer.js';
 
 const getEntityTokenSize = (entity: EntityData): number => {
   const rawSize = entity['size'];
-  const size = typeof rawSize === 'number' ? rawSize : typeof rawSize === 'string' ? Number(rawSize) : 1;
+  const size =
+    typeof rawSize === 'number'
+      ? rawSize
+      : typeof rawSize === 'string'
+        ? Number(rawSize)
+        : 1;
   return Number.isFinite(size) ? Math.max(1, size) : 1;
 };
 
@@ -35,7 +40,9 @@ export interface BattleCanvasProps {
   onSelectEntity: (entityId: string | null) => void;
   onMoveEntity: (entityId: string, x: number, y: number) => void;
   onMultiSelectEntities?: (entityIds: string[]) => void;
-  onMultiMoveEntities?: (moves: Array<{ entityId: string; gridX: number; gridY: number }>) => void;
+  onMultiMoveEntities?: (
+    moves: Array<{ entityId: string; gridX: number; gridY: number }>,
+  ) => void;
 
   // Builder mode props (all optional — omit for live session)
   builderMode?: boolean;
@@ -47,24 +54,45 @@ export interface BattleCanvasProps {
   onDrawingAdd?: (points: number[], color: string, width: number) => void;
   onDrawingRemove?: (drawingId: string) => void;
   onTerrainAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
+  onTerrainUpdate?: (terrain: TerrainZoneData) => void;
   onTerrainRemove?: (terrainId: string) => void;
+  onTerrainRightClick?: (
+    terrainId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
   fogZones?: FogZoneData[];
   onFogAdd?: (gridX: number, gridY: number, w: number, h: number) => void;
   onFogRemove?: (fogId: string) => void;
+  onFogRevealCell?: (gridX: number, gridY: number) => void;
   fogBrushMode?: 'draw' | 'reveal';
   fogBrushSize?: number;
   gridVisible?: boolean;
   gridOpacity?: number;
   gridColor?: string;
+  gridCellSize?: number;
+  gridOffsetX?: number;
+  gridOffsetY?: number;
 
   // Token interaction callbacks
-  onTokenHover?: (entityId: string | null, screenX: number, screenY: number) => void;
-  onTokenRightClick?: (entityId: string | null, screenX: number, screenY: number) => void;
+  onTokenHover?: (
+    entityId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
+  onTokenRightClick?: (
+    entityId: string | null,
+    screenX: number,
+    screenY: number,
+  ) => void;
 
   // Viewport controls
   onZoomChange?: (zoom: number) => void;
   /** Called when a background image loads with its native pixel dimensions. */
-  onBackgroundLoaded?: (info: { naturalWidth: number; naturalHeight: number }) => void;
+  onBackgroundLoaded?: (info: {
+    naturalWidth: number;
+    naturalHeight: number;
+  }) => void;
   viewportRef?: React.MutableRefObject<ViewportSystem | null>;
 }
 
@@ -92,15 +120,21 @@ export function BattleCanvas({
   onDrawingAdd,
   onDrawingRemove,
   onTerrainAdd,
+  onTerrainUpdate,
   onTerrainRemove,
+  onTerrainRightClick,
   fogZones = [],
   onFogAdd,
   onFogRemove,
+  onFogRevealCell,
   fogBrushMode = 'draw',
   fogBrushSize = 1,
   gridVisible = true,
   gridOpacity = 0.4,
   gridColor = '#444444',
+  gridCellSize = cellSize,
+  gridOffsetX = 0,
+  gridOffsetY = 0,
   onTokenHover,
   onTokenRightClick,
   onZoomChange,
@@ -111,6 +145,7 @@ export function BattleCanvas({
   const appRef = useRef<Application | null>(null);
   /** Flipped to true once PixiJS finishes async init so update effects re-run. */
   const [pixiReady, setPixiReady] = useState(false);
+  const [canvasError, setCanvasError] = useState<string | null>(null);
   const layersRef = useRef<{
     background: BackgroundLayer;
     grid: GridLayer;
@@ -138,12 +173,18 @@ export function BattleCanvas({
   onDrawingRemoveRef.current = onDrawingRemove;
   const onTerrainAddRef = useRef(onTerrainAdd);
   onTerrainAddRef.current = onTerrainAdd;
+  const onTerrainUpdateRef = useRef(onTerrainUpdate);
+  onTerrainUpdateRef.current = onTerrainUpdate;
   const onTerrainRemoveRef = useRef(onTerrainRemove);
   onTerrainRemoveRef.current = onTerrainRemove;
+  const onTerrainRightClickRef = useRef(onTerrainRightClick);
+  onTerrainRightClickRef.current = onTerrainRightClick;
   const onFogAddRef = useRef(onFogAdd);
   onFogAddRef.current = onFogAdd;
   const onFogRemoveRef = useRef(onFogRemove);
   onFogRemoveRef.current = onFogRemove;
+  const onFogRevealCellRef = useRef(onFogRevealCell);
+  onFogRevealCellRef.current = onFogRevealCell;
   const onMultiSelectEntitiesRef = useRef(onMultiSelectEntities);
   onMultiSelectEntitiesRef.current = onMultiSelectEntities;
   const onMultiMoveEntitiesRef = useRef(onMultiMoveEntities);
@@ -160,92 +201,142 @@ export function BattleCanvas({
 
     const app = new Application();
     let mounted = true;
+    setCanvasError(null);
 
-    void app.init({
-      resizeTo: el,
-      backgroundColor: 0x1a1a2e,
-      antialias: true,
-    }).then(() => {
-      if (!mounted) return;
+    void app
+      .init({
+        resizeTo: el,
+        backgroundColor: 0x1a1a2e,
+        antialias: true,
+      })
+      .then(() => {
+        if (!mounted) {
+          app.destroy(true);
+          return;
+        }
 
-      el.appendChild(app.canvas as HTMLCanvasElement);
-      appRef.current = app;
+        const canvas = app.canvas as HTMLCanvasElement;
+        canvas.style.display = 'block';
+        canvas.style.touchAction = 'none';
+        canvas.style.userSelect = 'none';
+        canvas.style.setProperty('-webkit-user-select', 'none');
+        canvas.style.setProperty('-webkit-touch-callout', 'none');
 
-      const world = new Container();
-      app.stage.addChild(world);
+        el.appendChild(canvas);
+        appRef.current = app;
 
-      const background = new BackgroundLayer();
-      const grid = new GridLayer();
-      const drawingLayer = new DrawingLayer();
-      const terrainLayer = new TerrainLayer();
-      const tokens = new TokenLayer();
-      const fog = new FogLayer();
+        const world = new Container();
+        app.stage.addChild(world);
 
-      // Render order: bg → grid → drawings → terrain → tokens → fog
-      world.addChild(background);
-      world.addChild(grid);
-      world.addChild(drawingLayer);
-      world.addChild(terrainLayer);
-      world.addChild(tokens);
-      world.addChild(fog);
+        const background = new BackgroundLayer();
+        const grid = new GridLayer();
+        const drawingLayer = new DrawingLayer();
+        const terrainLayer = new TerrainLayer();
+        const tokens = new TokenLayer();
+        const fog = new FogLayer();
 
-      const viewport = new ViewportSystem(world, app.canvas as HTMLCanvasElement);
-      viewport.onZoomChange = (zoom) => onZoomChangeRef.current?.(zoom);
+        // Render order: bg → grid → drawings → terrain → tokens → fog
+        world.addChild(background);
+        world.addChild(grid);
+        world.addChild(drawingLayer);
+        world.addChild(terrainLayer);
+        world.addChild(tokens);
+        world.addChild(fog);
 
-      // Expose viewport to parent via ref
-      if (viewportRef) {
-        viewportRef.current = viewport;
-      }
+        const viewport = new ViewportSystem(
+          world,
+          canvas,
+        );
+        viewport.onZoomChange = (zoom) => onZoomChangeRef.current?.(zoom);
 
-      const interaction = new InteractionManager(
-        app.canvas as HTMLCanvasElement,
-        viewport,
-        tokens,
-        cellSize,
-        {
-          onTokenSelect: (id) => onSelectEntityRef.current(id),
-          onTokenMove: (id, x, y) => onMoveEntityRef.current(id, x, y),
-          onMultiTokenSelect: (ids) => onMultiSelectEntitiesRef.current?.(ids),
-          onMultiTokenMove: (moves) => onMultiMoveEntitiesRef.current?.(moves),
-          onDrawingAdd: (...args) => onDrawingAddRef.current?.(...args),
-          onDrawingRemove: (...args) => onDrawingRemoveRef.current?.(...args),
-          onTerrainAdd: (...args) => onTerrainAddRef.current?.(...args),
-          onTerrainRemove: (...args) => onTerrainRemoveRef.current?.(...args),
-          onFogAdd: (...args) => onFogAddRef.current?.(...args),
-          onFogRemove: (...args) => onFogRemoveRef.current?.(...args),
-          onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
-          onTokenRightClick: (...args) => onTokenRightClickRef.current?.(...args),
-        },
-        { cols, rows },
-        isDirector,
-      );
+        // Expose viewport to parent via ref
+        if (viewportRef) {
+          viewportRef.current = viewport;
+        }
 
-      // Wire editable overlay layers for hit-testing and previews.
-      if (builderMode || isDirector) {
-        interaction.setBuilderLayers(drawingLayer, terrainLayer, fog);
-      }
+        const interaction = new InteractionManager(
+          canvas,
+          viewport,
+          tokens,
+          cellSize,
+          {
+            onTokenSelect: (id) => onSelectEntityRef.current(id),
+            onTokenMove: (id, x, y) => onMoveEntityRef.current(id, x, y),
+            onMultiTokenSelect: (ids) =>
+              onMultiSelectEntitiesRef.current?.(ids),
+            onMultiTokenMove: (moves) =>
+              onMultiMoveEntitiesRef.current?.(moves),
+            onDrawingAdd: (...args) => onDrawingAddRef.current?.(...args),
+            onDrawingRemove: (...args) => onDrawingRemoveRef.current?.(...args),
+            onTerrainAdd: (...args) => onTerrainAddRef.current?.(...args),
+            onTerrainUpdate: (...args) => onTerrainUpdateRef.current?.(...args),
+            onTerrainRemove: (...args) => onTerrainRemoveRef.current?.(...args),
+            onTerrainRightClick: (...args) =>
+              onTerrainRightClickRef.current?.(...args),
+            onFogAdd: (...args) => onFogAddRef.current?.(...args),
+            onFogRemove: (...args) => onFogRemoveRef.current?.(...args),
+            onFogRevealCell: (...args) => onFogRevealCellRef.current?.(...args),
+            onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
+            onTokenRightClick: (...args) =>
+              onTokenRightClickRef.current?.(...args),
+          },
+          { cols, rows },
+          isDirector,
+        );
 
-      tokens.setCellSize(cellSize);
-      terrainLayer.setCellSize(cellSize);
-      fog.setCellSize(cellSize);
-      fog.setDirectorMode(isDirector);
-      grid.draw({ cellSize, cols, rows, lineAlpha: gridOpacity, lineColor: parseInt(gridColor.replace('#', ''), 16) });
+        // Wire editable overlay layers for hit-testing and previews.
+        if (builderMode || isDirector) {
+          interaction.setBuilderLayers(drawingLayer, terrainLayer, fog);
+        }
 
-      layersRef.current = {
-        background,
-        grid,
-        drawing: drawingLayer,
-        terrain: terrainLayer,
-        tokens,
-        fog,
-        world,
-        viewport,
-        interaction,
-      };
+        tokens.setCellSize(cellSize);
+        terrainLayer.setCellSize(cellSize);
+        terrainLayer.setDirectorMode(isDirector);
+        fog.setCellSize(cellSize);
+        fog.setDirectorMode(isDirector);
+        grid.draw({
+          cellSize: gridCellSize,
+          stageCellSize: cellSize,
+          cols,
+          rows,
+          lineAlpha: gridOpacity,
+          lineColor: parseInt(gridColor.replace('#', ''), 16),
+          offsetX: gridOffsetX,
+          offsetY: gridOffsetY,
+        });
 
-      // Signal that layers are ready so update effects re-run
-      setPixiReady(true);
-    });
+        layersRef.current = {
+          background,
+          grid,
+          drawing: drawingLayer,
+          terrain: terrainLayer,
+          tokens,
+          fog,
+          world,
+          viewport,
+          interaction,
+        };
+
+        // Signal that layers are ready so update effects re-run
+        setPixiReady(true);
+      })
+      .catch((error: unknown) => {
+        if (!mounted) {
+          try {
+            app.destroy(true);
+          } catch {
+            /* Pixi may not be fully initialized after a failed init. */
+          }
+          return;
+        }
+        console.error('[BattleCanvas] PixiJS initialization failed', error);
+        try {
+          app.destroy(true);
+        } catch {
+          /* Pixi may not be fully initialized after a failed init. */
+        }
+        setCanvasError('Battle map could not start in this browser or device.');
+      });
 
     return () => {
       mounted = false;
@@ -353,7 +444,12 @@ export function BattleCanvas({
 
     // Add new tokens or update changed ones
     for (const entity of entities) {
-      const color = entity.type === 'hero' ? 0x3b82f6 : entity.type === 'monster' ? 0xef4444 : 0x8b5cf6;
+      const color =
+        entity.type === 'hero'
+          ? 0x3b82f6
+          : entity.type === 'monster'
+            ? 0xef4444
+            : 0x8b5cf6;
       const size = getEntityTokenSize(entity);
       if (!prevIds.has(entity.id)) {
         // New entity — add token
@@ -406,8 +502,11 @@ export function BattleCanvas({
 
   // Sync terrain layer
   useEffect(() => {
-    layersRef.current?.terrain.sync(terrain);
-  }, [terrain, pixiReady]);
+    const layers = layersRef.current;
+    if (!layers) return;
+    layers.terrain.setDirectorMode(isDirector);
+    layers.terrain.sync(terrain);
+  }, [isDirector, terrain, pixiReady]);
 
   // Toggle grid visibility
   useEffect(() => {
@@ -421,11 +520,36 @@ export function BattleCanvas({
   useEffect(() => {
     const layers = layersRef.current;
     if (layers) {
-      layers.grid.draw({ cellSize, cols, rows, lineAlpha: gridOpacity, lineColor: parseInt(gridColor.replace('#', ''), 16) });
+      layers.grid.draw({
+        cellSize: gridCellSize,
+        stageCellSize: cellSize,
+        cols,
+        rows,
+        lineAlpha: gridOpacity,
+        lineColor: parseInt(gridColor.replace('#', ''), 16),
+        offsetX: gridOffsetX,
+        offsetY: gridOffsetY,
+      });
     }
-  }, [gridOpacity, gridColor, cellSize, cols, rows, pixiReady]);
+  }, [
+    gridOpacity,
+    gridColor,
+    gridCellSize,
+    gridOffsetX,
+    gridOffsetY,
+    cellSize,
+    cols,
+    rows,
+    pixiReady,
+  ]);
 
-  return (
-    <div ref={containerRef} className="h-full w-full" />
-  );
+  if (canvasError) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-6 text-center text-sm text-zinc-400">
+        {canvasError}
+      </div>
+    );
+  }
+
+  return <div ref={containerRef} className="h-full w-full touch-none select-none" />;
 }

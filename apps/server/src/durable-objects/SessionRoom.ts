@@ -7,10 +7,9 @@ import {
   KitLogic,
   RollLogic,
   UniversalActions,
-  findSkillByName,
-  skills as RULE_SKILLS,
+  WizardLogic,
 } from '@anvil/data';
-import type { Skill as RuleSkill } from '@anvil/data';
+import type { LevelAdvancementChoices } from '@anvil/data';
 import type { Env } from '../types.js';
 import type {
   CharacteristicId,
@@ -19,6 +18,7 @@ import type {
   SessionState,
   ParticipantInfo,
   SceneRef,
+  EntityData,
   CombatAction,
   CombatState,
   TurnActionState,
@@ -44,7 +44,9 @@ import type {
   ArgumentLogEntry,
   TestLogEntry,
   RespiteActivityState,
+  InventoryItemData,
 } from '../protocol.js';
+import { WS_LIMITS } from '../policy/limits.js';
 
 interface ConnectionMeta {
   userId: string;
@@ -63,6 +65,8 @@ interface HeroEntityRow {
   name: string;
   user_id: string;
   ancestry: string | null;
+  culture: string | null;
+  career: string | null;
   hero_class: string | null;
   subclass: string | null;
   level: number;
@@ -70,6 +74,7 @@ interface HeroEntityRow {
   kit: string | null;
   skills: string | null;
   abilities: string | null;
+  portrait_asset_id: string | null;
   portrait_url: string | null;
   data: string | null;
 }
@@ -137,11 +142,28 @@ type ConditionName = ReturnType<typeof ConditionLogic.getAllConditionNames>[numb
 
 const CHARACTERISTIC_IDS = ['might', 'agility', 'reason', 'intuition', 'presence'] as const;
 const VALID_CONDITIONS = new Set<string>(ConditionLogic.getAllConditionNames());
-const MAX_ACTION_LOG_ENTRIES = 200;
-
-function formatCharacteristicName(value: CharacteristicId): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
+const MAX_ACTION_LOG_ENTRIES: number = 200;
+const MAX_INVENTORY_ITEMS: number = WS_LIMITS.inventoryItems;
+const MAX_INVENTORY_TEXT_LENGTH: number = WS_LIMITS.inventoryTextLength;
+const MAX_WS_MESSAGE_LENGTH: number = WS_LIMITS.messageBytes;
+const MAX_ENTITY_JSON_LENGTH: number = WS_LIMITS.entityJsonBytes;
+const MAX_PATCH_JSON_LENGTH: number = WS_LIMITS.patchJsonBytes;
+const MAX_SCENE_SHAPE_POINTS: number = WS_LIMITS.sceneShapePoints;
+const MAX_STORY_TEXT_LENGTH: number = WS_LIMITS.storyTextLength;
+const MAX_APPROACH_TEXT_LENGTH: number = WS_LIMITS.approachTextLength;
+const MAX_ID_LENGTH: number = WS_LIMITS.idLength;
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const VALID_INVENTORY_SOURCES = new Set(['mcdm-treasure', 'mcdm-imbuement', 'custom']);
+const VALID_INVENTORY_CATEGORIES = new Set([
+  'consumable',
+  'trinket',
+  'leveled',
+  'artifact',
+  'imbuement',
+  'material',
+  'mundane',
+  'misc',
+]);
 
 /**
  * Encode connection metadata as multiple short tags (each ≤256 chars).
@@ -199,6 +221,554 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeLevelUpChoices(value: unknown): LevelAdvancementChoices | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const choices: LevelAdvancementChoices = {};
+  for (const [key, rawChoices] of Object.entries(value)) {
+    const level = Number(key);
+    if (!Number.isInteger(level) || level < 2 || level > 10) continue;
+    if (!Array.isArray(rawChoices)) continue;
+    choices[level] = rawChoices
+      .filter(isRecord)
+      .filter((choice) => typeof choice['featureId'] === 'string' && typeof choice['choiceId'] === 'string')
+      .map((choice) => ({
+        featureId: choice['featureId'] as string,
+        choiceId: choice['choiceId'] as string,
+        category: typeof choice['category'] === 'string' ? choice['category'] : undefined,
+      }));
+  }
+
+  return choices;
+}
+
+function safeString(value: unknown, maxLength = MAX_ID_LENGTH): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maxLength) return null;
+  return trimmed;
+}
+
+function boundedNumber(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (value < min || value > max) return null;
+  return value;
+}
+
+function boundedInteger(value: unknown, min: number, max: number): number | null {
+  const number = boundedNumber(value, min, max);
+  if (number === null || !Number.isInteger(number)) return null;
+  return number;
+}
+
+function boundedIdArray(value: unknown, maxItems = 100): string[] | null {
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const ids = value.map((item) => safeString(item));
+  if (ids.some((item) => item === null)) return null;
+  return ids as string[];
+}
+
+function jsonLength(value: unknown): number {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function hasUnsafeObjectKey(value: unknown, depth = 0): boolean {
+  if (depth > 8) return true;
+  if (Array.isArray(value)) return value.some((item) => hasUnsafeObjectKey(item, depth + 1));
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(([key, child]) => (
+    UNSAFE_OBJECT_KEYS.has(key) || key.length > 160 || hasUnsafeObjectKey(child, depth + 1)
+  ));
+}
+
+function validateEntityData(value: unknown): EntityData | null {
+  if (!isRecord(value)) return null;
+  if (jsonLength(value) > MAX_ENTITY_JSON_LENGTH) return null;
+  if (hasUnsafeObjectKey(value)) return null;
+  const id = safeString(value['id']);
+  const name = safeString(value['name'], 180);
+  const type = safeString(value['type'], 40);
+  const x = boundedNumber(value['x'], -100_000, 100_000);
+  const y = boundedNumber(value['y'], -100_000, 100_000);
+  if (!id || !name || !type || x === null || y === null) return null;
+  return value as EntityData;
+}
+
+function validateRecordPatch(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value) || jsonLength(value) > MAX_PATCH_JSON_LENGTH) return null;
+  if (hasUnsafeObjectKey(value)) return null;
+  return value;
+}
+
+function validateDrawing(value: unknown): DrawingSync | null {
+  if (!isRecord(value)) return null;
+  const id = safeString(value['id']);
+  const type = safeString(value['type'], 40);
+  const color = safeString(value['color'], 40);
+  const width = boundedNumber(value['width'], 0.25, 100);
+  const points = Array.isArray(value['points']) ? value['points'] : null;
+  if (!id || !type || !color || width === null || !points || points.length > MAX_SCENE_SHAPE_POINTS) return null;
+  if (!points.every((point) => typeof point === 'number' && Number.isFinite(point))) return null;
+  return { id, type, color, width, points };
+}
+
+function validateFog(value: unknown): FogSync | null {
+  if (!isRecord(value)) return null;
+  const id = safeString(value['id']);
+  const x = boundedNumber(value['x'], -100_000, 100_000);
+  const y = boundedNumber(value['y'], -100_000, 100_000);
+  const w = boundedNumber(value['w'], 1, 100_000);
+  const h = boundedNumber(value['h'], 1, 100_000);
+  if (!id || x === null || y === null || w === null || h === null) return null;
+  return { id, x, y, w, h };
+}
+
+function validateTerrain(value: unknown): TerrainSync | null {
+  if (!isRecord(value)) return null;
+  const id = safeString(value['id']);
+  const terrainId = safeString(value['terrainId']);
+  const name = safeString(value['name'], 180);
+  const x = boundedNumber(value['x'], -100_000, 100_000);
+  const y = boundedNumber(value['y'], -100_000, 100_000);
+  const w = boundedNumber(value['w'], 1, 100_000);
+  const h = boundedNumber(value['h'], 1, 100_000);
+  if (!id || !terrainId || !name || x === null || y === null || w === null || h === null) return null;
+  return {
+    id,
+    terrainId,
+    name,
+    x,
+    y,
+    w,
+    h,
+    ...(typeof value['color'] === 'number' && Number.isFinite(value['color']) ? { color: value['color'] } : {}),
+    ...(typeof value['hidden'] === 'boolean' ? { hidden: value['hidden'] } : {}),
+  };
+}
+
+function validateCombatAction(value: unknown): CombatAction | null {
+  if (!isRecord(value)) return null;
+  switch (value['type']) {
+    case 'START_COMBAT': {
+      const heroEntityIds = boundedIdArray(value['heroEntityIds']);
+      const villainEntityIds = boundedIdArray(value['villainEntityIds']);
+      return heroEntityIds && villainEntityIds ? { type: 'START_COMBAT', heroEntityIds, villainEntityIds } : null;
+    }
+    case 'ROLL_INITIATIVE':
+      return { type: 'ROLL_INITIATIVE' };
+    case 'END_COMBAT':
+      return { type: 'END_COMBAT' };
+    case 'CLAIM_TURN':
+    case 'SELECT_TURN':
+    case 'APPLY_DAMAGE':
+    case 'APPLY_HEALING':
+    case 'APPLY_CONDITION':
+    case 'REMOVE_CONDITION':
+    case 'CATCH_BREATH':
+    case 'DEFEND':
+      break;
+    case 'END_TURN':
+      return { type: 'END_TURN' };
+    case 'ADJUST_MALICE': {
+      const delta = boundedInteger(value['delta'], -99, 99);
+      return delta === null ? null : { type: 'ADJUST_MALICE', delta };
+    }
+    default:
+      return null;
+  }
+
+  const entityId = safeString(value['entityId']);
+  if (!entityId) return null;
+  if (value['type'] === 'APPLY_DAMAGE' || value['type'] === 'APPLY_HEALING') {
+    const amount = boundedNumber(value['amount'], 0, 100_000);
+    return amount === null ? null : { type: value['type'], entityId, amount };
+  }
+  if (value['type'] === 'APPLY_CONDITION') {
+    const condition = safeString(value['condition'], 80);
+    return condition ? { type: 'APPLY_CONDITION', entityId, condition } : null;
+  }
+  if (value['type'] === 'REMOVE_CONDITION') {
+    const conditionId = safeString(value['conditionId'], 80);
+    return conditionId ? { type: 'REMOVE_CONDITION', entityId, conditionId } : null;
+  }
+  return { type: value['type'] as 'CLAIM_TURN' | 'SELECT_TURN' | 'CATCH_BREATH' | 'DEFEND', entityId };
+}
+
+function validateTokenAction(value: unknown): TokenActionRequest | null {
+  if (!isRecord(value)) return null;
+  const kind = safeString(value['kind'], 40) as TokenActionRequest['kind'] | null;
+  if (!kind || ![
+    'ability',
+    'free-strike',
+    'grab',
+    'knockback',
+    'catch-breath',
+    'defend',
+    'stand-up',
+    'escape-grab',
+    'manual-damage',
+    'manual-heal',
+    'apply-condition',
+    'remove-condition',
+  ].includes(kind)) return null;
+
+  const characteristic = safeString(value['characteristic'], 20);
+  if (characteristic && !CHARACTERISTIC_IDS.includes(characteristic as CharacteristicId)) return null;
+  const amount = value['amount'] === undefined ? undefined : boundedNumber(value['amount'], 0, 100_000);
+  const edges = value['edges'] === undefined ? undefined : boundedInteger(value['edges'], 0, 2);
+  const banes = value['banes'] === undefined ? undefined : boundedInteger(value['banes'], 0, 2);
+  if (amount === null || edges === null || banes === null) return null;
+
+  return {
+    kind,
+    ...(safeString(value['sourceId']) ? { sourceId: safeString(value['sourceId'])! } : {}),
+    ...(safeString(value['targetId']) ? { targetId: safeString(value['targetId'])! } : {}),
+    ...(safeString(value['abilityId']) ? { abilityId: safeString(value['abilityId'])! } : {}),
+    ...(amount !== undefined ? { amount } : {}),
+    ...(safeString(value['condition'], 80) ? { condition: safeString(value['condition'], 80)! } : {}),
+    ...(edges !== undefined ? { edges } : {}),
+    ...(banes !== undefined ? { banes } : {}),
+    ...(characteristic ? { characteristic: characteristic as CharacteristicId } : {}),
+    ...(safeString(value['notes'], 1_000) ? { notes: safeString(value['notes'], 1_000)! } : {}),
+  };
+}
+
+function validateDrawSteelRoll(value: unknown): DrawSteelRollRequest | null {
+  if (!isRecord(value)) return null;
+  const kind = safeString(value['kind'], 40);
+  if (kind !== 'power' && kind !== 'heroic-resource' && kind !== 'd6') return null;
+  const modifier = value['modifier'] === undefined ? undefined : boundedInteger(value['modifier'], -100, 100);
+  if (modifier === null) return null;
+  return {
+    kind,
+    ...(safeString(value['label'], 120) ? { label: safeString(value['label'], 120)! } : {}),
+    ...(modifier !== undefined ? { modifier } : {}),
+    ...(safeString(value['sourceId']) ? { sourceId: safeString(value['sourceId'])! } : {}),
+  };
+}
+
+function validateHeroInventoryItem(value: unknown): HeroInventoryItemInput | null {
+  const item = sanitizeInventory([value])[0];
+  return item ? { ...item } : null;
+}
+
+function validateHeroInventoryChanges(value: unknown): Partial<HeroInventoryItemInput> | null {
+  if (!isRecord(value)) return null;
+  const changes: Partial<HeroInventoryItemInput> = {};
+
+  if (value['name'] !== undefined) {
+    const name = inventoryString(value['name'], 160);
+    if (!name) return null;
+    changes.name = name;
+  }
+  if (value['quantity'] !== undefined) {
+    const quantity = boundedInteger(value['quantity'], 0, 999);
+    if (quantity === null) return null;
+    changes.quantity = quantity;
+  }
+  if (value['category'] !== undefined) {
+    const category = inventoryString(value['category'], 40);
+    if (!category || !VALID_INVENTORY_CATEGORIES.has(category)) return null;
+    changes.category = category as InventoryItemData['category'];
+  }
+  if (value['source'] !== undefined) {
+    const source = inventoryString(value['source'], 40);
+    if (!source || !VALID_INVENTORY_SOURCES.has(source)) return null;
+    changes.source = source as InventoryItemData['source'];
+  }
+  if (value['description'] !== undefined) changes.description = inventoryString(value['description']) ?? '';
+  if (value['effect'] !== undefined) changes.effect = inventoryString(value['effect']);
+  if (value['flavorText'] !== undefined) changes.flavorText = inventoryString(value['flavorText']);
+  if (value['notes'] !== undefined) changes.notes = inventoryString(value['notes']);
+  if (value['equipped'] !== undefined) changes.equipped = value['equipped'] === true;
+
+  return changes;
+}
+
+function validateHeroTrackerOperation(value: unknown): HeroTrackerOperation | null {
+  if (!isRecord(value)) return null;
+  const kind = value['kind'];
+  switch (kind) {
+    case 'adjust_stamina':
+    case 'adjust_recoveries':
+    case 'adjust_heroic_resource':
+    case 'adjust_victories': {
+      const delta = boundedInteger(value['delta'], -999, 999);
+      return delta === null ? null : { kind, delta };
+    }
+    case 'set_stamina': {
+      const stamina = boundedInteger(value['value'], 0, 9999);
+      return stamina === null ? null : { kind, value: stamina };
+    }
+    case 'spend_recovery':
+      return { kind };
+    case 'inventory_add': {
+      const item = validateHeroInventoryItem(value['item']);
+      return item ? { kind, item } : null;
+    }
+    case 'inventory_update': {
+      const itemId = safeString(value['itemId']);
+      const changes = validateHeroInventoryChanges(value['changes']);
+      return itemId && changes ? { kind, itemId, changes } : null;
+    }
+    case 'inventory_remove': {
+      const itemId = safeString(value['itemId']);
+      return itemId ? { kind, itemId } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?: string } {
+  if (!isRecord(raw)) return { error: 'Message must be an object' };
+  const type = raw['type'];
+
+  switch (type) {
+    case 'request_state':
+    case 'ping':
+    case 'end_session':
+    case 'montage_reset':
+    case 'audio_pause':
+    case 'audio_stop':
+      return { msg: { type } as ClientMessage };
+
+    case 'ready':
+      return typeof raw['ready'] === 'boolean' ? { msg: { type, ready: raw['ready'] } } : { error: 'Invalid ready state' };
+    case 'select_hero': {
+      const heroId = safeString(raw['heroId']);
+      return heroId ? { msg: { type, heroId } } : { error: 'Invalid hero' };
+    }
+    case 'switch_scene': {
+      const sceneId = safeString(raw['sceneId']);
+      return sceneId ? { msg: { type, sceneId } } : { error: 'Invalid scene' };
+    }
+    case 'revert_scene': {
+      const sceneId = raw['sceneId'] === undefined ? undefined : safeString(raw['sceneId']);
+      return sceneId === null ? { error: 'Invalid scene' } : { msg: { type, ...(sceneId ? { sceneId } : {}) } };
+    }
+    case 'create_entity': {
+      const entity = validateEntityData(raw['entity']);
+      return entity ? { msg: { type, entity } } : { error: 'Invalid entity' };
+    }
+    case 'update_entity': {
+      const entityId = safeString(raw['entityId']);
+      const changes = validateRecordPatch(raw['changes']);
+      return entityId && changes ? { msg: { type, entityId, changes } } : { error: 'Invalid entity update' };
+    }
+    case 'delete_entity': {
+      const entityId = safeString(raw['entityId']);
+      return entityId ? { msg: { type, entityId } } : { error: 'Invalid entity' };
+    }
+    case 'move_token': {
+      const entityId = safeString(raw['entityId']);
+      const x = boundedNumber(raw['x'], -100_000, 100_000);
+      const y = boundedNumber(raw['y'], -100_000, 100_000);
+      return entityId && x !== null && y !== null ? { msg: { type, entityId, x, y } } : { error: 'Invalid token move' };
+    }
+    case 'combat_action': {
+      const action = validateCombatAction(raw['action']);
+      return action ? { msg: { type, action } } : { error: 'Invalid combat action' };
+    }
+    case 'token_action': {
+      const action = validateTokenAction(raw['action']);
+      return action ? { msg: { type, action } } : { error: 'Invalid token action' };
+    }
+    case 'draw_steel_roll': {
+      const roll = validateDrawSteelRoll(raw['roll']);
+      return roll ? { msg: { type, roll } } : { error: 'Invalid roll' };
+    }
+    case 'hero_tracker_update': {
+      const heroId = safeString(raw['heroId']);
+      const op = validateHeroTrackerOperation(raw['op']);
+      return heroId && op ? { msg: { type, heroId, op } } : { error: 'Invalid hero tracker update' };
+    }
+    case 'use_ability': {
+      const sourceId = safeString(raw['sourceId']);
+      const targetId = safeString(raw['targetId']);
+      const abilityId = safeString(raw['abilityId']);
+      return sourceId && targetId && abilityId ? { msg: { type, sourceId, targetId, abilityId } } : { error: 'Invalid ability request' };
+    }
+    case 'update_inventory': {
+      const heroId = safeString(raw['heroId']);
+      return heroId && Array.isArray(raw['inventory']) && raw['inventory'].length <= MAX_INVENTORY_ITEMS
+        ? { msg: { type, heroId, inventory: sanitizeInventory(raw['inventory']) } }
+        : { error: 'Invalid inventory update' };
+    }
+    case 'scene_drawing_add': {
+      const drawing = validateDrawing(raw['drawing']);
+      return drawing ? { msg: { type, drawing } } : { error: 'Invalid drawing' };
+    }
+    case 'scene_drawing_remove': {
+      const drawingId = safeString(raw['drawingId']);
+      return drawingId ? { msg: { type, drawingId } } : { error: 'Invalid drawing' };
+    }
+    case 'scene_fog_add': {
+      const fog = validateFog(raw['fog']);
+      return fog ? { msg: { type, fog } } : { error: 'Invalid fog' };
+    }
+    case 'scene_fog_remove': {
+      const fogId = safeString(raw['fogId']);
+      return fogId ? { msg: { type, fogId } } : { error: 'Invalid fog' };
+    }
+    case 'scene_terrain_add':
+    case 'scene_terrain_update': {
+      const terrain = validateTerrain(raw['terrain']);
+      return terrain ? { msg: { type, terrain } as ClientMessage } : { error: 'Invalid terrain' };
+    }
+    case 'scene_terrain_remove': {
+      const terrainId = safeString(raw['terrainId']);
+      return terrainId ? { msg: { type, terrainId } } : { error: 'Invalid terrain' };
+    }
+    case 'negotiation_argument': {
+      const skillId = safeString(raw['skillId'], 120);
+      const approachText = safeString(raw['approachText'], MAX_APPROACH_TEXT_LENGTH);
+      return skillId && approachText ? { msg: { type, skillId, approachText } } : { error: 'Invalid negotiation argument' };
+    }
+    case 'negotiation_adjust_patience':
+    case 'negotiation_adjust_interest': {
+      const delta = boundedInteger(raw['delta'], -10, 10);
+      return delta === null ? { error: 'Invalid adjustment' } : { msg: { type, delta } as ClientMessage };
+    }
+    case 'negotiation_reveal_motivation':
+    case 'negotiation_reveal_pitfall': {
+      const id = safeString(raw['id']);
+      return id ? { msg: { type, id } as ClientMessage } : { error: 'Invalid reveal target' };
+    }
+    case 'negotiation_end':
+      return raw['phase'] === 'success' || raw['phase'] === 'failure'
+        ? { msg: { type, phase: raw['phase'] } }
+        : { error: 'Invalid negotiation phase' };
+    case 'montage_roll': {
+      const skillId = safeString(raw['skillId'], 120);
+      const characteristicId = safeString(raw['characteristicId'], 20);
+      return skillId && characteristicId && CHARACTERISTIC_IDS.includes(characteristicId as CharacteristicId)
+        ? { msg: { type, skillId, characteristicId } }
+        : { error: 'Invalid montage roll' };
+    }
+    case 'montage_adjust_successes':
+    case 'montage_adjust_failures': {
+      const delta = boundedInteger(raw['delta'], -10, 10);
+      return delta === null ? { error: 'Invalid montage adjustment' } : { msg: { type, delta } as ClientMessage };
+    }
+    case 'respite_choose_activity':
+    case 'respite_complete_activity': {
+      const activityId = safeString(raw['activityId']);
+      return activityId ? { msg: { type, activityId } as ClientMessage } : { error: 'Invalid respite activity' };
+    }
+    case 'audio_play': {
+      const audioAssetId = safeString(raw['audioAssetId']);
+      return audioAssetId && typeof raw['loop'] === 'boolean'
+        ? { msg: { type, audioAssetId, loop: raw['loop'] } }
+        : { error: 'Invalid audio request' };
+    }
+    case 'story_update': {
+      const readAloudText = typeof raw['readAloudText'] === 'string' && raw['readAloudText'].length <= MAX_STORY_TEXT_LENGTH
+        ? raw['readAloudText']
+        : null;
+      return readAloudText !== null ? { msg: { type, readAloudText } } : { error: 'Invalid story text' };
+    }
+    default:
+      return { error: 'Unsupported message type' };
+  }
+}
+
+function inventoryString(value: unknown, maxLength = MAX_INVENTORY_TEXT_LENGTH): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
+}
+
+function inventoryNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(1, Math.floor(value));
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(1, Math.floor(parsed));
+  }
+  return undefined;
+}
+
+function inventoryStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim().slice(0, 80))
+    .slice(0, 12);
+  return items.length > 0 ? items : undefined;
+}
+
+function sanitizeInventory(value: unknown): InventoryItemData[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.slice(0, MAX_INVENTORY_ITEMS).flatMap((item, index): InventoryItemData[] => {
+    if (!isRecord(item)) return [];
+    const name = inventoryString(item['name'], 160);
+    if (!name) return [];
+
+    const rawSource = inventoryString(item['source'], 40);
+    const rawCategory = inventoryString(item['category'], 40);
+    const source = rawSource && VALID_INVENTORY_SOURCES.has(rawSource)
+      ? rawSource as InventoryItemData['source']
+      : 'custom';
+    const category = rawCategory && VALID_INVENTORY_CATEGORIES.has(rawCategory)
+      ? rawCategory as InventoryItemData['category']
+      : 'misc';
+
+    const enhancements = Array.isArray(item['enhancements'])
+      ? item['enhancements'].slice(0, 12).flatMap((enhancement): NonNullable<InventoryItemData['enhancements']> => {
+          if (!isRecord(enhancement)) return [];
+          const level = inventoryNumber(enhancement['level']);
+          const description = inventoryString(enhancement['description'] ?? enhancement['effect']);
+          if (!level || !description) return [];
+          const name = inventoryString(enhancement['name'], 80);
+          return [{ level, ...(name ? { name } : {}), description }];
+        })
+      : undefined;
+
+    const id = inventoryString(item['id'], 220) ?? `inventory-${index}`;
+    const catalogId = inventoryString(item['catalogId'], 220);
+    const quantity = inventoryNumber(item['quantity']) ?? 1;
+    const description = inventoryString(item['description']) ?? inventoryString(item['effect']) ?? '';
+    const effect = inventoryString(item['effect']);
+    const flavorText = inventoryString(item['flavorText']);
+    const echelon = inventoryNumber(item['echelon']);
+    const level = inventoryNumber(item['level']);
+    const slot = inventoryString(item['slot'], 60);
+    const keywords = inventoryStringArray(item['keywords']);
+    const projectGoal = inventoryNumber(item['projectGoal']);
+    const notes = inventoryString(item['notes']);
+
+    return [{
+      id,
+      ...(catalogId ? { catalogId } : {}),
+      source,
+      name,
+      category,
+      quantity,
+      description,
+      ...(effect ? { effect } : {}),
+      ...(flavorText ? { flavorText } : {}),
+      ...(echelon ? { echelon } : {}),
+      ...(level ? { level } : {}),
+      ...(slot ? { slot } : {}),
+      ...(keywords ? { keywords } : {}),
+      ...(projectGoal ? { projectGoal } : {}),
+      equipped: item['equipped'] === true,
+      ...(enhancements && enhancements.length > 0 ? { enhancements } : {}),
+      ...(notes ? { notes } : {}),
+    }];
+  });
 }
 
 function resolveAbility(abilityId: string): AbilityLike | undefined {
@@ -296,12 +866,6 @@ function getAbilityForSource(source: Record<string, unknown>, abilityId: string)
   return toRuntimeAbility(abilityId, sourceAbility);
 }
 
-function getRollModifier(source: Record<string, unknown>): number {
-  const values = ['might', 'agility', 'reason', 'intuition', 'presence']
-    .map((key) => (typeof source[key] === 'number' ? source[key] as number : 0));
-  return Math.max(0, ...values);
-}
-
 function isTargetInRange(source: Record<string, unknown>, target: Record<string, unknown>, distance: string): boolean {
   const normalized = distance.toLowerCase();
   if (normalized.includes('self')) return source['id'] === target['id'];
@@ -348,6 +912,20 @@ export class SessionRoom extends DurableObject<Env> {
       if (meta) connections.push({ ws, meta });
     }
     return connections;
+  }
+
+  private async refreshMetaFromParticipant(meta: ConnectionMeta): Promise<ConnectionMeta> {
+    const row = await this.env.DB.prepare(
+      'SELECT hero_id, status FROM session_participants WHERE game_session_id = ? AND user_id = ?',
+    )
+      .bind(meta.sessionId, meta.userId)
+      .first<{ hero_id: string | null; status: string }>();
+    if (!row) return meta;
+    return {
+      ...meta,
+      heroId: row.hero_id,
+      ready: row.status === 'ready',
+    };
   }
 
   private hasDesktopAnchor(meta: ConnectionMeta): boolean {
@@ -401,7 +979,7 @@ export class SessionRoom extends DurableObject<Env> {
     return new Response('Not found', { status: 404 });
   }
 
-  private handleWebSocket(request: Request, url: URL): Response {
+  private async handleWebSocket(request: Request, url: URL): Promise<Response> {
     const userId = url.searchParams.get('userId');
     const username = url.searchParams.get('username');
     const avatarUrl = url.searchParams.get('avatarUrl');
@@ -439,7 +1017,7 @@ export class SessionRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, encodeTags(meta));
 
     // Broadcast updated participant list
-    this.broadcastParticipants();
+    await this.broadcastParticipants();
     this.broadcastPhoneAnchorStatus();
 
     return new Response(null, { status: 101, webSocket: client });
@@ -448,7 +1026,7 @@ export class SessionRoom extends DurableObject<Env> {
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') return;
 
-    const meta = this.getMetaForSocket(ws);
+    let meta = this.getMetaForSocket(ws);
     if (!meta) return;
 
     // Recover sessionId after hibernation wake (in-memory fields are lost)
@@ -459,10 +1037,21 @@ export class SessionRoom extends DurableObject<Env> {
 
     // Ensure session state is hydrated (guards against concurrent calls after hibernation)
     await this.ensureHydrated();
+    meta = await this.refreshMetaFromParticipant(meta);
 
     let msg: ClientMessage;
+    if (message.length > MAX_WS_MESSAGE_LENGTH) {
+      this.sendTo(ws, { type: 'error', code: 'MESSAGE_TOO_LARGE', message: 'Message is too large' });
+      return;
+    }
+
     try {
-      msg = JSON.parse(message) as ClientMessage;
+      const parsed = parseClientMessagePayload(JSON.parse(message));
+      if (!parsed.msg) {
+        this.sendTo(ws, { type: 'error', code: 'INVALID_MESSAGE', message: parsed.error ?? 'Invalid message' });
+        return;
+      }
+      msg = parsed.msg;
     } catch {
       this.sendTo(ws, { type: 'error', code: 'PARSE_ERROR', message: 'Invalid JSON' });
       return;
@@ -500,7 +1089,7 @@ export class SessionRoom extends DurableObject<Env> {
           .bind(msg.ready ? 'ready' : 'joined', msg.ready ? 1 : 0, meta.sessionId, meta.userId)
           .run();
         this.updateTag(ws, { ...meta, ready: msg.ready });
-        this.broadcastParticipants();
+        await this.broadcastParticipants();
         break;
 
       case 'select_hero': {
@@ -536,7 +1125,7 @@ export class SessionRoom extends DurableObject<Env> {
         }
 
         this.updateTag(ws, { ...meta, heroId: msg.heroId });
-        this.broadcastParticipants();
+        await this.broadcastParticipants();
         break;
       }
 
@@ -600,6 +1189,10 @@ export class SessionRoom extends DurableObject<Env> {
         }
         break;
 
+      case 'update_inventory':
+        await this.handleInventoryUpdate(ws, meta, msg.heroId, msg.inventory);
+        break;
+
       case 'delete_entity':
         if (meta.role !== 'director') {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
@@ -645,7 +1238,7 @@ export class SessionRoom extends DurableObject<Env> {
         break;
 
       case 'hero_tracker_update':
-        this.handleHeroTrackerUpdate(ws, meta, msg.heroId, msg.op);
+        await this.handleHeroTrackerUpdate(ws, meta, msg.heroId, msg.op);
         break;
 
       case 'use_ability':
@@ -705,8 +1298,23 @@ export class SessionRoom extends DurableObject<Env> {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
           return;
         }
-        this.storeSceneTerrain(msg.terrain);
-        this.broadcast({ type: 'scene_terrain_added', terrain: msg.terrain });
+        {
+          const terrain = this.clampTerrainToActiveBattleGrid(msg.terrain);
+          this.storeSceneTerrain(terrain);
+          this.broadcast({ type: 'scene_terrain_added', terrain });
+        }
+        break;
+
+      case 'scene_terrain_update':
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        {
+          const terrain = this.clampTerrainToActiveBattleGrid(msg.terrain);
+          this.updateSceneTerrain(terrain);
+          this.broadcast({ type: 'scene_terrain_updated', terrain });
+        }
         break;
 
       case 'scene_terrain_remove':
@@ -843,25 +1451,19 @@ export class SessionRoom extends DurableObject<Env> {
 
   override async webSocketClose(_ws: WebSocket): Promise<void> {
     await this.persistActiveSceneSnapshot();
-    // No Map to clean up — tags are on the socket itself
-    this.broadcastParticipants();
+    await this.broadcastParticipants();
     this.broadcastPhoneAnchorStatus();
   }
 
   override async webSocketError(_ws: WebSocket): Promise<void> {
     await this.persistActiveSceneSnapshot();
-    this.broadcastParticipants();
+    await this.broadcastParticipants();
     this.broadcastPhoneAnchorStatus();
   }
 
   /**
-   * Update a socket's tag (e.g. when ready state or heroId changes).
-   * Cloudflare doesn't have a setTag API, so we close and note the change
-   * isn't critical — 'ready' and 'heroId' are transient session state.
-   * Instead we'll use ctx.setState for mutable per-socket data if needed.
-   *
-   * For now, ready/heroId are best-effort: they work within a single DO lifetime
-   * but may reset on hibernation wake. This is acceptable for these fields.
+   * Cache mutable per-socket metadata for the current DO lifetime.
+   * Durable participant fields are refreshed from D1 after hibernation wake.
    */
   private updateTag(ws: WebSocket, meta: ConnectionMeta): void {
     this.mutableConnectionMeta.set(ws, meta);
@@ -870,7 +1472,7 @@ export class SessionRoom extends DurableObject<Env> {
   private async sendState(ws: WebSocket): Promise<void> {
     await this.ensureHydrated();
     if (this.sessionState) {
-      this.sessionState.participants = this.getParticipantList();
+      this.sessionState.participants = await this.getParticipantList();
       this.sendTo(ws, { type: 'state', state: this.sessionState });
     }
   }
@@ -897,7 +1499,7 @@ export class SessionRoom extends DurableObject<Env> {
 
     const session = await db.prepare('SELECT * FROM game_sessions WHERE id = ?')
       .bind(sessionId)
-      .first<{ id: string; campaign_id: string; active_scene_id: string | null; room_code: string | null }>();
+      .first<{ id: string; campaign_id: string; active_scene_id: string | null }>();
     if (!session) return;
 
     const scenes = await db.prepare(
@@ -906,29 +1508,32 @@ export class SessionRoom extends DurableObject<Env> {
       .bind(sessionId)
       .all<SceneRef & { data?: string; snapshot?: string | null }>();
 
-    const sceneRefs: HydratedSceneRef[] = [];
-    for (const s of scenes.results) {
-      let preparedData: Record<string, unknown> = {};
-      if (typeof s.data === 'string') {
-        try { preparedData = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
-      }
-      const snapshot = this.parseSceneSnapshot(s.snapshot);
-      const liveData = snapshot?.data ?? preparedData;
-      await this.hydrateSceneMapData(liveData, session.campaign_id, s.type);
-      if (liveData !== preparedData) await this.hydrateSceneMapData(preparedData, session.campaign_id, s.type);
-      const ref = {
-        id: s.id,
-        name: s.name,
-        type: s.type,
-        order_index: s.order_index,
-        data: liveData,
-      } as HydratedSceneRef;
-      Object.defineProperties(ref, {
-        preparedData: { value: preparedData, writable: true, enumerable: false },
-        snapshot: { value: snapshot, writable: true, enumerable: false },
-      });
-      sceneRefs.push(ref);
-    }
+    const sceneRefs: HydratedSceneRef[] = await Promise.all(
+      scenes.results.map(async (s) => {
+        let preparedData: Record<string, unknown> = {};
+        if (typeof s.data === 'string') {
+          try { preparedData = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
+        }
+        preparedData = await this.hydrateSceneMedia(s.type, preparedData, session.campaign_id);
+        const snapshot = this.parseSceneSnapshot(s.snapshot);
+        if (snapshot?.data) {
+          snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
+          snapshot.data = this.applyPreparedSceneMediaFallbacks(s.type, snapshot.data, preparedData);
+        }
+        const ref = {
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          order_index: s.order_index,
+          data: snapshot?.data ?? preparedData,
+        } as HydratedSceneRef;
+        Object.defineProperties(ref, {
+          preparedData: { value: preparedData, writable: true, enumerable: false },
+          snapshot: { value: snapshot, writable: true, enumerable: false },
+        });
+        return ref;
+      }),
+    );
     const activeSceneId = sceneRefs.some((scene) => scene.id === session.active_scene_id)
       ? session.active_scene_id
       : sceneRefs[0]?.id ?? null;
@@ -939,12 +1544,11 @@ export class SessionRoom extends DurableObject<Env> {
     this.sessionState = {
       sessionId,
       campaignId: session.campaign_id,
-      roomCode: session.room_code,
       scenes: sceneRefs,
       activeSceneId,
       entities: activeScene ? this.createLiveEntitiesForScene(activeScene, heroEntities) : heroEntities,
       combat: activeScene?.snapshot?.combat ?? null,
-      participants: this.getParticipantList(),
+      participants: await this.getParticipantList(),
       actionLog: activeScene?.snapshot?.actionLog ?? [],
       negotiation: null,
       montage: null,
@@ -957,8 +1561,8 @@ export class SessionRoom extends DurableObject<Env> {
 
   private async loadHeroEntities(sessionId: string): Promise<SessionState['entities']> {
     const rows = await this.env.DB.prepare(
-      `SELECT h.id, h.name, h.user_id, h.ancestry, h.hero_class, h.subclass, h.level,
-              h.characteristics, h.kit, h.skills, h.abilities, h.portrait_url, h.data
+      `SELECT h.id, h.name, h.user_id, h.ancestry, h.culture, h.career, h.hero_class, h.subclass, h.level,
+              h.characteristics, h.kit, h.skills, h.abilities, h.portrait_asset_id, h.portrait_url, h.data
        FROM session_participants sp
        JOIN heroes h ON h.id = sp.hero_id
        WHERE sp.game_session_id = ? AND h.deleted_at IS NULL
@@ -981,17 +1585,71 @@ export class SessionRoom extends DurableObject<Env> {
     }
   }
 
-  private async hydrateSceneMapData(data: Record<string, unknown>, campaignId: string, sceneType: string): Promise<void> {
-    if (sceneType !== 'battle') return;
-    if (typeof data['mapUrl'] === 'string' && data['mapUrl'].trim()) return;
-    const mapAssetId = typeof data['mapAssetId'] === 'string' && data['mapAssetId'].trim()
-      ? data['mapAssetId']
-      : null;
-    if (!mapAssetId) return;
-    const map = await this.env.DB.prepare('SELECT asset_id FROM maps WHERE id = ? AND campaign_id = ?')
+  private async hydrateSceneMedia(
+    sceneType: string,
+    data: Record<string, unknown>,
+    campaignId: string | null,
+  ): Promise<Record<string, unknown>> {
+    if (!campaignId || (sceneType !== 'battle' && sceneType !== 'story')) return data;
+
+    const mapAssetId = typeof data['mapAssetId'] === 'string'
+      ? data['mapAssetId'].trim()
+      : '';
+    if (!mapAssetId) return data;
+
+    const urlKey = sceneType === 'story' ? 'assetUrl' : 'mapUrl';
+    const existingUrl = data[urlKey];
+    if (typeof existingUrl === 'string' && existingUrl.trim()) return data;
+
+    const map = await this.env.DB.prepare(
+      'SELECT asset_id FROM maps WHERE id = ? AND campaign_id = ?',
+    )
       .bind(mapAssetId, campaignId)
       .first<{ asset_id: string | null }>();
-    if (map?.asset_id) data['mapUrl'] = `/api/assets/${map.asset_id}/data`;
+    if (!map?.asset_id) return data;
+
+    return {
+      ...data,
+      [urlKey]: `/api/assets/${map.asset_id}/data`,
+    };
+  }
+
+  private applyPreparedSceneMediaFallbacks(
+    sceneType: string,
+    data: Record<string, unknown>,
+    preparedData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const keys = sceneType === 'battle'
+      ? [
+          'mapUrl',
+          'backgroundUrl',
+          'mapAssetId',
+          'gridCols',
+          'gridRows',
+          'gridCellSize',
+          'gridType',
+          'gridOpacity',
+          'gridColor',
+          'gridOffsetX',
+          'gridOffsetY',
+        ]
+      : sceneType === 'story'
+        ? ['assetUrl', 'mapAssetId']
+        : [];
+    if (keys.length === 0) return data;
+
+    let next: Record<string, unknown> | null = null;
+    for (const key of keys) {
+      const current = data[key];
+      const fallback = preparedData[key];
+      const missing = current === undefined || current === null || (typeof current === 'string' && current.trim() === '');
+      const hasFallback = fallback !== undefined && fallback !== null && (typeof fallback !== 'string' || fallback.trim() !== '');
+      if (!missing || !hasFallback) continue;
+      next ??= { ...data };
+      next[key] = fallback;
+    }
+
+    return next ?? data;
   }
 
   private activeSceneRef(): HydratedSceneRef | null {
@@ -1006,7 +1664,9 @@ export class SessionRoom extends DurableObject<Env> {
     const snapshotById = new Map(snapshotEntities.map((entity) => [entity.id, entity]));
     const mergedHeroes = heroEntities.map((hero) => {
       const snapshot = snapshotById.get(hero.id);
-      return snapshot && snapshot.type === 'hero' ? { ...hero, ...snapshot } : hero;
+      return snapshot && snapshot.type === 'hero'
+        ? { ...hero, ...snapshot, inventory: hero['inventory'], portraitUrl: hero['portraitUrl'] }
+        : hero;
     });
     const heroIds = new Set(mergedHeroes.map((hero) => hero.id));
     const nonHeroes = snapshotEntities.filter((entity) => entity.type !== 'hero' || !heroIds.has(entity.id));
@@ -1015,28 +1675,49 @@ export class SessionRoom extends DurableObject<Env> {
 
   private createHeroEntity(hero: HeroEntityRow, index: number): SessionState['entities'][number] {
     const data = parseJson<Record<string, unknown>>(hero.data, {});
-    const state = data['state'] && typeof data['state'] === 'object'
-      ? data['state'] as Record<string, unknown>
-      : {};
-    const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
+    const baseCharacteristics = parseJson<Record<string, number>>(hero.characteristics, {});
     const selectedSkills = parseJson<string[]>(hero.skills, []);
     const selectedAbilityIds = parseJson<string[]>(hero.abilities, []);
+    const state = isRecord(data['state']) ? data['state'] : {};
+    const inventory = sanitizeInventory(data['inventory'] ?? state['inventory']);
     const heroClass = hero.hero_class && HeroLogic.isValidHeroClass(hero.hero_class)
       ? hero.hero_class
       : null;
+    const levelUpChoices = normalizeLevelUpChoices(data['levelUpChoices']);
+    const characteristics = heroClass
+      ? HeroLogic.applyLevelAdvancementCharacteristics(
+        heroClass,
+        hero.level,
+        baseCharacteristics,
+        levelUpChoices,
+      )
+      : baseCharacteristics;
     const kit = hero.kit ? GameData.getKit(hero.kit) : null;
+    const secondaryKitId = heroClass === 'tactician' && typeof data['secondaryKit'] === 'string'
+      ? data['secondaryKit']
+      : null;
+    const secondaryKit = secondaryKitId ? GameData.getKit(secondaryKitId) : null;
+    const kitStaminaBonus = (kit?.staminaPerEchelon ?? 0) + (secondaryKit?.staminaPerEchelon ?? 0);
     const maxStamina = heroClass
-      ? HeroLogic.getMaxStaminaWithKit(heroClass, hero.level, kit?.staminaPerEchelon ?? 0)
+      ? HeroLogic.getMaxStaminaWithAdvancements(heroClass, hero.level, kitStaminaBonus, levelUpChoices)
       : 20;
     const maxRecoveries = heroClass ? HeroLogic.getMaxRecoveries(heroClass) : null;
     const resourceType = heroClass ? HeroLogic.getHeroicResourceType(heroClass) : null;
     const startingResource = heroClass ? HeroLogic.getStartingHeroicResource(heroClass) : 0;
-    const speed = HeroLogic.getBaseSpeed(hero.ancestry ?? '') + (hero.kit ? KitLogic.getKitSpeedBonus(hero.kit) : 0);
-    const inventory = Array.isArray(data['inventory'])
-      ? data['inventory']
-      : Array.isArray(state['inventory'])
-        ? state['inventory']
-        : [];
+    const speed = HeroLogic.getBaseSpeed(hero.ancestry ?? '')
+      + (hero.kit ? KitLogic.getKitSpeedBonus(hero.kit) : 0)
+      + (secondaryKitId ? KitLogic.getKitSpeedBonus(secondaryKitId) : 0);
+    const companionId = heroClass === 'beastheart' && typeof data['companion'] === 'string'
+      ? data['companion']
+      : null;
+    const companion = companionId
+      ? WizardLogic.getCompanionOptions().find((option) => option.id === companionId)
+      : undefined;
+    const companionDetails = companion as (typeof companion & Record<string, unknown>) | undefined;
+    const companionCurrentStamina = typeof data['companionStaminaCurrent'] === 'number'
+      ? data['companionStaminaCurrent']
+      : maxStamina;
+    const companionRampage = typeof data['companionRampage'] === 'number' ? data['companionRampage'] : 0;
 
     return {
       id: hero.id,
@@ -1046,11 +1727,15 @@ export class SessionRoom extends DurableObject<Env> {
       y: 2 + index,
       ownerUserId: hero.user_id,
       ancestry: hero.ancestry,
+      culture: hero.culture,
+      career: hero.career,
       heroClass,
       subclass: hero.subclass,
       level: hero.level,
       kit: hero.kit,
-      portraitUrl: hero.portrait_url,
+      secondaryKit: secondaryKitId,
+      skills: selectedSkills,
+      portraitUrl: hero.portrait_asset_id ? `/api/assets/${hero.portrait_asset_id}/data` : hero.portrait_url,
       maxStamina,
       currentStamina: typeof data['staminaCurrent'] === 'number'
         ? data['staminaCurrent']
@@ -1065,14 +1750,14 @@ export class SessionRoom extends DurableObject<Env> {
         : typeof data['currentRecoveries'] === 'number'
           ? data['currentRecoveries']
           : maxRecoveries,
+      victories: typeof data['victories'] === 'number' ? data['victories'] : 0,
+      xp: typeof data['xp'] === 'number' ? data['xp'] : 0,
       heroicResource: typeof data['heroicResource'] === 'number'
         ? data['heroicResource']
         : typeof state['heroicResource'] === 'number'
           ? state['heroicResource']
           : startingResource,
       heroicResourceName: resourceType ? HeroLogic.getHeroicResourceName(resourceType) : 'Resource',
-      victories: typeof data['victories'] === 'number' ? data['victories'] : 0,
-      inventory,
       speed,
       conditions: [],
       might: characteristics['might'] ?? 0,
@@ -1080,8 +1765,26 @@ export class SessionRoom extends DurableObject<Env> {
       reason: characteristics['reason'] ?? 0,
       intuition: characteristics['intuition'] ?? 0,
       presence: characteristics['presence'] ?? 0,
-      skills: selectedSkills,
       abilities: selectedAbilityIds.map((abilityId) => toRuntimeAbility(abilityId)),
+      inventory,
+      ...(companion ? {
+        companionId: companion.id,
+        companionName: companion.name,
+        companionLevel: companion.level,
+        companionRoles: companion.roles,
+        companionAncestry: companion.ancestry,
+        companionSize: typeof companionDetails?.['size'] === 'string' ? companionDetails['size'] : undefined,
+        companionSpeed: typeof companionDetails?.['speed'] === 'string' ? companionDetails['speed'] : undefined,
+        companionStability: typeof companionDetails?.['stability'] === 'number' ? companionDetails['stability'] : undefined,
+        companionSignatureAbility: typeof companionDetails?.['signatureAbility'] === 'string' ? companionDetails['signatureAbility'] : undefined,
+        companionMaxStamina: maxStamina,
+        companionCurrentStamina,
+        companionRecoveriesMax: 0,
+        companionRecoveriesCurrent: 0,
+        companionUsesHeroRecoveries: true,
+        companionRampage,
+        companionRampageThresholds: [8, 12, 16, 20, 24],
+      } : {}),
     };
   }
 
@@ -1192,8 +1895,11 @@ export class SessionRoom extends DurableObject<Env> {
     const row = await this.env.DB.prepare('SELECT data FROM scenes WHERE id = ? AND deleted_at IS NULL')
       .bind(targetSceneId)
       .first<{ data: string | null }>();
-    const preparedData = parseJson<Record<string, unknown>>(row?.data, {});
-    await this.hydrateSceneMapData(preparedData, this.sessionState.campaignId, scene.type);
+    const preparedData = await this.hydrateSceneMedia(
+      scene.type,
+      parseJson<Record<string, unknown>>(row?.data, {}),
+      this.sessionState.campaignId,
+    );
 
     await this.env.DB.prepare('UPDATE scenes SET snapshot = NULL WHERE id = ?')
       .bind(targetSceneId)
@@ -1263,14 +1969,17 @@ export class SessionRoom extends DurableObject<Env> {
       'scene_fog_added',
       'scene_fog_removed',
       'scene_terrain_added',
+      'scene_terrain_updated',
       'scene_terrain_removed',
     ].includes(msg.type);
   }
 
-  private getParticipantList(): ParticipantInfo[] {
+  private async getParticipantList(): Promise<ParticipantInfo[]> {
     const participants: ParticipantInfo[] = [];
     const seen = new Set<string>();
-    for (const { meta } of this.getConnections()) {
+    for (const { ws, meta: connectionMeta } of this.getConnections()) {
+      const meta = await this.refreshMetaFromParticipant(connectionMeta);
+      this.mutableConnectionMeta.set(ws, meta);
       if (seen.has(meta.userId)) continue;
       seen.add(meta.userId);
       participants.push({
@@ -1286,8 +1995,8 @@ export class SessionRoom extends DurableObject<Env> {
     return participants;
   }
 
-  private broadcastParticipants(): void {
-    this.broadcast({ type: 'participant_update', participants: this.getParticipantList() });
+  private async broadcastParticipants(): Promise<void> {
+    this.broadcast({ type: 'participant_update', participants: await this.getParticipantList() });
   }
 
   private async handleEndSession(): Promise<void> {
@@ -1321,7 +2030,7 @@ export class SessionRoom extends DurableObject<Env> {
     this.sessionState.negotiation = null;
     this.sessionState.montage = null;
     this.sessionState.respite = null;
-    this.sessionState.audio = scene.snapshot?.audio ?? null;
+    this.sessionState.audio = scene.snapshot?.audio ?? this.sessionState.audio;
 
     const data = scene.data ?? {};
     if (scene.type === 'negotiation') {
@@ -1382,6 +2091,10 @@ export class SessionRoom extends DurableObject<Env> {
       case 'ROLL_INITIATIVE': {
         const c = this.sessionState.combat;
         if (!c) return;
+        if (meta.role !== 'player') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Players roll initiative' });
+          return;
+        }
         if (c.initiativeRoll !== null) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Initiative has already been rolled' });
           return;
@@ -1635,12 +2348,55 @@ export class SessionRoom extends DurableObject<Env> {
     return null;
   }
 
-  private handleHeroTrackerUpdate(
+  private async handleInventoryUpdate(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    heroId: string,
+    rawInventory: unknown,
+  ): Promise<void> {
+    if (meta.role === 'player' && heroId !== meta.heroId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own inventory' });
+      return;
+    }
+
+    const inventory = sanitizeInventory(rawInventory);
+    const row = await this.env.DB.prepare(
+      'SELECT user_id, data FROM heroes WHERE id = ? AND deleted_at IS NULL',
+    )
+      .bind(heroId)
+      .first<{ user_id: string; data: string | null }>();
+
+    if (!row) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_HERO', message: 'Hero not found' });
+      return;
+    }
+
+    if (meta.role === 'player' && row.user_id !== meta.userId) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only update your own inventory' });
+      return;
+    }
+
+    const data = parseJson<Record<string, unknown>>(row.data, {});
+    data['inventory'] = inventory;
+
+    await this.env.DB.prepare(
+      "UPDATE heroes SET data = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?",
+    )
+      .bind(JSON.stringify(data), heroId)
+      .run();
+
+    const entity = this.sessionState?.entities.find((candidate) => candidate.id === heroId && candidate.type === 'hero');
+    if (entity) entity['inventory'] = inventory;
+
+    this.broadcast({ type: 'entity_updated', entityId: heroId, changes: { inventory } });
+  }
+
+  private async handleHeroTrackerUpdate(
     ws: WebSocket,
     meta: ConnectionMeta,
     heroId: string,
     op: HeroTrackerOperation,
-  ): void {
+  ): Promise<void> {
     const entity = this.sessionState?.entities.find((candidate) => candidate.id === heroId);
     if (!entity || entity.type !== 'hero') {
       this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Hero not found' });
@@ -1688,13 +2444,13 @@ export class SessionRoom extends DurableObject<Env> {
         break;
       }
       case 'inventory_add': {
-        const item = this.normalizeInventoryItem(op.item);
+        const item = sanitizeInventory([op.item])[0];
         if (!item) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Inventory item needs a name' });
           return;
         }
-        changes['inventory'] = [...this.getInventory(entity), item];
-        break;
+        await this.handleInventoryUpdate(ws, meta, heroId, [...this.getInventory(entity), item]);
+        return;
       }
       case 'inventory_update': {
         const inventory = this.getInventory(entity);
@@ -1704,18 +2460,13 @@ export class SessionRoom extends DurableObject<Env> {
           return;
         }
         const next = [...inventory];
-        const updated = this.normalizeInventoryItem({ ...next[itemIndex], ...op.changes, id: op.itemId }, next[itemIndex]);
-        if (!updated) {
-          this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Inventory item needs a name' });
-          return;
-        }
-        next[itemIndex] = updated;
-        changes['inventory'] = next;
-        break;
+        next[itemIndex] = sanitizeInventory([{ ...next[itemIndex], ...op.changes, id: op.itemId }])[0] ?? next[itemIndex]!;
+        await this.handleInventoryUpdate(ws, meta, heroId, next);
+        return;
       }
       case 'inventory_remove':
-        changes['inventory'] = this.getInventory(entity).filter((item) => item.id !== op.itemId);
-        break;
+        await this.handleInventoryUpdate(ws, meta, heroId, this.getInventory(entity).filter((item) => item.id !== op.itemId));
+        return;
     }
 
     if (Object.keys(changes).length === 0) return;
@@ -1733,28 +2484,8 @@ export class SessionRoom extends DurableObject<Env> {
     return Math.max(min, Math.min(max, normalized));
   }
 
-  private getInventory(entity: SessionEntity): Array<Required<HeroInventoryItemInput>> {
-    const raw = entity['inventory'];
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map((item) => this.normalizeInventoryItem(item as HeroInventoryItemInput))
-      .filter((item): item is Required<HeroInventoryItemInput> => item !== null);
-  }
-
-  private normalizeInventoryItem(
-    input: Partial<HeroInventoryItemInput>,
-    existing?: Required<HeroInventoryItemInput>,
-  ): Required<HeroInventoryItemInput> | null {
-    const name = typeof input.name === 'string' ? input.name.trim() : existing?.name ?? '';
-    if (!name) return null;
-    return {
-      id: existing?.id ?? (typeof input.id === 'string' && input.id.trim() ? input.id.trim() : crypto.randomUUID()),
-      name,
-      quantity: this.clampInt(typeof input.quantity === 'number' ? input.quantity : existing?.quantity ?? 1, 0, 999),
-      category: typeof input.category === 'string' && input.category.trim() ? input.category.trim() : existing?.category ?? 'misc',
-      description: typeof input.description === 'string' ? input.description : existing?.description ?? '',
-      notes: typeof input.notes === 'string' ? input.notes : existing?.notes ?? '',
-    };
+  private getInventory(entity: SessionEntity): InventoryItemData[] {
+    return sanitizeInventory(entity['inventory']);
   }
 
   /** Roll n d10 using crypto-secure, unbiased randomness. */
@@ -1808,10 +2539,6 @@ export class SessionRoom extends DurableObject<Env> {
       title: this.clampLogText(entry.title, 140) ?? 'Action',
       detail: this.clampLogText(entry.detail, 500),
       dice: entry.dice,
-      modifier: entry.modifier,
-      edges: entry.edges,
-      banes: entry.banes,
-      rollState: entry.rollState,
       total: entry.total,
       tier: entry.tier,
       timestamp: entry.timestamp ?? Date.now(),
@@ -1847,23 +2574,10 @@ export class SessionRoom extends DurableObject<Env> {
     return Math.max(-100, Math.min(100, Math.trunc(value)));
   }
 
-  private normalizeRollEdgeBane(value: unknown): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(2, Math.trunc(value)));
-  }
-
   private normalizeRollLabel(value: unknown, fallback: string): string {
     if (typeof value !== 'string') return fallback;
     const label = value.trim();
     return label.length > 0 && label.length <= 60 ? label : fallback;
-  }
-
-  private formatRollDetail(modifier: number, edges = 0, banes = 0): string | undefined {
-    const parts: string[] = [];
-    if (modifier !== 0) parts.push(`Modifier ${modifier >= 0 ? '+' : ''}${modifier}`);
-    if (edges > 0) parts.push(`${edges} edge${edges === 1 ? '' : 's'}`);
-    if (banes > 0) parts.push(`${banes} bane${banes === 1 ? '' : 's'}`);
-    return parts.length > 0 ? parts.join(', ') : undefined;
   }
 
   private handleDrawSteelRoll(meta: ConnectionMeta, request: DrawSteelRollRequest): void {
@@ -1873,8 +2587,6 @@ export class SessionRoom extends DurableObject<Env> {
       : 'power';
     const timestamp = Date.now();
     const modifier = kind === 'power' ? this.normalizeRollModifier(roll.modifier) : 0;
-    const edges = kind === 'power' ? this.normalizeRollEdgeBane(roll.edges) : 0;
-    const banes = kind === 'power' ? this.normalizeRollEdgeBane(roll.banes) : 0;
     let result: DrawSteelRollResult;
 
     if (kind === 'heroic-resource') {
@@ -1888,8 +2600,6 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toHeroicResourceDice(values),
         modifier: 0,
-        edges: 0,
-        banes: 0,
         total,
         timestamp,
       };
@@ -1903,14 +2613,12 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toD6Dice([value]),
         modifier: 0,
-        edges: 0,
-        banes: 0,
         total: value,
         timestamp,
       };
     } else {
       const values = this.rollD10(2);
-      const powerRoll = RollLogic.calculatePowerRoll(values, edges, banes, modifier);
+      const total = values.reduce((sum, value) => sum + value, 0) + modifier;
       result = {
         id: this.createActionResultId('power-roll'),
         kind: 'power',
@@ -1919,11 +2627,8 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toPowerDice(values),
         modifier,
-        edges,
-        banes,
-        rollState: powerRoll.rollState,
-        total: powerRoll.total,
-        tier: powerRoll.tier,
+        total,
+        tier: this.getTier(total),
         timestamp,
       };
     }
@@ -1934,12 +2639,8 @@ export class SessionRoom extends DurableObject<Env> {
       actorId: meta.userId,
       actorName: meta.username,
       title: `${meta.username} rolled ${result.label}`,
-      detail: this.formatRollDetail(result.modifier, result.edges, result.banes),
+      detail: result.modifier === 0 ? undefined : `Modifier ${result.modifier >= 0 ? '+' : ''}${result.modifier}`,
       dice: result.dice,
-      modifier: result.modifier,
-      edges: result.edges,
-      banes: result.banes,
-      rollState: result.rollState,
       total: result.total,
       tier: result.tier,
       timestamp,
@@ -2321,12 +3022,6 @@ export class SessionRoom extends DurableObject<Env> {
       title,
       detail: detail || undefined,
       dice: result.powerRoll ? this.toPowerDice(result.powerRoll.dice) : undefined,
-      modifier: result.powerRoll
-        ? result.powerRoll.characteristicValue + result.powerRoll.bonuses
-        : undefined,
-      edges: result.powerRoll?.edges,
-      banes: result.powerRoll?.banes,
-      rollState: result.powerRoll?.rollState,
       total: result.powerRoll?.total,
       tier: result.powerRoll?.tier,
       timestamp: result.timestamp,
@@ -3020,6 +3715,21 @@ export class SessionRoom extends DurableObject<Env> {
     };
   }
 
+  private clampTerrainToActiveBattleGrid(terrain: TerrainSync): TerrainSync {
+    const data = this.getActiveSceneData();
+    const cols = typeof data?.['gridCols'] === 'number'
+      ? data['gridCols'] as number
+      : typeof data?.['gridSize'] === 'number'
+        ? data['gridSize'] as number
+        : 30;
+    const rows = typeof data?.['gridRows'] === 'number' ? data['gridRows'] as number : 20;
+    const w = Math.max(1, Math.min(cols, Math.round(terrain.w)));
+    const h = Math.max(1, Math.min(rows, Math.round(terrain.h)));
+    const x = Math.max(0, Math.min(cols - w, Math.round(terrain.x)));
+    const y = Math.max(0, Math.min(rows - h, Math.round(terrain.y)));
+    return { ...terrain, x, y, w, h };
+  }
+
   private storeSceneDrawing(drawing: DrawingSync): void {
     const data = this.getActiveSceneData();
     if (!data) return;
@@ -3052,6 +3762,16 @@ export class SessionRoom extends DurableObject<Env> {
     if (!Array.isArray(data['terrain'])) data['terrain'] = [];
     const zones = data['terrain'] as TerrainSync[];
     if (!zones.some((zone) => zone.id === terrain.id)) zones.push(terrain);
+  }
+
+  private updateSceneTerrain(terrain: TerrainSync): void {
+    const data = this.getActiveSceneData();
+    if (!data) return;
+    if (!Array.isArray(data['terrain'])) data['terrain'] = [];
+    const zones = data['terrain'] as TerrainSync[];
+    const index = zones.findIndex((zone) => zone.id === terrain.id);
+    if (index === -1) zones.push(terrain);
+    else zones[index] = terrain;
   }
 
   private removeSceneTerrain(terrainId: string): void {
@@ -3315,41 +4035,6 @@ export class SessionRoom extends DurableObject<Env> {
     data['phase'] = phase;
   }
 
-  private resolveRuleSkill(skillId: string): RuleSkill | null {
-    const skill = findSkillByName(skillId);
-    if (skill) return skill;
-    const normalized = skillId.trim().toLowerCase();
-    return RULE_SKILLS.find((candidate) => candidate.id === normalized) ?? null;
-  }
-
-  private getHeroSkillIds(entity: SessionEntity | null | undefined): Set<string> {
-    const rawSkills = entity?.['skills'];
-    if (!Array.isArray(rawSkills)) return new Set();
-    const ids = rawSkills.flatMap((value) => {
-      if (typeof value !== 'string') return [];
-      const skill = this.resolveRuleSkill(value);
-      return skill ? [skill.id] : [];
-    });
-    return new Set(ids);
-  }
-
-  private getNegotiationActorHero(meta: ConnectionMeta): SessionEntity | null {
-    if (!this.sessionState) return null;
-    if (meta.heroId) {
-      const selectedHero = this.sessionState.entities.find((entity) => entity.id === meta.heroId && entity.type === 'hero');
-      if (selectedHero) return selectedHero;
-    }
-    return this.sessionState.entities.find((entity) => entity.type === 'hero' && entity['ownerUserId'] === meta.userId) ?? null;
-  }
-
-  private getNegotiationCharacteristicForSkill(skill: RuleSkill): CharacteristicId {
-    if (skill.id === 'read-person' || skill.id === 'empathize' || skill.id === 'gamble') return 'intuition';
-    if (skill.group === 'interpersonal') return 'presence';
-    if (skill.group === 'lore' || skill.group === 'crafting') return 'reason';
-    if (skill.group === 'exploration') return 'agility';
-    return 'intuition';
-  }
-
   // ── Negotiation Handlers ──
 
   private handleNegotiationArgument(
@@ -3360,51 +4045,24 @@ export class SessionRoom extends DurableObject<Env> {
   ): void {
     const neg = this.ensureNegotiationState();
     if (!neg || neg.phase !== 'active') return;
-    const skill = this.resolveRuleSkill(skillId);
-    if (!skill) {
-      this.sendTo(ws, { type: 'error', code: 'INVALID_SKILL', message: 'Choose a valid skill' });
-      return;
-    }
-
-    const hero = this.getNegotiationActorHero(meta);
-    if (meta.role !== 'director') {
-      const heroSkillIds = this.getHeroSkillIds(hero);
-      if (!hero || !heroSkillIds.has(skill.id)) {
-        this.sendTo(ws, { type: 'error', code: 'INVALID_SKILL', message: 'Choose one of your hero skills' });
-        return;
-      }
-    }
 
     const dice = this.rollD10(2);
-    const characteristicId = this.getNegotiationCharacteristicForSkill(skill);
-    const characteristicValue = hero ? this.getCharacteristicValue(hero, characteristicId) : 0;
-    const skillBonus = hero ? 2 : 0;
-    const roll = RollLogic.calculatePowerRoll(dice, 0, 0, characteristicValue, skillBonus);
-    const diceTotal = (dice[0] ?? 0) + (dice[1] ?? 0);
-    const modifier = roll.total - diceTotal;
-    const total = roll.total;
-    const tier = roll.tier;
+    const modifier = 0;
+    const total = (dice[0] ?? 0) + (dice[1] ?? 0) + modifier;
+    const tier = this.getTier(total);
     const interestDelta = tier === 3 ? 2 : tier === 2 ? 1 : -1;
 
     neg.interest = Math.max(0, Math.min(5, neg.interest + interestDelta));
     neg.patience = Math.max(0, neg.patience - 1);
-    if (neg.interest >= 5) neg.phase = 'success';
-    else if (neg.interest <= 0) neg.phase = 'failure';
-    else if (neg.patience === 0) neg.phase = neg.interest >= 3 ? 'success' : 'failure';
-    const safeApproachText = this.clampLogText(approachText, 500) ?? '';
+    if (neg.patience === 0) neg.phase = neg.interest >= 3 ? 'success' : 'failure';
 
     const entry: ArgumentLogEntry = {
       id: `arg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       playerId: meta.userId,
       playerName: meta.username,
-      skillId: skill.id,
-      characteristicId,
-      approachText: safeApproachText,
+      skillId,
+      approachText,
       roll: total,
-      modifier,
-      edges: 0,
-      banes: 0,
-      rollState: roll.rollState,
       tier,
       interestDelta,
       timestamp: Date.now(),
@@ -3415,18 +4073,9 @@ export class SessionRoom extends DurableObject<Env> {
       id: `log-${entry.id}`,
       actorId: meta.userId,
       actorName: meta.username,
-      title: `${meta.username} made a ${skill.name} argument`,
-      detail: [
-        safeApproachText,
-        `${formatCharacteristicName(characteristicId)} ${modifier >= 0 ? '+' : ''}${modifier}`,
-        `interest ${interestDelta >= 0 ? '+' : ''}${interestDelta}`,
-        'patience -1',
-      ].filter(Boolean).join(' - '),
+      title: `${meta.username} made a ${skillId} argument`,
+      detail: `${approachText} - interest ${interestDelta >= 0 ? '+' : ''}${interestDelta}, patience -1`,
       dice: this.toPowerDice(dice),
-      modifier,
-      edges: 0,
-      banes: 0,
-      rollState: roll.rollState,
       total,
       tier,
       timestamp: entry.timestamp,
@@ -3572,9 +4221,11 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private updateMontageOutcome(mont: MontageLiveState): void {
-    if (mont.successes >= mont.successLimit) mont.outcome = 'total_success';
-    else if (mont.failures >= mont.failureLimit) mont.outcome = 'total_failure';
-    else if (mont.successes >= mont.successLimit - 1 && mont.failures >= mont.failureLimit - 1) mont.outcome = 'mixed';
+    const hitSuccess = mont.successes >= mont.successLimit;
+    const hitFailure = mont.failures >= mont.failureLimit;
+    if (hitSuccess && hitFailure) mont.outcome = 'partial_success';
+    else if (hitSuccess) mont.outcome = 'total_success';
+    else if (hitFailure) mont.outcome = 'total_failure';
     else mont.outcome = null;
   }
 

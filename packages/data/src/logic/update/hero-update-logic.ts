@@ -73,6 +73,8 @@ interface CultureLike {
   environment?: string | null;
   organization?: string | null;
   upbringing?: string | null;
+  preset?: string | null;
+  language?: string | null;
 }
 
 interface CharacteristicsLike {
@@ -236,6 +238,8 @@ export function updateNestedStructures(hero: HeroLike): void {
     if (hero.culture.environment === undefined) hero.culture.environment = null;
     if (hero.culture.organization === undefined) hero.culture.organization = null;
     if (hero.culture.upbringing === undefined) hero.culture.upbringing = null;
+    if (hero.culture.preset === undefined) hero.culture.preset = null;
+    if (hero.culture.language === undefined) hero.culture.language = null;
   }
 
   // Characteristics

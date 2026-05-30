@@ -11,6 +11,7 @@ import {
   clearSessionCookie,
 } from '../middleware/auth.js';
 import { ensureMcdmDemoCampaignForUser } from '../lib/demo-campaigns.js';
+import { authRateLimits } from '../security/rate-limits.js';
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -30,6 +31,12 @@ const PROVIDER_LABELS: Record<OAuthProvider, string> = {
   discord: 'Discord',
   google: 'Google',
 };
+
+function legacyDiscordId(profile: OAuthProfile): string {
+  return profile.provider === 'discord'
+    ? profile.providerUserId
+    : `${profile.provider}:${profile.providerUserId}`;
+}
 
 function missingConfig(required: Record<string, string | undefined>) {
   return Object.entries(required)
@@ -123,9 +130,16 @@ async function upsertOAuthUser(c: Context<AppEnv>, profile: OAuthProfile): Promi
   }
 
   const userId = crypto.randomUUID();
-  await c.env.DB.prepare('INSERT INTO users (id, username, avatar_url) VALUES (?, ?, ?)')
-    .bind(userId, profile.username, profile.avatarUrl)
-    .run();
+  const hasLegacyDiscordId = await tableHasColumn(c, 'users', 'discord_id');
+  if (hasLegacyDiscordId) {
+    await c.env.DB.prepare('INSERT INTO users (id, discord_id, username, avatar_url) VALUES (?, ?, ?, ?)')
+      .bind(userId, legacyDiscordId(profile), profile.username, profile.avatarUrl)
+      .run();
+  } else {
+    await c.env.DB.prepare('INSERT INTO users (id, username, avatar_url) VALUES (?, ?, ?)')
+      .bind(userId, profile.username, profile.avatarUrl)
+      .run();
+  }
 
   try {
     await c.env.DB.prepare(
@@ -162,7 +176,7 @@ async function createSession(c: Context<AppEnv>, userId: string) {
   return sessionId;
 }
 
-async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redirectPath = '/app') {
+async function createSessionAndRedirect(c: Context<AppEnv>, userId: string, redirectPath = '/app/mobile') {
   await createSession(c, userId);
 
   const frontendUrl = c.env.FRONTEND_URL || 'http://localhost:5173';
@@ -246,7 +260,10 @@ async function ensureDevPlayerAccess(c: Context<AppEnv>, playerUserId: string) {
 }
 
 // Redirect to Discord OAuth.
-authRoutes.get('/discord', (c) => {
+authRoutes.get('/discord', async (c) => {
+  const rateLimitError = await authRateLimits.start(c);
+  if (rateLimitError) return rateLimitError;
+
   const missing = missingOAuthConfig(c.env, 'discord');
   if (missing.length > 0) return oauthConfigError(c, 'discord', missing);
 
@@ -264,6 +281,9 @@ authRoutes.get('/discord', (c) => {
 
 // Discord OAuth callback. Keep /callback for existing Discord app redirect settings.
 authRoutes.get('/callback', async (c) => {
+  const rateLimitError = await authRateLimits.callback(c);
+  if (rateLimitError) return rateLimitError;
+
   const missing = missingOAuthConfig(c.env, 'discord');
   if (missing.length > 0) return oauthConfigError(c, 'discord', missing);
 
@@ -326,7 +346,10 @@ authRoutes.get('/callback', async (c) => {
 });
 
 // Redirect to Google OAuth.
-authRoutes.get('/google', (c) => {
+authRoutes.get('/google', async (c) => {
+  const rateLimitError = await authRateLimits.start(c);
+  if (rateLimitError) return rateLimitError;
+
   const missing = missingOAuthConfig(c.env, 'google');
   if (missing.length > 0) return oauthConfigError(c, 'google', missing);
 
@@ -344,6 +367,9 @@ authRoutes.get('/google', (c) => {
 
 // Google OAuth callback.
 authRoutes.get('/google/callback', async (c) => {
+  const rateLimitError = await authRateLimits.callback(c);
+  if (rateLimitError) return rateLimitError;
+
   const missing = missingOAuthConfig(c.env, 'google');
   if (missing.length > 0) return oauthConfigError(c, 'google', missing);
 
@@ -407,6 +433,9 @@ authRoutes.get('/dev-login', async (c) => {
     return c.json({ error: 'Not found' }, 404);
   }
 
+  const rateLimitError = await authRateLimits.devLogin(c);
+  if (rateLimitError) return rateLimitError;
+
   const role: UserRole = c.req.query('role') === 'player' ? 'player' : 'director';
   const userId = await upsertDevUser(c, role);
   if (role === 'player') {
@@ -414,7 +443,7 @@ authRoutes.get('/dev-login', async (c) => {
   }
 
   const next = c.req.query('next');
-  const redirectPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app';
+  const redirectPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app/mobile';
   if (c.req.query('format') === 'json') {
     await createSession(c, userId);
     return c.json({ ok: true, role, redirectPath });

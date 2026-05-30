@@ -17,13 +17,16 @@ import { audioRoutes } from './routes/audio.js';
 import { customTerrainRoutes } from './routes/custom-terrain.js';
 import { activityRoutes } from './routes/activities.js';
 import { montageTestRoutes } from './routes/montage-tests.js';
-import { noteRoutes } from './routes/notes.js';
+import { noteRoutes, personalNoteRoutes } from './routes/notes.js';
 import { gameSessionRoutes } from './routes/game-sessions.js';
 import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 import { sceneImportRoutes } from './routes/scene-imports.js';
-import { csrfMiddleware } from './middleware/auth.js';
+import { bugReportRoutes } from './routes/bug-reports.js';
+import { applyGlobalSecurity } from './security/index.js';
 
 const app = new Hono<AppEnv>();
+
+applyGlobalSecurity(app);
 
 // CORS
 app.use(
@@ -35,14 +38,14 @@ app.use(
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'Range'],
+    exposeHeaders: ['Accept-Ranges', 'Content-Length', 'Content-Range'],
   }),
 );
 
-app.use('/api/*', csrfMiddleware);
-
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.route('/api/bug-reports', bugReportRoutes);
 
 // WebSocket upgrade — token-based auth, must be registered before sub-router auth middlewares
 app.get('/api/sessions/:id/ws', async (c) => {
@@ -113,6 +116,7 @@ app.route('/api/campaigns', customTerrainRoutes);
 app.route('/api/campaigns', activityRoutes);
 app.route('/api', montageTestRoutes);
 app.route('/api/campaigns', noteRoutes);
+app.route('/api/notes', personalNoteRoutes);
 app.route('/api/campaigns', monsterPortraitRoutes);
 app.route('/api/campaigns', sceneImportRoutes);
 app.route('/api', gameSessionRoutes);

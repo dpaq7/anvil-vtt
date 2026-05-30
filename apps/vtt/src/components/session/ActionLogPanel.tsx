@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Coffee, Dices, MessageSquare, Share2, Swords, Wrench } from 'lucide-react';
+import { useMemo } from 'react';
+import { Coffee, MessageSquare, Share2, Swords, Wrench } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger, cn } from '@anvil/ui';
 import type {
   ActionLogEntry,
   ClientMessage,
   DrawSteelDieResult,
-  DrawSteelRollKind,
   SceneActionLogType,
 } from '../../types/protocol.js';
+import { DiceRollControls } from './DiceRollControls.js';
 
 interface ActionLogPanelProps {
   entries: ActionLogEntry[];
   sceneType: string | null;
-  send: (msg: ClientMessage) => void;
+  activeSceneId?: string | null;
+  send?: (msg: ClientMessage) => void;
+  showDiceControls?: boolean;
   className?: string;
 }
 
@@ -33,127 +35,72 @@ function asLogSceneType(sceneType: string | null): SceneActionLogType | null {
     : null;
 }
 
-export function ActionLogPanel({ entries, sceneType, send, className }: ActionLogPanelProps) {
+export function ActionLogPanel({
+  entries,
+  sceneType,
+  activeSceneId,
+  send,
+  showDiceControls = true,
+  className,
+}: ActionLogPanelProps) {
   const currentSection = asLogSceneType(sceneType);
-  const [openSection, setOpenSection] = useState<SceneActionLogType | null>(currentSection);
-  const [modifier, setModifier] = useState('0');
-  const [edges, setEdges] = useState('0');
-  const [banes, setBanes] = useState('0');
 
-  useEffect(() => {
-    if (currentSection) setOpenSection(currentSection);
-  }, [currentSection]);
-
-  const groupedEntries = useMemo(() => {
-    const groups = new Map<SceneActionLogType, ActionLogEntry[]>();
-    for (const section of LOG_SECTIONS) groups.set(section.id, []);
-    for (const entry of entries) {
-      groups.get(entry.sceneType)?.push(entry);
-    }
-    return groups;
-  }, [entries]);
+  const currentEntries = useMemo(() => {
+    if (!currentSection) return [];
+    return entries.filter((entry) => {
+      if (activeSceneId && entry.sceneId) return entry.sceneId === activeSceneId;
+      return entry.sceneType === currentSection;
+    });
+  }, [activeSceneId, currentSection, entries]);
 
   if (!currentSection) return null;
 
-  const roll = (kind: DrawSteelRollKind) => {
-    const parsedModifier = Number.parseInt(modifier, 10);
-    const parsedEdges = Number.parseInt(edges, 10);
-    const parsedBanes = Number.parseInt(banes, 10);
-    send({
-      type: 'draw_steel_roll',
-      roll: {
-        kind,
-        modifier: kind === 'power' && Number.isFinite(parsedModifier) ? parsedModifier : undefined,
-        edges: kind === 'power' && Number.isFinite(parsedEdges) ? parsedEdges : undefined,
-        banes: kind === 'power' && Number.isFinite(parsedBanes) ? parsedBanes : undefined,
-      },
-    });
-  };
+  const section = LOG_SECTIONS.find((item) => item.id === currentSection);
+  const Icon = section?.Icon ?? Swords;
+  const label = section?.label ?? 'Scene';
 
   return (
     <div className={cn('flex min-h-0 flex-col border-zinc-800 bg-zinc-900/60', className)}>
-      <div className="shrink-0 border-b border-zinc-800 p-2">
-        <div className="mb-2 flex items-center gap-2">
-          <Dices className="size-3.5 text-zinc-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Draw Steel Dice</span>
+      {showDiceControls && send && (
+        <div className="shrink-0 border-b border-zinc-800 p-2">
+          <DiceRollControls send={send} className="h-auto flex-wrap justify-start bg-transparent p-0 shadow-none" />
         </div>
-        <div className="grid grid-cols-3 gap-1">
-          <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('power')}>
-            Power
-          </Button>
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('heroic-resource')}>
-            Resource
-          </Button>
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('d6')}>
-            d6
-          </Button>
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
-          <NumberField label="Mod" value={modifier} onChange={setModifier} />
-          <NumberField label="Edge" value={edges} onChange={setEdges} min={0} />
-          <NumberField label="Bane" value={banes} onChange={setBanes} min={0} />
-        </div>
+      )}
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2 text-xs text-zinc-300">
+        <Icon className="size-3.5 text-zinc-500" />
+        <span className="min-w-0 flex-1 font-semibold uppercase tracking-wider text-zinc-500">Action Log</span>
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{currentEntries.length}</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 text-zinc-500 hover:text-zinc-100"
+              onClick={() => exportActionLog(label, currentEntries)}
+              aria-label={`Export ${label} log`}
+            >
+              <Share2 className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="text-xs">export log</TooltipContent>
+        </Tooltip>
       </div>
 
-      <div className="shrink-0 border-b border-zinc-800 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-        Action Log
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {LOG_SECTIONS.map(({ id, label, Icon }) => {
-          const sectionEntries = groupedEntries.get(id) ?? [];
-          const isOpen = openSection === id;
-          return (
-            <section key={id} className="border-b border-zinc-800/70">
-              <div className="flex items-center text-xs text-zinc-300 transition hover:bg-zinc-800/60">
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
-                  onClick={() => setOpenSection(isOpen ? null : id)}
-                  aria-expanded={isOpen}
-                >
-                  <Icon className="size-3.5 text-zinc-500" />
-                  <span className="min-w-0 flex-1 font-medium">{label}</span>
-                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{sectionEntries.length}</span>
-                  <ChevronDown className={cn('size-3.5 text-zinc-500 transition', isOpen && 'rotate-180')} />
-                </button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="mr-2 size-7 shrink-0 text-zinc-500 hover:text-zinc-100"
-                      onClick={() => exportActionLog(label, sectionEntries)}
-                      aria-label={`Export ${label} log`}
-                    >
-                      <Share2 className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="text-xs">export log</TooltipContent>
-                </Tooltip>
-              </div>
-              {isOpen && (
-                <div className="divide-y divide-zinc-800/60">
-                  {sectionEntries.length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-zinc-600">No actions yet.</p>
-                  ) : (
-                    [...sectionEntries].reverse().map((entry) => (
-                      <LogEntryRow key={entry.id} entry={entry} />
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
+      <div className="min-h-0 flex-1 divide-y divide-zinc-800/60 overflow-y-auto">
+        {currentEntries.length === 0 ? (
+          <p className="px-3 py-3 text-xs text-zinc-600">No actions yet.</p>
+        ) : (
+          [...currentEntries].reverse().map((entry) => (
+            <LogEntryRow key={entry.id} entry={entry} />
+          ))
+        )}
       </div>
     </div>
   );
 }
 
 function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
-  const rollModifiers = formatRollModifiers(entry);
   return (
     <article className="px-3 py-2 text-xs">
       <div className="flex items-start gap-2">
@@ -174,11 +121,6 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
               <span className="font-mono text-sm font-bold tabular-nums text-zinc-100">{entry.total}</span>
             </>
           )}
-          {rollModifiers.map((part) => (
-            <span key={part} className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
-              {part}
-            </span>
-          ))}
           {entry.tier && (
             <span className="ml-auto rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
               T{entry.tier}
@@ -187,31 +129,6 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
         </div>
       )}
     </article>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  min,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  min?: number;
-}) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1 text-[10px] uppercase tracking-wider text-zinc-500">
-      {label}
-      <input
-        type="number"
-        min={min}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-7 min-w-0 rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
-      />
-    </label>
   );
 }
 
@@ -292,36 +209,11 @@ function formatRollExport(entry: ActionLogEntry): string {
     parts.push(`Total: ${entry.total}`);
   }
 
-  const modifiers = formatRollModifiers(entry);
-  if (modifiers.length > 0) {
-    parts.push(`Modifiers: ${modifiers.join(', ')}`);
-  }
-
   if (entry.tier) {
     parts.push(`Tier: T${entry.tier}`);
   }
 
   return parts.join(' | ');
-}
-
-function formatRollModifiers(entry: ActionLogEntry): string[] {
-  const parts: string[] = [];
-  if (entry.modifier !== undefined && entry.modifier !== 0) {
-    parts.push(`${entry.modifier >= 0 ? '+' : ''}${entry.modifier} mod`);
-  }
-  if (entry.edges) parts.push(`${entry.edges} edge${entry.edges === 1 ? '' : 's'}`);
-  if (entry.banes) parts.push(`${entry.banes} bane${entry.banes === 1 ? '' : 's'}`);
-  if (entry.rollState === 'double-edge' || entry.rollState === 'double-bane') {
-    parts.push(formatRollState(entry.rollState));
-  }
-  return parts;
-}
-
-function formatRollState(rollState: NonNullable<ActionLogEntry['rollState']>): string {
-  return rollState
-    .split('-')
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(' ');
 }
 
 function formatDieExport(die: DrawSteelDieResult): string {

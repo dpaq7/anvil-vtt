@@ -11,6 +11,14 @@ import type {
   ReorderNotesInput,
 } from '@anvil/types';
 
+export const PERSONAL_NOTEBOOK_ID = 'personal';
+
+function notebookApiBase(notebookId: string): string {
+  return notebookId === PERSONAL_NOTEBOOK_ID
+    ? '/api/notes/personal'
+    : `/api/campaigns/${notebookId}`;
+}
+
 interface NotesState {
   // Data
   folders: NoteFolder[];
@@ -25,23 +33,23 @@ interface NotesState {
   error: string | null;
 
   // Actions — data fetching
-  loadAll: (campaignId: string, scope?: NoteScope) => Promise<void>;
+  loadAll: (notebookId: string, scope?: NoteScope) => Promise<void>;
 
   // Actions — folders
-  createFolder: (campaignId: string, input: CreateNoteFolderInput) => Promise<NoteFolder>;
-  updateFolder: (campaignId: string, folderId: string, input: UpdateNoteFolderInput) => Promise<void>;
-  deleteFolder: (campaignId: string, folderId: string) => Promise<void>;
+  createFolder: (notebookId: string, input: CreateNoteFolderInput) => Promise<NoteFolder>;
+  updateFolder: (notebookId: string, folderId: string, input: UpdateNoteFolderInput) => Promise<void>;
+  deleteFolder: (notebookId: string, folderId: string) => Promise<void>;
 
   // Actions — notes
-  createNote: (campaignId: string, input: CreateNoteInput) => Promise<Note>;
-  updateNote: (campaignId: string, noteId: string, input: UpdateNoteInput) => Promise<void>;
-  deleteNote: (campaignId: string, noteId: string) => Promise<void>;
+  createNote: (notebookId: string, input: CreateNoteInput) => Promise<Note>;
+  updateNote: (notebookId: string, noteId: string, input: UpdateNoteInput) => Promise<void>;
+  deleteNote: (notebookId: string, noteId: string) => Promise<void>;
 
   // Actions — reorder
-  reorderItems: (campaignId: string, input: ReorderNotesInput) => Promise<void>;
+  reorderItems: (notebookId: string, input: ReorderNotesInput) => Promise<void>;
 
   // Actions — search
-  searchNotes: (campaignId: string, query: string, scope?: NoteScope) => Promise<void>;
+  searchNotes: (notebookId: string, query: string, scope?: NoteScope) => Promise<void>;
   clearSearch: () => void;
 
   // Actions — navigation
@@ -81,13 +89,14 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Data Fetching ──
 
-  loadAll: async (campaignId, scope) => {
+  loadAll: async (notebookId, scope) => {
     set({ loading: true, error: null });
     try {
-      const scopeQuery = scope ? `?scope=${scope}` : '';
+      const base = notebookApiBase(notebookId);
+      const scopeQuery = scope && notebookId !== PERSONAL_NOTEBOOK_ID ? `?scope=${scope}` : '';
       const [foldersRes, notesRes] = await Promise.all([
-        api.get<{ folders: NoteFolder[] }>(`/api/campaigns/${campaignId}/note-folders${scopeQuery}`),
-        api.get<{ notes: Note[] }>(`/api/campaigns/${campaignId}/notes${scopeQuery}`),
+        api.get<{ folders: NoteFolder[] }>(`${base}/note-folders${scopeQuery}`),
+        api.get<{ notes: Note[] }>(`${base}/notes${scopeQuery}`),
       ]);
       set({ folders: foldersRes.folders, notes: notesRes.notes, loading: false });
     } catch (e) {
@@ -97,11 +106,12 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Folders ──
 
-  createFolder: async (campaignId, input) => {
+  createFolder: async (notebookId, input) => {
     set({ loading: true, error: null });
     try {
+      const base = notebookApiBase(notebookId);
       const { folder } = await api.post<{ folder: NoteFolder }>(
-        `/api/campaigns/${campaignId}/note-folders`,
+        `${base}/note-folders`,
         input,
       );
       set((s) => ({ folders: [...s.folders, folder], loading: false }));
@@ -112,10 +122,11 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
     }
   },
 
-  updateFolder: async (campaignId, folderId, input) => {
+  updateFolder: async (notebookId, folderId, input) => {
     try {
+      const base = notebookApiBase(notebookId);
       const { folder } = await api.patch<{ folder: NoteFolder }>(
-        `/api/campaigns/${campaignId}/note-folders/${folderId}`,
+        `${base}/note-folders/${folderId}`,
         input,
       );
       set((s) => ({ folders: s.folders.map((f) => (f.id === folderId ? folder : f)) }));
@@ -124,9 +135,10 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
     }
   },
 
-  deleteFolder: async (campaignId, folderId) => {
+  deleteFolder: async (notebookId, folderId) => {
     try {
-      await api.delete(`/api/campaigns/${campaignId}/note-folders/${folderId}`);
+      const base = notebookApiBase(notebookId);
+      await api.delete(`${base}/note-folders/${folderId}`);
       set((s) => ({
         folders: s.folders.filter((f) => f.id !== folderId && f.parentFolderId !== folderId),
         notes: s.notes.filter((n) => n.folderId !== folderId),
@@ -143,11 +155,12 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Notes ──
 
-  createNote: async (campaignId, input) => {
+  createNote: async (notebookId, input) => {
     set({ loading: true, error: null });
     try {
+      const base = notebookApiBase(notebookId);
       const { note } = await api.post<{ note: Note }>(
-        `/api/campaigns/${campaignId}/notes`,
+        `${base}/notes`,
         input,
       );
       set((s) => ({ notes: [...s.notes, note], loading: false, selectedNoteId: note.id }));
@@ -158,19 +171,21 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
     }
   },
 
-  updateNote: async (campaignId, noteId, input) => {
+  updateNote: async (notebookId, noteId, input) => {
     // No loading toggle — called frequently by auto-save
     // Errors bubble to the editor's auto-save handler (no global error set)
+    const base = notebookApiBase(notebookId);
     const { note } = await api.patch<{ note: Note }>(
-      `/api/campaigns/${campaignId}/notes/${noteId}`,
+      `${base}/notes/${noteId}`,
       input,
     );
     set((s) => ({ notes: s.notes.map((n) => (n.id === noteId ? note : n)) }));
   },
 
-  deleteNote: async (campaignId, noteId) => {
+  deleteNote: async (notebookId, noteId) => {
     try {
-      await api.delete(`/api/campaigns/${campaignId}/notes/${noteId}`);
+      const base = notebookApiBase(notebookId);
+      await api.delete(`${base}/notes/${noteId}`);
       set((s) => ({
         notes: s.notes.filter((n) => n.id !== noteId),
         selectedNoteId: s.selectedNoteId === noteId ? null : s.selectedNoteId,
@@ -182,7 +197,7 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Reorder ──
 
-  reorderItems: async (campaignId, input) => {
+  reorderItems: async (notebookId, input) => {
     // Optimistic: update local sort orders immediately
     set((s) => {
       const folderUpdates = new Map<string, { sortOrder: number; parentFolderId?: string | null }>();
@@ -223,7 +238,8 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
     });
 
     try {
-      await api.put(`/api/campaigns/${campaignId}/notes/reorder`, input);
+      const base = notebookApiBase(notebookId);
+      await api.put(`${base}/notes/reorder`, input);
     } catch (e) {
       set({ error: (e as Error).message });
     }
@@ -231,17 +247,18 @@ export const useNotesStore = create<NotesState>((set, _get) => ({
 
   // ── Search ──
 
-  searchNotes: async (campaignId, query, scope) => {
+  searchNotes: async (notebookId, query, scope) => {
     set({ searchQuery: query });
     if (!query.trim()) {
       set({ searchResults: null });
       return;
     }
     try {
+      const base = notebookApiBase(notebookId);
       const params = new URLSearchParams({ q: query });
-      if (scope) params.set('scope', scope);
+      if (scope && notebookId !== PERSONAL_NOTEBOOK_ID) params.set('scope', scope);
       const { notes } = await api.get<{ notes: Note[] }>(
-        `/api/campaigns/${campaignId}/notes/search?${params.toString()}`,
+        `${base}/notes/search?${params.toString()}`,
       );
       set({ searchResults: notes });
     } catch (e) {

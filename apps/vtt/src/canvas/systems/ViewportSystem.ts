@@ -19,6 +19,7 @@ export class ViewportSystem {
   private lastPointerY = 0;
   private config: ViewportConfig;
   private leftClickPanEnabled = false;
+  private activePointerId: number | null = null;
 
   /** Optional callback invoked whenever zoom changes (for React state sync). */
   onZoomChange: ((zoom: number) => void) | null = null;
@@ -33,19 +34,47 @@ export class ViewportSystem {
   }
 
   private bindEvents(): void {
+    this.canvas.style.touchAction = 'none';
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false });
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
     this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('pointerleave', this.onPointerUp);
+    this.canvas.addEventListener('pointercancel', this.onPointerCancel);
   }
 
   destroy(): void {
+    this.releasePointerCapture();
     this.canvas.removeEventListener('wheel', this.onWheel);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointerleave', this.onPointerUp);
+    this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
+  }
+
+  private capturePointer(pointerId: number): void {
+    try {
+      this.canvas.setPointerCapture(pointerId);
+    } catch {
+      /* Pointer capture can fail on detached canvases; panning still degrades gracefully. */
+    }
+    this.activePointerId = pointerId;
+  }
+
+  private releasePointerCapture(): void {
+    const pointerId = this.activePointerId;
+    if (pointerId === null) return;
+
+    try {
+      if (this.canvas.hasPointerCapture(pointerId)) {
+        this.canvas.releasePointerCapture(pointerId);
+      }
+    } catch {
+      /* Pointer capture may already have been released by the browser. */
+    }
+
+    this.activePointerId = null;
   }
 
   private onWheel = (e: WheelEvent): void => {
@@ -69,9 +98,11 @@ export class ViewportSystem {
   };
 
   private onPointerDown = (e: PointerEvent): void => {
+    if (this.activePointerId !== null) return;
     // Middle mouse or right mouse for panning
     if (e.button === 1 || e.button === 2) {
       this.isPanning = true;
+      this.capturePointer(e.pointerId);
       this.lastPointerX = e.clientX;
       this.lastPointerY = e.clientY;
       e.preventDefault();
@@ -79,6 +110,7 @@ export class ViewportSystem {
     // Left click pan when enabled (pan tool / Space key)
     if (e.button === 0 && this.leftClickPanEnabled) {
       this.isPanning = true;
+      this.capturePointer(e.pointerId);
       this.lastPointerX = e.clientX;
       this.lastPointerY = e.clientY;
       e.preventDefault();
@@ -87,6 +119,8 @@ export class ViewportSystem {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (!this.isPanning) return;
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
+    e.preventDefault();
     const dx = e.clientX - this.lastPointerX;
     const dy = e.clientY - this.lastPointerY;
     this.lastPointerX = e.clientX;
@@ -96,8 +130,16 @@ export class ViewportSystem {
     this.apply();
   };
 
-  private onPointerUp = (): void => {
+  private onPointerUp = (e: PointerEvent): void => {
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     this.isPanning = false;
+    this.releasePointerCapture();
+  };
+
+  private onPointerCancel = (e: PointerEvent): void => {
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
+    this.isPanning = false;
+    this.releasePointerCapture();
   };
 
   private apply(): void {
@@ -137,6 +179,18 @@ export class ViewportSystem {
     this.zoom = clamped;
     this.panX = cx - worldX * this.zoom;
     this.panY = cy - worldY * this.zoom;
+    this.apply();
+    this.onZoomChange?.(this.zoom);
+  }
+
+  /** Center the viewport on a grid coordinate, optionally forcing a zoom level. */
+  centerOnGrid(gridX: number, gridY: number, cellSize: number, zoom = this.zoom): void {
+    const rect = this.canvas.getBoundingClientRect();
+    this.zoom = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, zoom));
+    const worldX = gridX * cellSize;
+    const worldY = gridY * cellSize;
+    this.panX = rect.width / 2 - worldX * this.zoom;
+    this.panY = rect.height / 2 - worldY * this.zoom;
     this.apply();
     this.onZoomChange?.(this.zoom);
   }

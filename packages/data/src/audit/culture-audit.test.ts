@@ -402,26 +402,52 @@ describe('Audit: Culture — GameData Integration', () => {
 // Pre-built Culture Combos (Source: reference-data.ts)
 // ============================================================
 describe('Audit: Culture — Pre-built Culture Combos', () => {
+  const EXPECTED_PREBUILT_CULTURES = [
+    'Devil', 'Dragon Knight', 'Dwarf', 'Hakaan', 'High Elf', 'Human',
+    'Memonek', 'Orc', 'Polder', 'Time Raider', 'Wode Elf',
+    'Artisan Guild', 'Borderland Homestead', 'College Conclave',
+    'Criminal Gang', 'Farming Village', 'Herding Community',
+    'Knightly Order', 'Mercenary Band', 'Merchant Caravan',
+    'Monastic Order', 'Noble House', 'Outlaw Band',
+    'Pauper Neighborhood', 'Pirate Crew', 'Telepathic Hive',
+    'Traveling Entertainers', 'Bespoke Culture',
+  ];
+
+  it('contains all named ancestral, professional, and bespoke cultures', () => {
+    const names = cultures.map((culture) => culture.name);
+    expect(names).toHaveLength(EXPECTED_PREBUILT_CULTURES.length);
+    for (const expected of EXPECTED_PREBUILT_CULTURES) {
+      expect(names).toContain(expected);
+    }
+  });
+
   it('pre-built cultures each have valid environment, organization, and upbringing references', () => {
     for (const culture of cultures) {
+      if (culture.type === 'bespoke') {
+        expect(culture.environment).toBeUndefined();
+        expect(culture.organization).toBeUndefined();
+        expect(culture.upbringing).toBeUndefined();
+        continue;
+      }
+
       expect(culture.environment, `${culture.name} missing environment`).toBeDefined();
       expect(culture.organization, `${culture.name} missing organization`).toBeDefined();
       expect(culture.upbringing, `${culture.name} missing upbringing`).toBeDefined();
 
       // Verify the references point to actual options
-      const envMatch = environmentOptions.find((e) => e.type === culture.environment.type);
-      expect(envMatch, `${culture.name} has invalid environment ${culture.environment.type}`).toBeDefined();
+      const envMatch = environmentOptions.find((e) => e.type === culture.environment!.type);
+      expect(envMatch, `${culture.name} has invalid environment ${culture.environment!.type}`).toBeDefined();
 
-      const orgMatch = organizationOptions.find((o) => o.type === culture.organization.type);
-      expect(orgMatch, `${culture.name} has invalid organization ${culture.organization.type}`).toBeDefined();
+      const orgMatch = organizationOptions.find((o) => o.type === culture.organization!.type);
+      expect(orgMatch, `${culture.name} has invalid organization ${culture.organization!.type}`).toBeDefined();
 
-      const upbrMatch = upbringingOptions.find((u) => u.type === culture.upbringing.type);
-      expect(upbrMatch, `${culture.name} has invalid upbringing ${culture.upbringing.type}`).toBeDefined();
+      const upbrMatch = upbringingOptions.find((u) => u.type === culture.upbringing!.type);
+      expect(upbrMatch, `${culture.name} has invalid upbringing ${culture.upbringing!.type}`).toBeDefined();
     }
   });
 
-  it('pre-built cultures each have a language specified', () => {
-    for (const culture of cultures) {
+  it('ancestral cultures each have a language specified', () => {
+    for (const culture of cultures.filter((item) => item.type === 'ancestral')) {
       expect(culture.language, `${culture.name} should have a language`).toBeTruthy();
     }
   });
