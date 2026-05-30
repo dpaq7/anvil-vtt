@@ -225,12 +225,27 @@ export function parseBattleData(sceneData: Record<string, unknown>): BattleStage
     const raw = sceneData[key];
     return Array.isArray(raw) ? (raw as T[]) : [];
   };
+  const grid = sceneData['grid'] && typeof sceneData['grid'] === 'object'
+    ? sceneData['grid'] as Record<string, unknown>
+    : {};
+  const numberValue = (...values: unknown[]): number | undefined => {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return undefined;
+  };
+  const stringValue = (...values: unknown[]): string | null => {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+    return null;
+  };
 
   return {
-    cols: (sceneData['gridCols'] as number) ?? (sceneData['gridSize'] as number) ?? 30,
-    rows: (sceneData['gridRows'] as number) ?? 20,
-    backgroundUrl: (sceneData['mapUrl'] as string) ?? null,
-    cellSize: (sceneData['gridCellSize'] as number) ?? 48,
+    cols: numberValue(sceneData['gridCols'], sceneData['cols'], grid['cols'], grid['width'], sceneData['gridSize']) ?? 30,
+    rows: numberValue(sceneData['gridRows'], sceneData['rows'], grid['rows'], grid['height'], sceneData['gridSize']) ?? 20,
+    backgroundUrl: stringValue(sceneData['mapUrl'], sceneData['backgroundUrl'], grid['mapUrl'], grid['backgroundUrl']),
+    cellSize: numberValue(sceneData['gridCellSize'], sceneData['cellSize'], grid['cellSize'], grid['squareSize']) ?? 48,
     gridOpacity: (sceneData['gridOpacity'] as number) ?? 0.4,
     gridColor: (sceneData['gridColor'] as string) ?? '#444444',
     drawings: parseArray<DrawingEntry>('drawings'),

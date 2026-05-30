@@ -28,6 +28,11 @@ const ACTION_COLORS: Record<string, string> = {
 
 export function AbilityCard({ ability, disabled, onUse }: AbilityCardProps) {
   const borderColor = ACTION_COLORS[ability.actionType] ?? 'border-zinc-700';
+  const tierEffects = [
+    { label: 'T1', text: ability.tier1Effect },
+    { label: 'T2', text: ability.tier2Effect },
+    { label: 'T3', text: ability.tier3Effect },
+  ].filter((effect) => effect.text.trim());
 
   return (
     <button
@@ -41,7 +46,9 @@ export function AbilityCard({ ability, disabled, onUse }: AbilityCardProps) {
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-zinc-100">{ability.name}</span>
-        <span className="text-[10px] uppercase text-zinc-500">{ability.actionType}</span>
+        <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase text-zinc-500">
+          {formatActionType(ability.actionType)}
+        </span>
       </div>
 
       {/* Keywords */}
@@ -61,6 +68,25 @@ export function AbilityCard({ ability, disabled, onUse }: AbilityCardProps) {
         {ability.damage && <span className="text-red-400">{ability.damage}</span>}
         {ability.cost && <span className="text-amber-400">{ability.cost}</span>}
       </div>
+
+      {tierEffects.length > 0 && (
+        <div className="mt-2 space-y-1 border-t border-zinc-800 pt-2">
+          {tierEffects.map((effect) => (
+            <p key={effect.label} className="text-[11px] leading-snug text-zinc-400">
+              <span className="mr-1 font-semibold text-zinc-300">{effect.label}</span>
+              {effect.text}
+            </p>
+          ))}
+        </div>
+      )}
     </button>
   );
+}
+
+function formatActionType(actionType: string): string {
+  if (actionType === 'action') return 'Action';
+  if (actionType === 'maneuver') return 'Maneuver';
+  if (actionType === 'triggered') return 'Triggered';
+  if (actionType === 'free') return 'Free';
+  return actionType;
 }

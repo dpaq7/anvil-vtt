@@ -37,6 +37,8 @@ export function ActionLogPanel({ entries, sceneType, send, className }: ActionLo
   const currentSection = asLogSceneType(sceneType);
   const [openSection, setOpenSection] = useState<SceneActionLogType | null>(currentSection);
   const [modifier, setModifier] = useState('0');
+  const [edges, setEdges] = useState('0');
+  const [banes, setBanes] = useState('0');
 
   useEffect(() => {
     if (currentSection) setOpenSection(currentSection);
@@ -55,11 +57,15 @@ export function ActionLogPanel({ entries, sceneType, send, className }: ActionLo
 
   const roll = (kind: DrawSteelRollKind) => {
     const parsedModifier = Number.parseInt(modifier, 10);
+    const parsedEdges = Number.parseInt(edges, 10);
+    const parsedBanes = Number.parseInt(banes, 10);
     send({
       type: 'draw_steel_roll',
       roll: {
         kind,
         modifier: kind === 'power' && Number.isFinite(parsedModifier) ? parsedModifier : undefined,
+        edges: kind === 'power' && Number.isFinite(parsedEdges) ? parsedEdges : undefined,
+        banes: kind === 'power' && Number.isFinite(parsedBanes) ? parsedBanes : undefined,
       },
     });
   };
@@ -82,15 +88,11 @@ export function ActionLogPanel({ entries, sceneType, send, className }: ActionLo
             d6
           </Button>
         </div>
-        <label className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-500">
-          Mod
-          <input
-            type="number"
-            value={modifier}
-            onChange={(event) => setModifier(event.target.value)}
-            className="h-7 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
-          />
-        </label>
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <NumberField label="Mod" value={modifier} onChange={setModifier} />
+          <NumberField label="Edge" value={edges} onChange={setEdges} min={0} />
+          <NumberField label="Bane" value={banes} onChange={setBanes} min={0} />
+        </div>
       </div>
 
       <div className="shrink-0 border-b border-zinc-800 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
@@ -151,6 +153,7 @@ export function ActionLogPanel({ entries, sceneType, send, className }: ActionLo
 }
 
 function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
+  const rollModifiers = formatRollModifiers(entry);
   return (
     <article className="px-3 py-2 text-xs">
       <div className="flex items-start gap-2">
@@ -171,6 +174,11 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
               <span className="font-mono text-sm font-bold tabular-nums text-zinc-100">{entry.total}</span>
             </>
           )}
+          {rollModifiers.map((part) => (
+            <span key={part} className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+              {part}
+            </span>
+          ))}
           {entry.tier && (
             <span className="ml-auto rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
               T{entry.tier}
@@ -179,6 +187,31 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
         </div>
       )}
     </article>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  min,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min?: number;
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1 text-[10px] uppercase tracking-wider text-zinc-500">
+      {label}
+      <input
+        type="number"
+        min={min}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-7 min-w-0 rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
+      />
+    </label>
   );
 }
 
@@ -259,11 +292,36 @@ function formatRollExport(entry: ActionLogEntry): string {
     parts.push(`Total: ${entry.total}`);
   }
 
+  const modifiers = formatRollModifiers(entry);
+  if (modifiers.length > 0) {
+    parts.push(`Modifiers: ${modifiers.join(', ')}`);
+  }
+
   if (entry.tier) {
     parts.push(`Tier: T${entry.tier}`);
   }
 
   return parts.join(' | ');
+}
+
+function formatRollModifiers(entry: ActionLogEntry): string[] {
+  const parts: string[] = [];
+  if (entry.modifier !== undefined && entry.modifier !== 0) {
+    parts.push(`${entry.modifier >= 0 ? '+' : ''}${entry.modifier} mod`);
+  }
+  if (entry.edges) parts.push(`${entry.edges} edge${entry.edges === 1 ? '' : 's'}`);
+  if (entry.banes) parts.push(`${entry.banes} bane${entry.banes === 1 ? '' : 's'}`);
+  if (entry.rollState === 'double-edge' || entry.rollState === 'double-bane') {
+    parts.push(formatRollState(entry.rollState));
+  }
+  return parts;
+}
+
+function formatRollState(rollState: NonNullable<ActionLogEntry['rollState']>): string {
+  return rollState
+    .split('-')
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function formatDieExport(die: DrawSteelDieResult): string {

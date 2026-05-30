@@ -1,5 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AudioLiveState } from '../types/protocol.js';
+
+export interface AudioSyncOptions {
+  volume?: number;
+  muted?: boolean;
+}
+
+export interface AudioSyncStatus {
+  playing: boolean;
+  blocked: boolean;
+  retry: () => void;
+}
 
 /**
  * Synchronises client-side HTML5 Audio playback with the server's audio state.
@@ -12,9 +23,24 @@ import type { AudioLiveState } from '../types/protocol.js';
  * This hook is designed for the **player** view. The director controls playback
  * via the SceneAudioPanel / AudioPlayer which has its own local Audio element.
  */
-export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
+export function useAudioSync(audioState: AudioLiveState | null, options: AudioSyncOptions = {}): AudioSyncStatus {
+  const { volume = 0.4, muted = false } = options;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastUrlRef = useRef<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+
+  const retry = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    setBlocked(false);
+    audio.play()
+      .then(() => setPlaying(true))
+      .catch(() => {
+        setPlaying(false);
+        setBlocked(true);
+      });
+  }, []);
 
   useEffect(() => {
     // No audio state → stop everything
@@ -26,6 +52,8 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
         audioRef.current = null;
       }
       lastUrlRef.current = null;
+      setPlaying(false);
+      setBlocked(false);
       return;
     }
 
@@ -43,17 +71,17 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
       const audio = new Audio();
       audio.crossOrigin = 'anonymous';
       audio.preload = 'auto';
-      audio.volume = volume;
+      audio.volume = muted ? 0 : volume;
       audio.loop = loop;
       audio.src = audioUrl;
       audioRef.current = audio;
       lastUrlRef.current = audioUrl;
 
       if (playing) {
-        audio.play().catch(() => {
-          // Autoplay may be blocked by browser policy
-          // User interaction will be needed
-        });
+        retry();
+      } else {
+        setPlaying(false);
+        setBlocked(false);
       }
       return;
     }
@@ -63,14 +91,16 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
     if (!audio) return;
 
     audio.loop = loop;
-    audio.volume = volume;
+    audio.volume = muted ? 0 : volume;
 
     if (playing && audio.paused) {
-      audio.play().catch(() => {});
+      retry();
     } else if (!playing && !audio.paused) {
       audio.pause();
+      setPlaying(false);
+      setBlocked(false);
     }
-  }, [audioState, volume]);
+  }, [audioState, volume, muted, retry]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -83,4 +113,6 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
       }
     };
   }, []);
+
+  return { playing, blocked, retry };
 }
