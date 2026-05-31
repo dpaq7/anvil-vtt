@@ -51,10 +51,10 @@ function TestLogItem({ entry }: { entry: TestLogEntry }) {
     >
       {isSuccess ? <CheckCircle2 className="size-3.5 shrink-0" /> : <XCircle className="size-3.5 shrink-0" />}
       <span className="font-medium">{entry.playerName}</span>
-      <span className="text-zinc-400">rolled</span>
+      <span className="text-white/70">rolled</span>
       <span>{skill?.name ?? entry.skillId}</span>
-      <span className="text-zinc-500">({entry.characteristicId})</span>
-      <span className="ml-auto text-xs text-zinc-500">
+      <span className="text-white/60">({entry.characteristicId})</span>
+      <span className="ml-auto text-xs text-white/60">
         {entry.roll} - T{entry.tier}
       </span>
     </div>
@@ -136,8 +136,8 @@ export function MontageStage({
     <div className="h-full overflow-auto p-8">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Montage Goal</p>
-          <p className="mt-1 text-2xl font-semibold text-zinc-100">{goal || 'No goal set'}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/70">Montage Goal</p>
+          <p className="mt-1 text-2xl font-semibold text-white">{goal || 'No goal set'}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -173,7 +173,7 @@ export function MontageStage({
           <div>
             <div className="mb-1 flex justify-between text-xs">
               <span className="text-emerald-400">Successes</span>
-              <span className="text-zinc-400">{currentSuccesses} / {successLimit}</span>
+              <span className="text-white/70">{currentSuccesses} / {successLimit}</span>
             </div>
             <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
               <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, successPct)}%` }} />
@@ -183,7 +183,7 @@ export function MontageStage({
           <div>
             <div className="mb-1 flex justify-between text-xs">
               <span className="text-red-400">Failures</span>
-              <span className="text-zinc-400">{currentFailures} / {failureLimit}</span>
+              <span className="text-white/70">{currentFailures} / {failureLimit}</span>
             </div>
             <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
               <div className="h-full rounded-full bg-red-500 transition-all" style={{ width: `${Math.min(100, failurePct)}%` }} />
@@ -290,10 +290,10 @@ export function MontageStage({
         <div>
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-zinc-200">Challenges</p>
-              <p className="text-xs text-zinc-500">Each challenge gives players a concrete obstacle and suggested tests.</p>
+              <p className="text-sm font-semibold text-white">Challenges</p>
+              <p className="text-xs text-white/70">Each challenge gives players a concrete obstacle and suggested tests.</p>
             </div>
-            <span className="text-xs text-zinc-500">{challenges.length} challenge{challenges.length === 1 ? '' : 's'}</span>
+            <span className="text-xs text-white/70">{challenges.length} challenge{challenges.length === 1 ? '' : 's'}</span>
           </div>
           {challenges.length > 0 ? (
             <div className="grid gap-3 lg:grid-cols-2">
@@ -333,7 +333,7 @@ export function MontageStage({
 
         {testLog.length > 0 && (
           <div className="mx-auto w-full max-w-2xl">
-            <p className="mb-2 text-sm font-medium text-zinc-300">Roll Log</p>
+            <p className="mb-2 text-sm font-medium text-white">Roll Log</p>
             <div className="flex flex-col gap-1">
               {testLog.slice().reverse().map((entry) => <TestLogItem key={entry.id} entry={entry} />)}
             </div>

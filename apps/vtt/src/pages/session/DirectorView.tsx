@@ -49,12 +49,17 @@ import type {
 } from "../../lib/scene-data.js";
 import { DirectorFilmStrip } from "../../components/session/DirectorFilmStrip.js";
 import { ParticipantStatusBar } from "../../components/session/ParticipantStatusBar.js";
+import {
+  PlayerCharactersPanel,
+  getJoinedPlayerCharacters,
+} from "../../components/session/PlayerCharactersPanel.js";
 import { CreatureTracker } from "../../components/session/CreatureTracker.js";
 import { CombatTracker } from "../../components/session/CombatTracker.js";
 import { DamageDialog } from "../../components/session/DamageDialog.js";
 import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
 import { AssetPanel } from "../../components/session/AssetPanel.js";
 import { SceneAudioPanel } from "../../components/session/SceneAudioPanel.js";
+import { SessionThemeToggle } from "../../components/session/SessionThemeToggle.js";
 import { StoryStage } from "../../components/stages/StoryStage.js";
 import { MontageStage } from "../../components/stages/MontageStage.js";
 import { NegotiationStage } from "../../components/stages/NegotiationStage.js";
@@ -62,6 +67,7 @@ import { RespiteStage } from "../../components/stages/RespiteStage.js";
 import { BattleStage } from "../../components/stages/BattleStage.js";
 import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
 import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
+import { buildVillainCombatGroups } from "../../lib/combat-groups.js";
 
 // Grid color presets (shared with BattleWorkspace)
 const GRID_COLORS = [
@@ -87,7 +93,7 @@ function clampGridOffset(value: number, cellSize: number): number {
   return Math.max(-cellSize, Math.min(cellSize, Math.round(value)));
 }
 
-type LeftRailTab = "combat" | "creatures" | "tracking" | "log";
+type LeftRailTab = "combat" | "heroes" | "creatures" | "tracking" | "log";
 type RightRailTab = "audio" | "combat" | "grid" | "assets";
 
 const RAIL_TABS_LIST_CLASS =
@@ -197,6 +203,10 @@ export function DirectorView({
     () => entities.filter((e) => e.type === "hero").length,
     [entities],
   );
+  const joinedPlayerCharacterCount = useMemo(
+    () => getJoinedPlayerCharacters(participants, entities).length,
+    [entities, participants],
+  );
   const creatureCount = useMemo(
     () =>
       entities.filter(
@@ -237,6 +247,11 @@ export function DirectorView({
       [];
     if (sceneType === "battle" && combat)
       tabs.push({ value: "combat", label: "Combat" });
+    tabs.push({
+      value: "heroes",
+      label: "Heroes",
+      count: joinedPlayerCharacterCount,
+    });
     if (sceneType === "negotiation") {
       tabs.push({ value: "creatures", label: "Target" });
     } else if (sceneType === "montage") {
@@ -260,6 +275,7 @@ export function DirectorView({
     activeMontageTracking.length,
     combat,
     creatureCount,
+    joinedPlayerCharacterCount,
     sceneType,
   ]);
   const rightRailTabs = useMemo<
@@ -305,12 +321,18 @@ export function DirectorView({
     const villainEntityIds = entities
       .filter((entity) => entity.type === "monster" || entity.type === "npc")
       .map((entity) => entity.id);
+    const villainGroups = buildVillainCombatGroups(entities, sceneData);
 
     send({
       type: "combat_action",
-      action: { type: "START_COMBAT", heroEntityIds, villainEntityIds },
+      action: {
+        type: "START_COMBAT",
+        heroEntityIds,
+        villainEntityIds,
+        villainGroups,
+      },
     });
-  }, [entities, send]);
+  }, [entities, sceneData, send]);
 
   const handleRevertActiveScene = useCallback(() => {
     if (!activeSceneId) return;
@@ -700,6 +722,7 @@ export function DirectorView({
 
             {/* Actions float right */}
             <div className="flex shrink-0 items-center gap-2">
+              <SessionThemeToggle />
               <Button
                 variant="ghost"
                 size="icon"
@@ -793,6 +816,13 @@ export function DirectorView({
                 />
               </TabsContent>
             )}
+
+            <TabsContent value="heroes" className={RAIL_TAB_CONTENT_CLASS}>
+              <PlayerCharactersPanel
+                participants={participants}
+                entities={entities}
+              />
+            </TabsContent>
 
             <TabsContent value="creatures" className={RAIL_TAB_CONTENT_CLASS}>
               {sceneType === "negotiation" && negotiationData ? (

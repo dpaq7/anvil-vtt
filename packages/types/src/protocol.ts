@@ -175,6 +175,12 @@ export interface TurnActionState {
   mainConvertedTo: 'move' | 'maneuver' | null;
 }
 
+export interface CombatEntityGroup {
+  id: string;
+  name: string;
+  entityIds: string[];
+}
+
 export interface CombatState {
   round: number;
   activeSide: 'heroes' | 'villains' | null;
@@ -184,6 +190,7 @@ export interface CombatState {
   initiativeRollerName?: string | null;
   heroEntities: string[];
   villainEntities: string[];
+  villainGroups?: CombatEntityGroup[];
   actedThisRound: string[];
   activeEntityId: string | null;
   malice: number;
@@ -191,7 +198,7 @@ export interface CombatState {
 }
 
 export type CombatAction =
-  | { type: 'START_COMBAT'; heroEntityIds: string[]; villainEntityIds: string[] }
+  | { type: 'START_COMBAT'; heroEntityIds: string[]; villainEntityIds: string[]; villainGroups?: CombatEntityGroup[] }
   | { type: 'ROLL_INITIATIVE' }
   | { type: 'END_COMBAT' }
   | { type: 'CLAIM_TURN'; entityId: string }

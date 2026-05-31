@@ -2,6 +2,10 @@ import type { MouseEvent } from 'react';
 import { Clapperboard, Dices, Shield, Swords } from 'lucide-react';
 import { Button, cn } from '@anvil/ui';
 import type { CombatState, EntityData } from '../../types/protocol.js';
+import {
+  getVillainDisplayGroups,
+  type CombatDisplayGroup,
+} from '../../lib/combat-groups.js';
 
 interface CombatTrackerProps {
   combat: CombatState;
@@ -43,6 +47,7 @@ const SIDE_CONFIG: Record<CombatSide, {
     active: 'bg-red-500/15 text-red-100',
   },
 };
+type SideConfig = (typeof SIDE_CONFIG)[CombatSide];
 
 export function CombatTracker({
   combat,
@@ -144,6 +149,7 @@ export function CombatTracker({
             side={side}
             order={index + 1}
             combat={combat}
+            entityMap={entityMap}
           />
         ))}
       </div>
@@ -254,10 +260,25 @@ function toggleSelection(selectedSet: Set<string>, entityId: string): string[] {
   return [...next];
 }
 
-function SidePill({ side, order, combat }: { side: CombatSide; order: number; combat: CombatState }) {
+function SidePill({
+  side,
+  order,
+  combat,
+  entityMap,
+}: {
+  side: CombatSide;
+  order: number;
+  combat: CombatState;
+  entityMap: Map<string, EntityData>;
+}) {
   const config = SIDE_CONFIG[side];
   const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
-  const acted = ids.filter((id) => combat.actedThisRound.includes(id)).length;
+  const villainGroups = side === 'villains' ? getVillainDisplayGroups(combat, entityMap) : [];
+  const usesGroups = villainGroups.some((group) => group.isGroup);
+  const acted = usesGroups
+    ? villainGroups.filter((group) => group.entityIds.every((id) => combat.actedThisRound.includes(id))).length
+    : ids.filter((id) => combat.actedThisRound.includes(id)).length;
+  const total = usesGroups ? villainGroups.length : ids.length;
   const isActive = combat.activeSide === side;
   const Icon = config.Icon;
 
@@ -267,13 +288,15 @@ function SidePill({ side, order, combat }: { side: CombatSide; order: number; co
         'rounded border px-2 py-1.5',
         isActive ? cn(config.border, config.active) : 'border-zinc-800 bg-zinc-900/50 text-zinc-400',
       )}
-      title={`${config.label}: ${acted}/${ids.length} acted`}
+      title={usesGroups
+        ? `${config.label}: ${acted}/${total} groups complete; ${ids.filter((id) => combat.actedThisRound.includes(id)).length}/${ids.length} creatures acted`
+        : `${config.label}: ${acted}/${total} acted`}
     >
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-semibold tabular-nums text-zinc-500">{order}</span>
         <Icon className={cn('size-3.5', config.accent)} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium">{config.label}</span>
-        <span className="text-[10px] tabular-nums text-zinc-500">{acted}/{ids.length}</span>
+        <span className="text-[10px] tabular-nums text-zinc-500">{acted}/{total}</span>
       </div>
     </div>
   );
@@ -297,6 +320,8 @@ function InitiativeGroup({
   const config = SIDE_CONFIG[side];
   const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
   const Icon = side === 'heroes' ? Swords : Shield;
+  const villainGroups = side === 'villains' ? getVillainDisplayGroups(combat, entityMap) : [];
+  const showVillainGroups = side === 'villains' && villainGroups.some((group) => group.isGroup);
 
   return (
     <section className={cn('rounded border bg-zinc-950/25', config.border)}>
@@ -309,37 +334,151 @@ function InitiativeGroup({
       <div className="max-h-52 overflow-y-auto p-1">
         {ids.length === 0 ? (
           <p className="px-2 py-2 text-xs text-zinc-600">None</p>
+        ) : showVillainGroups ? (
+          <div className="flex flex-col gap-1">
+            {villainGroups.map((group) => (
+              group.isGroup ? (
+                <VillainDisplayGroup
+                  key={group.id}
+                  group={group}
+                  combat={combat}
+                  entityMap={entityMap}
+                  selectedSet={selectedSet}
+                  config={config}
+                  onEntityClick={onEntityClick}
+                  onEntityDoubleClick={onEntityDoubleClick}
+                />
+              ) : (
+                <CombatantRow
+                  key={group.entityIds[0]}
+                  entityId={group.entityIds[0]!}
+                  combat={combat}
+                  entityMap={entityMap}
+                  selectedSet={selectedSet}
+                  config={config}
+                  onEntityClick={onEntityClick}
+                  onEntityDoubleClick={onEntityDoubleClick}
+                />
+              )
+            ))}
+          </div>
         ) : (
-          ids.map((id) => {
-            const entity = entityMap.get(id);
-            const acted = combat.actedThisRound.includes(id);
-            const isActive = combat.activeEntityId === id;
-            const isSelected = selectedSet.has(id);
-            return (
-              <button
-                key={id}
-                type="button"
-                className={cn(
-                  'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition',
-                  isSelected && 'bg-sky-500/15 ring-1 ring-sky-400/60',
-                  isActive
-                    ? cn(config.active, 'font-medium')
-                    : acted
-                      ? 'text-zinc-600 line-through hover:bg-zinc-800/40'
-                      : 'text-zinc-300 hover:bg-zinc-800/60',
-                )}
-                onClick={(event) => onEntityClick(event, id)}
-                onDoubleClick={() => onEntityDoubleClick?.(id)}
-              >
-                <span className={cn('size-1.5 shrink-0 rounded-full', isActive ? 'bg-white' : acted ? 'bg-zinc-700' : 'bg-zinc-400')} />
-                <span className="min-w-0 flex-1 truncate">{entity?.name ?? id}</span>
-                {isActive && <span className="text-[9px] uppercase text-zinc-300">Active</span>}
-                {acted && !isActive && <span className="text-[10px] text-zinc-600">Done</span>}
-              </button>
-            );
-          })
+          ids.map((id) => (
+            <CombatantRow
+              key={id}
+              entityId={id}
+              combat={combat}
+              entityMap={entityMap}
+              selectedSet={selectedSet}
+              config={config}
+              onEntityClick={onEntityClick}
+              onEntityDoubleClick={onEntityDoubleClick}
+            />
+          ))
         )}
       </div>
     </section>
+  );
+}
+
+function VillainDisplayGroup({
+  group,
+  combat,
+  entityMap,
+  selectedSet,
+  config,
+  onEntityClick,
+  onEntityDoubleClick,
+}: {
+  group: CombatDisplayGroup;
+  combat: CombatState;
+  entityMap: Map<string, EntityData>;
+  selectedSet: Set<string>;
+  config: SideConfig;
+  onEntityClick: (event: MouseEvent, entityId: string) => void;
+  onEntityDoubleClick?: (entityId: string) => void;
+}) {
+  const acted = group.entityIds.filter((id) => combat.actedThisRound.includes(id)).length;
+  const isActive = Boolean(combat.activeEntityId && group.entityIds.includes(combat.activeEntityId));
+  const isComplete = acted === group.entityIds.length;
+
+  return (
+    <div className={cn(
+      'rounded border bg-zinc-950/30',
+      isActive ? config.border : 'border-zinc-800/80',
+    )}>
+      <div className={cn(
+        'flex items-center gap-2 border-b border-zinc-800/70 px-2 py-1.5 text-xs',
+        isActive ? config.active : 'text-zinc-400',
+      )}>
+        <Shield className={cn('size-3.5 shrink-0', config.accent)} />
+        <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
+        <span className={cn(
+          'text-[10px] tabular-nums',
+          isComplete ? 'text-zinc-500' : 'text-zinc-300',
+        )}>
+          {acted}/{group.entityIds.length}
+        </span>
+      </div>
+      <div className="px-1 py-1">
+        {group.entityIds.map((id) => (
+          <CombatantRow
+            key={id}
+            entityId={id}
+            combat={combat}
+            entityMap={entityMap}
+            selectedSet={selectedSet}
+            config={config}
+            onEntityClick={onEntityClick}
+            onEntityDoubleClick={onEntityDoubleClick}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CombatantRow({
+  entityId,
+  combat,
+  entityMap,
+  selectedSet,
+  config,
+  onEntityClick,
+  onEntityDoubleClick,
+}: {
+  entityId: string;
+  combat: CombatState;
+  entityMap: Map<string, EntityData>;
+  selectedSet: Set<string>;
+  config: SideConfig;
+  onEntityClick: (event: MouseEvent, entityId: string) => void;
+  onEntityDoubleClick?: (entityId: string) => void;
+}) {
+  const entity = entityMap.get(entityId);
+  const acted = combat.actedThisRound.includes(entityId);
+  const isActive = combat.activeEntityId === entityId;
+  const isSelected = selectedSet.has(entityId);
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition',
+        isSelected && 'bg-sky-500/15 ring-1 ring-sky-400/60',
+        isActive
+          ? cn(config.active, 'font-medium')
+          : acted
+            ? 'text-zinc-600 line-through hover:bg-zinc-800/40'
+            : 'text-zinc-300 hover:bg-zinc-800/60',
+      )}
+      onClick={(event) => onEntityClick(event, entityId)}
+      onDoubleClick={() => onEntityDoubleClick?.(entityId)}
+    >
+      <span className={cn('size-1.5 shrink-0 rounded-full', isActive ? 'bg-white' : acted ? 'bg-zinc-700' : 'bg-zinc-400')} />
+      <span className="min-w-0 flex-1 truncate">{entity?.name ?? entityId}</span>
+      {isActive && <span className="text-[9px] uppercase text-zinc-300">Active</span>}
+      {acted && !isActive && <span className="text-[10px] text-zinc-600">Done</span>}
+    </button>
   );
 }

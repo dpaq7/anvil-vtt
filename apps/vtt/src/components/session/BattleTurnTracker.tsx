@@ -1,6 +1,7 @@
 import { Clapperboard, Dices, Swords } from 'lucide-react';
 import { Button, cn } from '@anvil/ui';
 import type { CombatState, EntityData } from '../../types/protocol.js';
+import { getVillainDisplayGroups } from '../../lib/combat-groups.js';
 
 interface BattleTurnTrackerProps {
   combat: CombatState | null;
@@ -103,9 +104,30 @@ function SideSegment({
 }) {
   const config = SIDE_CONFIG[side];
   const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
-  const acted = ids.filter((id) => combat.actedThisRound.includes(id)).length;
+  const villainGroups = side === 'villains' ? getVillainDisplayGroups(combat, entityMap) : [];
+  const usesGroups = villainGroups.some((group) => group.isGroup);
+  const acted = usesGroups
+    ? villainGroups.filter((group) => group.entityIds.every((id) => combat.actedThisRound.includes(id))).length
+    : ids.filter((id) => combat.actedThisRound.includes(id)).length;
+  const total = usesGroups ? villainGroups.length : ids.length;
   const isActive = combat.activeSide === side;
   const Icon = config.Icon;
+  const statusDots = usesGroups
+    ? villainGroups.slice(0, 6).map((group) => ({
+        id: group.id,
+        title: `${group.name}: ${group.entityIds.filter((id) => combat.actedThisRound.includes(id)).length}/${group.entityIds.length}`,
+        hasActed: group.entityIds.every((id) => combat.actedThisRound.includes(id)),
+        isEntityActive: Boolean(combat.activeEntityId && group.entityIds.includes(combat.activeEntityId)),
+      }))
+    : ids.slice(0, 6).map((id) => {
+        const entity = entityMap.get(id);
+        return {
+          id,
+          title: entity?.name ?? id,
+          hasActed: combat.actedThisRound.includes(id),
+          isEntityActive: combat.activeEntityId === id,
+        };
+      });
 
   return (
     <div
@@ -113,33 +135,32 @@ function SideSegment({
         'flex h-7 min-w-0 items-center gap-1.5 rounded border border-zinc-800 px-1.5 text-zinc-400',
         isActive && config.activeClass,
       )}
-      title={`${config.label}: ${acted}/${ids.length} acted`}
+      title={usesGroups
+        ? `${config.label}: ${acted}/${total} groups complete; ${ids.filter((id) => combat.actedThisRound.includes(id)).length}/${ids.length} creatures acted`
+        : `${config.label}: ${acted}/${total} acted`}
     >
       <span className="text-[9px] font-semibold tabular-nums text-zinc-500">{order}</span>
       <Icon className="size-3 shrink-0" />
       <span className="max-w-16 truncate font-medium">{config.label}</span>
-      <span className="text-[10px] tabular-nums text-zinc-500">{acted}/{ids.length}</span>
+      <span className="text-[10px] tabular-nums text-zinc-500">{acted}/{total}</span>
       <div className="ml-0.5 flex max-w-16 items-center gap-0.5 overflow-hidden">
-        {ids.slice(0, 6).map((id) => {
-          const entity = entityMap.get(id);
-          const hasActed = combat.actedThisRound.includes(id);
-          const isEntityActive = combat.activeEntityId === id;
+        {statusDots.map((dot) => {
           return (
             <span
-              key={id}
+              key={dot.id}
               className={cn(
                 'size-1.5 shrink-0 rounded-full',
-                isEntityActive
+                dot.isEntityActive
                   ? 'bg-white ring-2 ring-white/30'
-                  : hasActed
+                  : dot.hasActed
                     ? cn('ring-1', config.actedClass)
                     : config.readyClass,
               )}
-              title={entity?.name ?? id}
+              title={dot.title}
             />
           );
         })}
-        {ids.length > 6 && <span className="text-[9px] text-zinc-600">+{ids.length - 6}</span>}
+        {total > 6 && <span className="text-[9px] text-zinc-600">+{total - 6}</span>}
       </div>
     </div>
   );

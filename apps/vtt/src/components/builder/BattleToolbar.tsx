@@ -26,6 +26,7 @@ export interface BattleToolbarProps {
   onFogBrushSizeChange?: (size: number) => void;
   onClearFog?: () => void;
   viewportControls?: ReactNode;
+  orientation?: 'horizontal' | 'vertical';
 }
 
 const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
@@ -64,28 +65,43 @@ export function BattleToolbar({
   onFogBrushSizeChange,
   onClearFog,
   viewportControls,
+  orientation = 'horizontal',
 }: BattleToolbarProps) {
+  const isVertical = orientation === 'vertical';
+  const toolButtonClass = isVertical ? 'w-full justify-start px-2' : 'px-2';
+  const dividerClass = isVertical
+    ? 'my-1 h-px w-full bg-zinc-700'
+    : 'mx-1 w-px bg-zinc-700';
+
   return (
-    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2">
+    <div
+      className={`absolute left-4 top-3 z-30 flex gap-2 ${
+        isVertical ? 'items-start' : 'flex-col'
+      }`}
+    >
       {/* Primary tools */}
-      <div className="flex gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm">
+      <div
+        className={`flex gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm ${
+          isVertical ? 'flex-col items-stretch' : ''
+        }`}
+      >
         {TOOLS.map((tool) => (
           <Button
             key={tool.id}
             variant={activeTool === tool.id ? 'secondary' : 'ghost'}
             size="sm"
-            className="px-2"
+            className={toolButtonClass}
             title={`${tool.label} (${tool.shortcut})`}
             onClick={() => onToolChange(tool.id)}
           >
             <span className="text-xs">{tool.label}</span>
           </Button>
         ))}
-        <div className="mx-1 w-px bg-zinc-700" />
+        <div className={dividerClass} />
         <Button
           variant={gridVisible ? 'secondary' : 'ghost'}
           size="sm"
-          className="px-2"
+          className={toolButtonClass}
           title="Toggle Grid (G)"
           onClick={onToggleGrid}
         >
@@ -93,7 +109,7 @@ export function BattleToolbar({
         </Button>
         {viewportControls ? (
           <>
-            <div className="mx-1 w-px bg-zinc-700" />
+            <div className={dividerClass} />
             {viewportControls}
           </>
         ) : null}

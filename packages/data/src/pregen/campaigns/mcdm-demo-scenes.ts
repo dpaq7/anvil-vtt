@@ -540,6 +540,13 @@ export const MCDM_DRAW_STEEL_DEMO_CAMPAIGN: SceneImportDocument = {
                 expectedEV: { min: 30, max: 36 },
                 heroStart: { x: 4, y: 19, width: 3, height: 2 },
                 tokens: raceToTheSwordTokens,
+                initiativeGroups: [
+                  { id: 'rts-initiative-cicero', name: 'Cicero', creatureIds: ['radenwight piper'] },
+                  { id: 'rts-initiative-ratcrobats', name: 'Radenwight Ratcrobats', creatureIds: ['radenwight ratcrobat'] },
+                  { id: 'rts-initiative-scrappers-red', name: 'Radenwight Scrappers 1-4', creatureIds: ['rts-scrappers-red'] },
+                  { id: 'rts-initiative-scrappers-blue', name: 'Radenwight Scrappers 5-8', creatureIds: ['rts-scrappers-blue'] },
+                  { id: 'rts-initiative-scrappers-yellow', name: 'Radenwight Scrappers 9-12', creatureIds: ['rts-scrappers-yellow'] },
+                ],
                 terrain: [
                   { id: 'rts-muddy-water-west', terrainId: 'terrain-difficult', name: 'Muddy Water', x: 4, y: 4, w: 4, h: 5, color: 0x3b82f6 },
                   { id: 'rts-muddy-water-east', terrainId: 'terrain-difficult', name: 'Muddy Water', x: 8, y: 4, w: 5, h: 5, color: 0x3b82f6 },

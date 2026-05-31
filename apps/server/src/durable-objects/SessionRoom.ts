@@ -20,6 +20,7 @@ import type {
   SceneRef,
   EntityData,
   CombatAction,
+  CombatEntityGroup,
   CombatState,
   TurnActionState,
   AbilityResult,
@@ -274,6 +275,46 @@ function boundedIdArray(value: unknown, maxItems = 100): string[] | null {
   return ids as string[];
 }
 
+function validateCombatGroups(value: unknown): CombatEntityGroup[] | null {
+  if (!Array.isArray(value) || value.length > 40) return null;
+
+  const groups = value.map((item) => {
+    if (!isRecord(item)) return null;
+    const id = safeString(item['id']);
+    const name = safeString(item['name'], 120);
+    const entityIds = boundedIdArray(item['entityIds'], 100);
+    if (!id || !name || !entityIds || entityIds.length === 0) return null;
+    return { id, name, entityIds };
+  });
+
+  if (groups.some((group) => group === null)) return null;
+  return groups as CombatEntityGroup[];
+}
+
+function sanitizeCombatGroups(
+  groups: CombatEntityGroup[],
+  validEntityIds: string[],
+): CombatEntityGroup[] {
+  const validIds = new Set(validEntityIds);
+  const usedEntityIds = new Set<string>();
+  const usedGroupIds = new Set<string>();
+
+  return groups.flatMap((group, index): CombatEntityGroup[] => {
+    const entityIds = group.entityIds.filter((entityId) => {
+      if (!validIds.has(entityId) || usedEntityIds.has(entityId)) return false;
+      usedEntityIds.add(entityId);
+      return true;
+    });
+    if (entityIds.length === 0) return [];
+
+    let id = group.id;
+    if (usedGroupIds.has(id)) id = `${id}-${index + 1}`;
+    usedGroupIds.add(id);
+
+    return [{ id, name: group.name, entityIds }];
+  });
+}
+
 function jsonLength(value: unknown): number {
   try {
     return JSON.stringify(value).length;
@@ -362,7 +403,16 @@ function validateCombatAction(value: unknown): CombatAction | null {
     case 'START_COMBAT': {
       const heroEntityIds = boundedIdArray(value['heroEntityIds']);
       const villainEntityIds = boundedIdArray(value['villainEntityIds']);
-      return heroEntityIds && villainEntityIds ? { type: 'START_COMBAT', heroEntityIds, villainEntityIds } : null;
+      const villainGroups = value['villainGroups'] === undefined
+        ? undefined
+        : validateCombatGroups(value['villainGroups']);
+      if (!heroEntityIds || !villainEntityIds || villainGroups === null) return null;
+      return {
+        type: 'START_COMBAT',
+        heroEntityIds,
+        villainEntityIds,
+        ...(villainGroups ? { villainGroups } : {}),
+      };
     }
     case 'ROLL_INITIATIVE':
       return { type: 'ROLL_INITIATIVE' };
@@ -2069,6 +2119,7 @@ export class SessionRoom extends DurableObject<Env> {
         }
 
         const heroCount = heroEntityIds.length;
+        const villainGroups = sanitizeCombatGroups(action.villainGroups ?? [], villainEntityIds);
 
         const combat: CombatState = {
           round: 1,
@@ -2079,6 +2130,7 @@ export class SessionRoom extends DurableObject<Env> {
           initiativeRollerName: null,
           heroEntities: heroEntityIds,
           villainEntities: villainEntityIds,
+          ...(villainGroups.length > 0 ? { villainGroups } : {}),
           actedThisRound: [],
           activeEntityId: null,
           malice: Math.max(0, heroCount + 1), // Starting malice = heroCount + round(1)
