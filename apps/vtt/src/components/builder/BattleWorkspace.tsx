@@ -63,6 +63,10 @@ import type { DrawingData } from '../../canvas/layers/DrawingLayer.js';
 import type { TerrainZoneData } from '../../canvas/layers/TerrainLayer.js';
 import type { FogZoneData } from '../../canvas/layers/FogLayer.js';
 import { useAssetsStore } from '../../stores/assetsStore.js';
+import {
+  credentialedMediaCrossOrigin,
+  resolveApiBackedMediaUrl,
+} from '../../lib/api-url.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -602,6 +606,9 @@ export function BattleWorkspace({
     notes: (data['notes'] as string) ?? '',
     creatureGroups: (data['creatureGroups'] as string) ?? '',
   };
+  const resolvedMapUrl = battleData.mapUrl
+    ? resolveApiBackedMediaUrl(battleData.mapUrl)
+    : '';
   const sceneSfxAudioIds = useMemo(
     () =>
       Array.from({ length: 4 }, (_, index) => {
@@ -646,7 +653,7 @@ export function BattleWorkspace({
 
   // When a background is loaded, derive grid cols/rows from image dimensions and cell size.
   // Otherwise use the manually-set gridCols/gridRows.
-  const hasBackground = !!bgNaturalSize && !!battleData.mapUrl;
+  const hasBackground = !!bgNaturalSize && !!resolvedMapUrl;
   const effectiveCellSize = battleData.gridCellSize;
   const effectiveCols = hasBackground
     ? Math.ceil(bgNaturalSize.width / effectiveCellSize)
@@ -1184,7 +1191,7 @@ export function BattleWorkspace({
           cellSize={effectiveCellSize}
           entities={entities}
           selectedEntityId={null}
-          backgroundUrl={battleData.mapUrl || null}
+          backgroundUrl={resolvedMapUrl || null}
           isDirector={true}
           onSelectEntity={handleSelectEntity}
           onMoveEntity={handleMoveEntity}
@@ -1343,12 +1350,13 @@ export function BattleWorkspace({
                   icon={<Map className="size-4" />}
                 >
                   <div className="flex flex-col gap-3">
-                    {battleData.mapUrl && (
+                    {resolvedMapUrl && (
                       <div className="relative aspect-video overflow-hidden rounded-md border border-zinc-700 bg-zinc-800">
                         <img
-                          key={battleData.mapUrl}
-                          src={battleData.mapUrl}
+                          key={resolvedMapUrl}
+                          src={resolvedMapUrl}
                           alt="Battle map preview"
+                          crossOrigin={credentialedMediaCrossOrigin(resolvedMapUrl)}
                           className={`h-full w-full object-cover ${mapPreviewError ? 'opacity-0' : 'opacity-100'}`}
                           onLoad={() => setMapPreviewError(false)}
                           onError={() => setMapPreviewError(true)}

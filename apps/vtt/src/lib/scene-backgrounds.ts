@@ -1,4 +1,5 @@
 import type { SceneType } from "@anvil/types";
+import { resolveApiBackedMediaUrl } from "./api-url.js";
 
 export type BackgroundSceneType = Exclude<SceneType, "battle">;
 
@@ -84,7 +85,7 @@ export function getSceneBackgroundUrl(
 
   const backgroundUrl = data["backgroundUrl"];
   if (typeof backgroundUrl === "string" && backgroundUrl.trim())
-    return backgroundUrl;
+    return resolveApiBackedMediaUrl(backgroundUrl);
 
   const legacyAssetUrl = data["assetUrl"];
   if (
@@ -92,7 +93,7 @@ export function getSceneBackgroundUrl(
     typeof legacyAssetUrl === "string" &&
     legacyAssetUrl.trim()
   ) {
-    return legacyAssetUrl;
+    return resolveApiBackedMediaUrl(legacyAssetUrl);
   }
 
   return getDefaultSceneBackground(sceneType, orderIndex)?.url ?? null;

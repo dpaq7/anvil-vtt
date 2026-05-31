@@ -22,6 +22,8 @@ function SceneChip({
   return (
     <button
       onClick={onClick}
+      title={scene.name}
+      aria-label={scene.name}
       className={cn(
         'flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition',
         SCENE_BG_COLORS[sceneType],
