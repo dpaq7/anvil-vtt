@@ -760,7 +760,7 @@ export function BattleStage({
         </div>
       )}
 
-      <div className="pointer-events-none absolute right-4 top-3 z-30 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2">
+      <div className="pointer-events-none absolute inset-x-4 top-3 z-30 flex justify-center">
         {combat && (
           <BattleTurnTracker
             combat={combat}
@@ -771,6 +771,9 @@ export function BattleStage({
             className="pointer-events-auto"
           />
         )}
+      </div>
+
+      <div className="pointer-events-none absolute bottom-4 right-4 z-30">
         <DiceRollControls send={send} className="pointer-events-auto" />
       </div>
 
@@ -791,11 +794,12 @@ export function BattleStage({
           fogBrushSize={fogBrushSize}
           onFogBrushSizeChange={setFogBrushSize}
           onClearFog={handleClearFog}
+          orientation="vertical"
           viewportControls={
             <ViewportControls
               zoom={zoom}
-              orientation="horizontal"
-              className="flex items-center gap-0.5"
+              orientation="vertical"
+              className="flex flex-col items-center gap-1"
               onZoomIn={() => viewportRef.current?.zoomIn()}
               onZoomOut={() => viewportRef.current?.zoomOut()}
               onFitToMap={() => {

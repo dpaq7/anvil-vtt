@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { MessageSquare, Dice5 } from 'lucide-react';
 import { Button, Card, CardHeader, CardTitle, CardContent, cn } from '@anvil/ui';
 import { NegotiationLogic, findSkillByName, skills } from '@anvil/data';
@@ -94,12 +94,12 @@ function TrackDots({ current, max, color, label }: TrackDotsProps) {
       <span className={`text-xs font-medium uppercase tracking-wider ${c.text}`}>
         {label}
       </span>
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {Array.from({ length: max + 1 }, (_, i) => (
           <div
             key={i}
             className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors ${
-              i <= current ? c.filled + ' text-white' : c.empty + ' text-zinc-500'
+              i <= current ? c.filled + ' text-zinc-50' : c.empty + ' text-zinc-500'
             }`}
           >
             {i}
@@ -107,6 +107,44 @@ function TrackDots({ current, max, color, label }: TrackDotsProps) {
         ))}
       </div>
     </div>
+  );
+}
+
+interface TargetPortraitProps {
+  initials: string;
+  npcName: string;
+  npcPortrait?: string;
+}
+
+function TargetPortrait({ initials, npcName, npcPortrait }: TargetPortraitProps) {
+  if (npcPortrait) {
+    return (
+      <img
+        src={npcPortrait}
+        alt={npcName}
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-purple-500/20 text-6xl font-bold text-purple-300">
+      {initials || '?'}
+    </div>
+  );
+}
+
+function TrackPanel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={className}>
+      <CardContent className="flex flex-col gap-4 pt-5">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -353,49 +391,106 @@ export function NegotiationStage({
       .toUpperCase();
   }, [npcName]);
 
-  return (
-    <div className="flex h-full flex-col gap-6 overflow-auto p-6">
-      {/* Header: NPC Info + Tracks */}
-      <div className="flex flex-col items-center gap-6 md:flex-row md:items-start md:justify-between">
-        {/* NPC Card */}
-        <Card className="w-full md:w-72">
-          <CardContent className="flex flex-col items-center gap-3 pt-6">
-            {/* Portrait */}
-            {npcPortrait ? (
-              <img
-                src={npcPortrait}
-                alt={npcName}
-                className="h-20 w-20 rounded-full border-2 border-purple-500/50 object-cover"
-              />
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-500/20 text-2xl font-bold text-purple-400">
-                {initials || '?'}
-              </div>
-            )}
+  const renderMotivationsPanel = (className?: string) => (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="text-purple-400">Motivations</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {motivations.length === 0 ? (
+          <p className="text-sm text-zinc-500">No motivations configured</p>
+        ) : (
+          motivations.map((m) => (
+            <MotivationItem
+              key={m.id}
+              motivation={m}
+              isDirector={isDirector}
+              onReveal={() => onRevealMotivation?.(m.id)}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
 
-            {/* Name & Attitude */}
-            <div className="text-center">
-              <h2 className="text-lg font-semibold text-zinc-100">{npcName}</h2>
-              <span className="text-sm capitalize text-zinc-400">{npcAttitude}</span>
+  const renderPitfallsPanel = (className?: string) => (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="text-red-400">Pitfalls</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {pitfalls.length === 0 ? (
+          <p className="text-sm text-zinc-500">No pitfalls configured</p>
+        ) : (
+          pitfalls.map((p) => (
+            <PitfallItem
+              key={p.id}
+              pitfall={p}
+              isDirector={isDirector}
+              onReveal={() => onRevealPitfall?.(p.id)}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="flex h-full flex-col gap-5 overflow-auto p-5 lg:p-6">
+      <div className="grid w-full gap-5 md:grid-cols-[minmax(160px,1fr)_minmax(280px,360px)_minmax(160px,1fr)] md:items-start">
+        <div className="order-2 flex flex-col gap-5 md:order-1">
+          <TrackPanel>
+            <TrackDots
+              current={displayInterest}
+              max={maxInterest}
+              color="purple"
+              label="Interest"
+            />
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-400">Current outcome:</span>
+              <span
+                className={`rounded px-2 py-0.5 font-medium ${getInterestLevelColor(displayInterest)}`}
+              >
+                {interestLabel}
+              </span>
+            </div>
+          </TrackPanel>
+
+          {renderMotivationsPanel('hidden md:block')}
+        </div>
+
+        <Card className="order-1 overflow-hidden md:order-2">
+          <CardContent className="p-0">
+            <div className="relative aspect-[4/5] min-h-[300px] overflow-hidden bg-zinc-950 sm:min-h-[360px] md:min-h-[400px]">
+              <TargetPortrait
+                initials={initials}
+                npcName={npcName}
+                npcPortrait={npcPortrait}
+              />
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950 via-zinc-950/75 to-transparent p-5 text-center">
+                <h2 className="text-2xl font-semibold leading-tight text-zinc-100">
+                  {npcName}
+                </h2>
+                <span className="mt-1 block text-sm capitalize text-zinc-300">
+                  {npcAttitude}
+                </span>
+                {phase !== 'active' && (
+                  <span
+                    className={`mt-3 inline-flex rounded px-3 py-1 text-sm font-medium ${
+                      phase === 'success'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-red-500/20 text-red-300'
+                    }`}
+                  >
+                    {phase === 'success' ? 'DEAL REACHED' : 'NEGOTIATION FAILED'}
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Phase Badge */}
-            {phase !== 'active' && (
-              <span
-                className={`rounded px-3 py-1 text-sm font-medium ${
-                  phase === 'success'
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'bg-red-500/20 text-red-400'
-                }`}
-              >
-                {phase === 'success' ? 'DEAL REACHED' : 'NEGOTIATION FAILED'}
-              </span>
-            )}
-
-            {/* Director Controls */}
             {isDirector && isActive && (
-              <div className="mt-2 flex w-full flex-col gap-2 border-t border-zinc-700 pt-2">
-                <div className="flex items-center justify-center gap-2">
+              <div className="grid gap-2 border-t border-zinc-800 bg-zinc-950/70 p-4">
+                <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -412,8 +507,6 @@ export function NegotiationStage({
                   >
                     +Int
                   </Button>
-                </div>
-                <div className="flex items-center justify-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -435,7 +528,7 @@ export function NegotiationStage({
                   variant="default"
                   size="sm"
                   onClick={onEndNegotiation}
-                  className="mt-2 bg-purple-600 hover:bg-purple-700"
+                  className="bg-purple-600 hover:bg-purple-700"
                 >
                   End Negotiation
                 </Button>
@@ -444,100 +537,40 @@ export function NegotiationStage({
           </CardContent>
         </Card>
 
-        {/* Tracks */}
-        <div className="flex flex-1 flex-col gap-6">
-          <Card>
-            <CardContent className="flex flex-col gap-4 pt-6">
-              <TrackDots
-                current={displayInterest}
-                max={maxInterest}
-                color="purple"
-                label="Interest"
-              />
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-zinc-400">Current outcome:</span>
-                <span
-                  className={`rounded px-2 py-0.5 font-medium ${getInterestLevelColor(displayInterest)}`}
-                >
-                  {interestLabel}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="order-3 flex flex-col gap-5">
+          <TrackPanel>
+            <TrackDots
+              current={displayPatience}
+              max={maxPatience}
+              color="amber"
+              label="Patience"
+            />
+            <p className="text-sm text-zinc-400">
+              {displayPatience === 0
+                ? 'NPC has lost patience - negotiation ends!'
+                : `${displayPatience} argument${displayPatience === 1 ? '' : 's'} remaining`}
+            </p>
+          </TrackPanel>
 
-          <Card>
-            <CardContent className="flex flex-col gap-4 pt-6">
-              <TrackDots
-                current={displayPatience}
-                max={maxPatience}
-                color="amber"
-                label="Patience"
-              />
-              <p className="text-sm text-zinc-400">
-                {displayPatience === 0
-                  ? 'NPC has lost patience - negotiation ends!'
-                  : `${displayPatience} argument${displayPatience === 1 ? '' : 's'} remaining`}
-              </p>
-            </CardContent>
-          </Card>
+          {renderPitfallsPanel('hidden md:block')}
         </div>
+      </div>
+
+      <div className="grid gap-5 md:hidden">
+        {renderMotivationsPanel()}
+        {renderPitfallsPanel()}
       </div>
 
       {/* Player argument panel */}
       {!isDirector && isActive && onMakeArgument && showPlayerArgumentPanel && (
-        <div className="mx-auto w-full max-w-lg">
+        <div className="mx-auto w-full max-w-xl">
           <NegotiationArgumentPanel availableSkillIds={availableSkillIds} onMakeArgument={onMakeArgument} />
         </div>
       )}
 
-      {/* Motivations & Pitfalls */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Motivations */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-purple-400">Motivations</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {motivations.length === 0 ? (
-              <p className="text-sm text-zinc-500">No motivations configured</p>
-            ) : (
-              motivations.map((m) => (
-                <MotivationItem
-                  key={m.id}
-                  motivation={m}
-                  isDirector={isDirector}
-                  onReveal={() => onRevealMotivation?.(m.id)}
-                />
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Pitfalls */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-red-400">Pitfalls</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {pitfalls.length === 0 ? (
-              <p className="text-sm text-zinc-500">No pitfalls configured</p>
-            ) : (
-              pitfalls.map((p) => (
-                <PitfallItem
-                  key={p.id}
-                  pitfall={p}
-                  isDirector={isDirector}
-                  onReveal={() => onRevealPitfall?.(p.id)}
-                />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Argument log */}
       {argumentLog.length > 0 && (
-        <div className="mx-auto w-full max-w-lg">
+        <div className="mx-auto w-full max-w-3xl">
           <p className="mb-2 text-sm font-medium text-zinc-300">Argument Log</p>
           <div className="flex flex-col gap-1">
             {argumentLog

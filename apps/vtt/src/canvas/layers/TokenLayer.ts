@@ -121,12 +121,19 @@ export class TokenLayer extends Container {
     }
 
     // Name label below token
+    const nameFontSize = Math.max(8, size * 0.18);
+    const nameWrapWidth = Math.max(72, size * 1.6);
     const nameLabel = new Text({
-      text: entity.name.length > 10 ? entity.name.slice(0, 9) + '\u2026' : entity.name,
+      text: entity.name,
       style: {
         fontFamily: 'system-ui, sans-serif',
-        fontSize: Math.max(8, size * 0.18),
+        fontSize: nameFontSize,
         fill: 0xcccccc,
+        align: 'center',
+        breakWords: true,
+        lineHeight: Math.ceil(nameFontSize * 1.08),
+        wordWrap: true,
+        wordWrapWidth: nameWrapWidth,
       },
     });
     nameLabel.anchor.set(0.5, 0);

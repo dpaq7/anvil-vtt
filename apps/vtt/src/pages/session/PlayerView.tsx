@@ -34,6 +34,7 @@ import {
   PlayerHeroCommandBar,
   PlayerHeroSheetPanel,
 } from "../../components/session/PlayerHeroLiveSheet.js";
+import { SessionThemeToggle } from "../../components/session/SessionThemeToggle.js";
 import type { CharacterInventoryItem } from "../../lib/inventory.js";
 import { StoryStage } from "../../components/stages/StoryStage.js";
 import { MontageStage } from "../../components/stages/MontageStage.js";
@@ -568,6 +569,7 @@ export function PlayerView({
                 {sceneType}
               </span>
             )}
+            <SessionThemeToggle />
             <button
               type="button"
               className="inline-flex size-9 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"

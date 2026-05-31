@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { SceneTypeIcon, SCENE_BG_COLORS, SCENE_BORDER_COLORS, cn } from '@anvil/ui';
 import type { SceneType } from '@anvil/ui';
 import type { SceneRef } from '../../types/protocol.js';
+import { SceneNameTooltip } from './SceneNameTooltip.js';
 
 interface DirectorFilmStripProps {
   scenes: SceneRef[];
@@ -20,21 +21,32 @@ function SceneChip({
 }) {
   const sceneType = (scene.type as SceneType) || 'story';
   return (
-    <button
-      onClick={onClick}
-      title={scene.name}
-      aria-label={scene.name}
-      className={cn(
-        'flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition',
-        SCENE_BG_COLORS[sceneType],
-        isActive
-          ? cn(SCENE_BORDER_COLORS[sceneType], 'border-2 ring-1 ring-white/20')
-          : 'border-zinc-700/50 hover:border-zinc-600',
+    <SceneNameTooltip label={scene.name}>
+      {(tooltipProps) => (
+        <button
+          ref={tooltipProps.ref}
+          onClick={onClick}
+          onBlur={tooltipProps.onBlur}
+          onFocus={tooltipProps.onFocus}
+          onMouseEnter={tooltipProps.onMouseEnter}
+          onMouseLeave={tooltipProps.onMouseLeave}
+          onPointerEnter={tooltipProps.onPointerEnter}
+          onPointerLeave={tooltipProps.onPointerLeave}
+          aria-describedby={tooltipProps['aria-describedby']}
+          aria-label={scene.name}
+          className={cn(
+            'flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition',
+            SCENE_BG_COLORS[sceneType],
+            isActive
+              ? cn(SCENE_BORDER_COLORS[sceneType], 'border-2 ring-1 ring-white/20')
+              : 'border-zinc-700/50 hover:border-zinc-600',
+          )}
+        >
+          <SceneTypeIcon type={sceneType} className="text-xs" />
+          <span className="max-w-[100px] truncate text-zinc-200">{scene.name}</span>
+        </button>
       )}
-    >
-      <SceneTypeIcon type={sceneType} className="text-xs" />
-      <span className="max-w-[100px] truncate text-zinc-200">{scene.name}</span>
-    </button>
+    </SceneNameTooltip>
   );
 }
 
