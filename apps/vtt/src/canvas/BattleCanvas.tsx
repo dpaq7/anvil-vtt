@@ -14,6 +14,10 @@ import type { EntityData } from '../types/protocol.js';
 import type { DrawingData } from './layers/DrawingLayer.js';
 import type { TerrainZoneData } from './layers/TerrainLayer.js';
 import type { FogZoneData } from './layers/FogLayer.js';
+import {
+  credentialedMediaCrossOrigin,
+  resolveApiBackedMediaUrl,
+} from '../lib/api-url.js';
 
 type RendererPreference = 'webgl' | 'canvas';
 
@@ -90,6 +94,9 @@ function BattleCanvasFallback({
   const worldHeight = backgroundSize?.height ?? gridHeight;
   const scaleX = worldWidth / gridWidth;
   const scaleY = worldHeight / gridHeight;
+  const resolvedBackgroundUrl = backgroundUrl
+    ? resolveApiBackedMediaUrl(backgroundUrl)
+    : null;
   const selectedSet = new Set(selectedEntityIds);
   if (selectedEntityId) selectedSet.add(selectedEntityId);
 
@@ -121,10 +128,11 @@ function BattleCanvasFallback({
         style={{ width: worldWidth, height: worldHeight }}
         onClick={() => onSelectEntity(null)}
       >
-        {backgroundUrl ? (
+        {resolvedBackgroundUrl ? (
           <img
-            src={backgroundUrl}
+            src={resolvedBackgroundUrl}
             alt=""
+            crossOrigin={credentialedMediaCrossOrigin(resolvedBackgroundUrl)}
             draggable={false}
             onLoad={handleBackgroundLoad}
             className="absolute inset-0 h-full w-full select-none object-fill"

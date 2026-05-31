@@ -6,6 +6,7 @@
  * changes to the data schema only need to be made in one place.
  */
 import type { MotivationType } from '@anvil/types';
+import { resolveApiBackedMediaUrl } from './api-url.js';
 
 // ---------------------------------------------------------------------------
 // Montage
@@ -263,10 +264,12 @@ export function parseBattleData(sceneData: Record<string, unknown>): BattleStage
     return typeof value === 'string' && value.trim() ? value : null;
   };
 
+  const backgroundUrl = stringValue('mapUrl') ?? stringValue('backgroundUrl');
+
   return {
     cols: (sceneData['gridCols'] as number) ?? (sceneData['gridSize'] as number) ?? 30,
     rows: (sceneData['gridRows'] as number) ?? 20,
-    backgroundUrl: stringValue('mapUrl') ?? stringValue('backgroundUrl'),
+    backgroundUrl: backgroundUrl ? resolveApiBackedMediaUrl(backgroundUrl) : null,
     cellSize: (sceneData['gridCellSize'] as number) ?? 48,
     gridOpacity: (sceneData['gridOpacity'] as number) ?? 0.4,
     gridColor: (sceneData['gridColor'] as string) ?? '#444444',

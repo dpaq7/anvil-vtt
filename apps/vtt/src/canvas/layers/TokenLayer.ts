@@ -1,6 +1,10 @@
 import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Quadtree } from '../systems/Quadtree.js';
 import type { EntityData } from '../../types/protocol.js';
+import {
+  mediaElementCrossOrigin,
+  resolveApiBackedMediaUrl,
+} from '../../lib/api-url.js';
 
 /** Condition ID → emoji for badge display */
 const CONDITION_EMOJI: Record<string, string> = {
@@ -225,8 +229,10 @@ export class TokenLayer extends Container {
     cy: number,
     radius: number,
   ): void {
+    const resolvedUrl = resolveApiBackedMediaUrl(url);
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    const crossOrigin = mediaElementCrossOrigin(resolvedUrl);
+    if (crossOrigin) img.crossOrigin = crossOrigin;
     img.onload = () => {
       // Guard: container may have been destroyed while loading
       if (container.destroyed) return;
@@ -253,7 +259,7 @@ export class TokenLayer extends Container {
       // Insert after rings (index 2) so it's below name/conditions but above rings
       container.addChildAt(sprite, 2);
     };
-    img.src = url;
+    img.src = resolvedUrl;
   }
 
   /**

@@ -760,13 +760,8 @@ export function BattleStage({
         </div>
       )}
 
-      {combat && (
-        <FloatingStagePanel
-          storageKey="anvil-session-stage-turn-tracker"
-          initialPlacement={{ edge: 'top', offset: 0.5 }}
-          stageRef={stageRef}
-          label="turn tracker"
-        >
+      <div className="pointer-events-none absolute right-4 top-3 z-30 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2">
+        {combat && (
           <BattleTurnTracker
             combat={combat}
             entities={entities}
@@ -775,18 +770,9 @@ export function BattleStage({
             }
             className="pointer-events-auto"
           />
-        </FloatingStagePanel>
-      )}
-
-      <FloatingStagePanel
-        storageKey="anvil-session-stage-dice-controls"
-        initialPlacement={{ edge: 'top', offset: 0.5 }}
-        stageRef={stageRef}
-        inset={52}
-        label="dice controls"
-      >
+        )}
         <DiceRollControls send={send} className="pointer-events-auto" />
-      </FloatingStagePanel>
+      </div>
 
       {/* Floating toolbar — director only */}
       {isDirector && (
@@ -805,28 +791,44 @@ export function BattleStage({
           fogBrushSize={fogBrushSize}
           onFogBrushSizeChange={setFogBrushSize}
           onClearFog={handleClearFog}
+          viewportControls={
+            <ViewportControls
+              zoom={zoom}
+              orientation="horizontal"
+              className="flex items-center gap-0.5"
+              onZoomIn={() => viewportRef.current?.zoomIn()}
+              onZoomOut={() => viewportRef.current?.zoomOut()}
+              onFitToMap={() => {
+                const fitW = bgNaturalSize?.width ?? cols * cellSize;
+                const fitH = bgNaturalSize?.height ?? rows * cellSize;
+                viewportRef.current?.fitToRect(fitW, fitH);
+              }}
+            />
+          }
         />
       )}
 
-      <FloatingStagePanel
-        storageKey="anvil-session-stage-viewport-controls"
-        initialPlacement={{ edge: 'right', offset: 0.86 }}
-        stageRef={stageRef}
-        inset={16}
-        label="zoom controls"
-      >
-        <ViewportControls
-          zoom={zoom}
-          className="flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm"
-          onZoomIn={() => viewportRef.current?.zoomIn()}
-          onZoomOut={() => viewportRef.current?.zoomOut()}
-          onFitToMap={() => {
-            const fitW = bgNaturalSize?.width ?? cols * cellSize;
-            const fitH = bgNaturalSize?.height ?? rows * cellSize;
-            viewportRef.current?.fitToRect(fitW, fitH);
-          }}
-        />
-      </FloatingStagePanel>
+      {!isDirector && (
+        <FloatingStagePanel
+          storageKey="anvil-session-stage-viewport-controls"
+          initialPlacement={{ edge: 'right', offset: 0.86 }}
+          stageRef={stageRef}
+          inset={16}
+          label="zoom controls"
+        >
+          <ViewportControls
+            zoom={zoom}
+            className="flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm"
+            onZoomIn={() => viewportRef.current?.zoomIn()}
+            onZoomOut={() => viewportRef.current?.zoomOut()}
+            onFitToMap={() => {
+              const fitW = bgNaturalSize?.width ?? cols * cellSize;
+              const fitH = bgNaturalSize?.height ?? rows * cellSize;
+              viewportRef.current?.fitToRect(fitW, fitH);
+            }}
+          />
+        </FloatingStagePanel>
+      )}
 
       {/* Dice roll overlay */}
       {combatLog && entityNames && (
