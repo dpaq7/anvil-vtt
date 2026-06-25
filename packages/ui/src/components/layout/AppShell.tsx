@@ -13,6 +13,7 @@ export interface AppShellProps {
   className?: string;
   leftRailCollapsed?: boolean;
   rightRailCollapsed?: boolean;
+  stageDetached?: boolean;
   onToggleLeftRail?: () => void;
   onToggleRightRail?: () => void;
 }
@@ -41,18 +42,20 @@ export function AppShell({
   className,
   leftRailCollapsed = false,
   rightRailCollapsed = false,
+  stageDetached = false,
   onToggleLeftRail,
   onToggleRightRail,
 }: AppShellProps) {
   const hasLeft = leftRail != null && !leftRailCollapsed;
   const hasRight = rightRail != null && !rightRailCollapsed;
-  const canRestoreLeft = leftRail != null && leftRailCollapsed && onToggleLeftRail;
-  const canRestoreRight = rightRail != null && rightRailCollapsed && onToggleRightRail;
+  const hasStage = !stageDetached || (!hasLeft && !hasRight);
+  const canRestoreLeft = hasStage && leftRail != null && leftRailCollapsed && onToggleLeftRail;
+  const canRestoreRight = hasStage && rightRail != null && rightRailCollapsed && onToggleRightRail;
 
   // Build panel IDs based on which rails are present
   const panelIds = [
     ...(hasLeft ? ['left-rail'] : []),
-    'stage',
+    ...(hasStage ? ['stage'] : []),
     ...(hasRight ? ['right-rail'] : []),
   ];
   const layoutKey = panelIds.join(':');
@@ -84,12 +87,12 @@ export function AppShell({
           <>
             <Panel
               id="left-rail"
-              defaultSize={15}
-              minSize="10%"
-              maxSize="30%"
+              defaultSize={hasStage ? 15 : 50}
+              minSize={hasStage ? '10%' : '30%'}
+              maxSize={hasStage ? '30%' : '70%'}
               className="relative overflow-visible bg-zinc-900/50"
             >
-              {onToggleLeftRail && (
+              {hasStage && onToggleLeftRail && (
                 <button
                   type="button"
                   title="Collapse left pane"
@@ -104,51 +107,57 @@ export function AppShell({
                 {leftRail}
               </div>
             </Panel>
-            <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
+            {(hasStage || hasRight) && (
+              <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
+            )}
           </>
         )}
 
         {/* Stage */}
-        <Panel id="stage" className="relative overflow-visible">
-          {canRestoreLeft && (
-            <button
-              type="button"
-              title="Open left pane"
-              aria-label="Open left pane"
-              className="absolute left-0 top-1/2 z-40 flex h-14 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-400 shadow-lg transition hover:border-zinc-500 hover:text-zinc-100"
-              onClick={onToggleLeftRail}
-            >
-              <PanelLeftOpen className="size-3.5" />
-            </button>
-          )}
-          {canRestoreRight && (
-            <button
-              type="button"
-              title="Open right pane"
-              aria-label="Open right pane"
-              className="absolute right-0 top-1/2 z-40 flex h-14 w-5 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-400 shadow-lg transition hover:border-zinc-500 hover:text-zinc-100"
-              onClick={onToggleRightRail}
-            >
-              <PanelRightOpen className="size-3.5" />
-            </button>
-          )}
-          <div className="h-full overflow-y-auto">
-            {children}
-          </div>
-        </Panel>
+        {hasStage && (
+          <Panel id="stage" className="relative overflow-visible">
+            {canRestoreLeft && (
+              <button
+                type="button"
+                title="Open left pane"
+                aria-label="Open left pane"
+                className="absolute left-0 top-1/2 z-40 flex h-14 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-400 shadow-lg transition hover:border-zinc-500 hover:text-zinc-100"
+                onClick={onToggleLeftRail}
+              >
+                <PanelLeftOpen className="size-3.5" />
+              </button>
+            )}
+            {canRestoreRight && (
+              <button
+                type="button"
+                title="Open right pane"
+                aria-label="Open right pane"
+                className="absolute right-0 top-1/2 z-40 flex h-14 w-5 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/95 text-zinc-400 shadow-lg transition hover:border-zinc-500 hover:text-zinc-100"
+                onClick={onToggleRightRail}
+              >
+                <PanelRightOpen className="size-3.5" />
+              </button>
+            )}
+            <div className="h-full overflow-y-auto">
+              {children}
+            </div>
+          </Panel>
+        )}
 
         {/* Right Rail */}
         {hasRight && (
           <>
-            <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
+            {hasStage && (
+              <Separator className="w-1 bg-zinc-800 transition-colors hover:bg-zinc-600 data-[active]:bg-zinc-500" />
+            )}
             <Panel
               id="right-rail"
-              defaultSize={20}
-              minSize="12%"
-              maxSize="40%"
+              defaultSize={hasStage ? 20 : 50}
+              minSize={hasStage ? '12%' : '30%'}
+              maxSize={hasStage ? '40%' : '70%'}
               className="relative overflow-visible bg-zinc-900/50"
             >
-              {onToggleRightRail && (
+              {hasStage && onToggleRightRail && (
                 <button
                   type="button"
                   title="Collapse right pane"

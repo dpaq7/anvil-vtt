@@ -3,6 +3,7 @@ import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
 import { assetDataUrl, validateOwnedPortraitAsset } from '../security/assets.js';
+import { escapeLikePattern } from '../security/validation.js';
 import type { CreateNpcInput, Npc, UpdateNpcInput } from '@anvil/types';
 
 export const npcRoutes = new Hono<AppEnv>();
@@ -50,8 +51,8 @@ npcRoutes.get('/:campaignId/npcs', async (c) => {
   const binds: unknown[] = [campaignId];
 
   if (q) {
-    query += ' AND name LIKE ?';
-    binds.push(`%${q}%`);
+    query += " AND name LIKE ? ESCAPE '\\'";
+    binds.push(`%${escapeLikePattern(q)}%`);
   }
 
   query += ' ORDER BY updated_at DESC';

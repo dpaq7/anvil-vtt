@@ -54,3 +54,41 @@ export function safeStringArray(value: unknown, maxItems: number, maxLength: num
     .map((item) => item.trim().slice(0, maxLength))
     .slice(0, maxItems);
 }
+
+/**
+ * Escape LIKE wildcard metacharacters (`%`, `_`, and the escape char itself) in
+ * user-supplied search terms. Pair with `LIKE ? ESCAPE '\'` so a search for
+ * "50%" matches a literal percent instead of acting as a wildcard.
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+/**
+ * Returns true if any object in the structure carries a prototype-pollution key
+ * (`__proto__`, `prototype`, `constructor`). Use before persisting or merging
+ * client-supplied JSON. The depth guard bounds traversal cost on hostile input.
+ */
+export function hasUnsafeObjectKey(value: unknown, depth = 0): boolean {
+  if (depth > 64 || value === null || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => hasUnsafeObjectKey(item, depth + 1));
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    if (UNSAFE_OBJECT_KEYS.has(key)) return true;
+    if (hasUnsafeObjectKey((value as Record<string, unknown>)[key], depth + 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * Returns true if the structure nests deeper than `maxDepth` levels of objects
+ * or arrays. Guards against deeply-nested JSON that fits a byte budget but can
+ * exhaust the stack during later JSON operations.
+ */
+export function exceedsJsonDepth(value: unknown, maxDepth: number, depth = 1): boolean {
+  if (value === null || typeof value !== 'object') return false;
+  if (depth > maxDepth) return true;
+  const entries = Array.isArray(value) ? value : Object.values(value as Record<string, unknown>);
+  return entries.some((entry) => exceedsJsonDepth(entry, maxDepth, depth + 1));
+}

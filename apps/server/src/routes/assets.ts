@@ -11,6 +11,7 @@ import {
 } from '../lib/assets.js';
 import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES, PENDING_UPLOAD_TTL_HOURS } from '../lib/quotas.js';
 import { assetRateLimits } from '../security/rate-limits.js';
+import { escapeLikePattern } from '../security/validation.js';
 
 export const assetRoutes = new Hono<AppEnv>();
 
@@ -299,10 +300,10 @@ assetRoutes.delete('/:id', async (c) => {
       OR EXISTS (SELECT 1 FROM monster_portraits WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM npcs WHERE portrait_asset_id = ?)
       OR EXISTS (SELECT 1 FROM heroes WHERE portrait_asset_id = ? AND deleted_at IS NULL)
-      OR EXISTS (SELECT 1 FROM heroes WHERE data LIKE ? AND deleted_at IS NULL)
+      OR EXISTS (SELECT 1 FROM heroes WHERE data LIKE ? ESCAPE '\\' AND deleted_at IS NULL)
      LIMIT 1`,
   )
-    .bind(assetId, assetId, assetId, assetId, assetId, assetId, `%${assetId}%`)
+    .bind(assetId, assetId, assetId, assetId, assetId, assetId, `%${escapeLikePattern(assetId)}%`)
     .first<{ 1: number }>();
   if (linked) return c.json({ error: 'Asset is in use' }, 409);
 

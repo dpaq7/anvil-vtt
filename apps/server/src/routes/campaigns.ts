@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { ensureMcdmDemoCampaignForUser } from '../lib/demo-campaigns.js';
+import { campaignRateLimits } from '../security/rate-limits.js';
 
 export const campaignRoutes = new Hono<AppEnv>();
 
@@ -63,27 +64,29 @@ async function nextCampaignOrder(db: D1Database, table: 'modules' | 'game_sessio
   return (row?.max_idx ?? -1) + 1;
 }
 
-async function copySceneRows(db: D1Database, targetSessionId: string, scenes: SourceSceneRow[]): Promise<void> {
-  for (const [index, scene] of scenes.entries()) {
-    await db.prepare(
+function buildSceneInsertStatements(db: D1Database, targetSessionId: string, scenes: SourceSceneRow[]): D1PreparedStatement[] {
+  return scenes.map((scene, index) =>
+    db.prepare(
       'INSERT INTO scenes (id, game_session_id, title, type, data, order_index) VALUES (?, ?, ?, ?, ?, ?)',
-    )
-      .bind(crypto.randomUUID(), targetSessionId, scene.title, scene.type, scene.data ?? '{}', index)
-      .run();
-  }
+    ).bind(crypto.randomUUID(), targetSessionId, scene.title, scene.type, scene.data ?? '{}', index),
+  );
 }
 
-async function copyExistingModulesAndScenes(
+// Gather the INSERT statements that clone the selected modules/scenes into a new
+// campaign. Reads happen up front; the returned statements are executed together
+// in a single db.batch() so the clone is atomic (no partially-initialized campaign).
+async function collectCopyStatements(
   db: D1Database,
   userId: string,
   targetCampaignId: string,
   sourceModuleIds: string[],
   sourceSceneIds: string[],
-): Promise<void> {
+): Promise<D1PreparedStatement[]> {
   const uniqueModuleIds = [...new Set(sourceModuleIds.filter(Boolean))];
   const uniqueSceneIds = [...new Set(sourceSceneIds.filter(Boolean))];
   let moduleOrder = await nextCampaignOrder(db, 'modules', targetCampaignId);
   let sessionOrder = await nextCampaignOrder(db, 'game_sessions', targetCampaignId);
+  const statements: D1PreparedStatement[] = [];
 
   for (const sourceModuleId of uniqueModuleIds) {
     const module = await db.prepare(
@@ -98,11 +101,11 @@ async function copyExistingModulesAndScenes(
     if (!module) continue;
 
     const newModuleId = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO modules (id, campaign_id, name, description, order_index) VALUES (?, ?, ?, ?, ?)',
-    )
-      .bind(newModuleId, targetCampaignId, module.name, module.description ?? '', moduleOrder)
-      .run();
+    statements.push(
+      db.prepare(
+        'INSERT INTO modules (id, campaign_id, name, description, order_index) VALUES (?, ?, ?, ?, ?)',
+      ).bind(newModuleId, targetCampaignId, module.name, module.description ?? '', moduleOrder),
+    );
     moduleOrder += 1;
 
     const sourceSessions = await db.prepare(
@@ -116,11 +119,11 @@ async function copyExistingModulesAndScenes(
 
     for (const sourceSession of sourceSessions.results) {
       const newSessionId = crypto.randomUUID();
-      await db.prepare(
-        'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
-      )
-        .bind(newSessionId, targetCampaignId, newModuleId, sourceSession.name, sourceSession.description ?? '', sessionOrder)
-        .run();
+      statements.push(
+        db.prepare(
+          'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
+        ).bind(newSessionId, targetCampaignId, newModuleId, sourceSession.name, sourceSession.description ?? '', sessionOrder),
+      );
       sessionOrder += 1;
 
       const sourceScenes = await db.prepare(
@@ -132,7 +135,7 @@ async function copyExistingModulesAndScenes(
       )
         .bind(sourceSession.id)
         .all<SourceSceneRow>();
-      await copySceneRows(db, newSessionId, sourceScenes.results);
+      statements.push(...buildSceneInsertStatements(db, newSessionId, sourceScenes.results));
     }
   }
 
@@ -155,13 +158,15 @@ async function copyExistingModulesAndScenes(
 
   if (standaloneScenes.length > 0) {
     const newSessionId = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
-    )
-      .bind(newSessionId, targetCampaignId, null, 'Selected Scenes', '', sessionOrder)
-      .run();
-    await copySceneRows(db, newSessionId, standaloneScenes);
+    statements.push(
+      db.prepare(
+        'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
+      ).bind(newSessionId, targetCampaignId, null, 'Selected Scenes', '', sessionOrder),
+    );
+    statements.push(...buildSceneInsertStatements(db, newSessionId, standaloneScenes));
   }
+
+  return statements;
 }
 
 // List campaigns for current user (as director or member)
@@ -197,6 +202,8 @@ campaignRoutes.get('/', async (c) => {
 // Create campaign
 campaignRoutes.post('/', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await campaignRateLimits.write(c, user.id);
+  if (limited) return limited;
   const body = await c.req.json<CampaignCreateBody>();
 
   if (!body.name?.trim()) {
@@ -204,26 +211,26 @@ campaignRoutes.post('/', async (c) => {
   }
 
   const id = crypto.randomUUID();
-  await c.env.DB.prepare(
-    'INSERT INTO campaigns (id, director_id, name, description) VALUES (?, ?, ?, ?)',
-  )
-    .bind(id, user.id, body.name.trim(), body.description?.trim() ?? '')
-    .run();
+  const db = c.env.DB;
 
-  // Add director as campaign member
-  await c.env.DB.prepare(
-    'INSERT INTO campaign_members (campaign_id, user_id, role) VALUES (?, ?, ?)',
-  )
-    .bind(id, user.id, 'director')
-    .run();
-
-  await copyExistingModulesAndScenes(
-    c.env.DB,
+  // Reads (membership-checked source lookups) happen first, then every write is
+  // executed in a single atomic batch so a failure mid-clone cannot leave an
+  // orphaned, partially-initialized campaign behind.
+  const copyStatements = await collectCopyStatements(
+    db,
     user.id,
     id,
     Array.isArray(body.sourceModuleIds) ? body.sourceModuleIds : [],
     Array.isArray(body.sourceSceneIds) ? body.sourceSceneIds : [],
   );
+
+  await db.batch([
+    db.prepare('INSERT INTO campaigns (id, director_id, name, description) VALUES (?, ?, ?, ?)')
+      .bind(id, user.id, body.name.trim(), body.description?.trim() ?? ''),
+    db.prepare('INSERT INTO campaign_members (campaign_id, user_id, role) VALUES (?, ?, ?)')
+      .bind(id, user.id, 'director'),
+    ...copyStatements,
+  ]);
 
   return c.json({ id }, 201);
 });
@@ -301,6 +308,38 @@ campaignRoutes.get('/:id', async (c) => {
     .all();
 
   return c.json({ campaign, members: members.results, role: member['role'] });
+});
+
+// Remove a member from a campaign (director only). This revokes membership,
+// drops the user from this campaign's sessions, and invalidates any unused
+// WebSocket tokens so a removed player loses access immediately.
+campaignRoutes.delete('/:campaignId/members/:userId', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const campaignId = c.req.param('campaignId');
+  const targetUserId = c.req.param('userId');
+
+  const campaign = await c.env.DB.prepare(
+    'SELECT director_id FROM campaigns WHERE id = ? AND deleted_at IS NULL',
+  )
+    .bind(campaignId)
+    .first<{ director_id: string }>();
+  if (!campaign) return c.json({ error: 'Not found' }, 404);
+  if (campaign.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  if (targetUserId === campaign.director_id) return c.json({ error: 'Cannot remove the campaign director' }, 400);
+
+  const db = c.env.DB;
+  await db.batch([
+    db.prepare('DELETE FROM campaign_members WHERE campaign_id = ? AND user_id = ?')
+      .bind(campaignId, targetUserId),
+    db.prepare(
+      `DELETE FROM session_participants
+       WHERE user_id = ? AND game_session_id IN (SELECT id FROM game_sessions WHERE campaign_id = ?)`,
+    ).bind(targetUserId, campaignId),
+    db.prepare('DELETE FROM ws_tokens WHERE user_id = ? AND campaign_id = ?')
+      .bind(targetUserId, campaignId),
+  ]);
+
+  return c.json({ ok: true });
 });
 
 // Update campaign

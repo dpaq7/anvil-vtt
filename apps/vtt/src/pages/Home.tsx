@@ -12,33 +12,15 @@ import {
   Clapperboard,
   FileText,
   FolderKanban,
-  GripVertical,
   Image as ImageIcon,
   Loader2,
   NotebookText,
   PlayCircle,
   Plus,
-  ScrollText,
-  Shield,
   User,
   Users,
   X,
 } from 'lucide-react';
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, useSidebar } from '@anvil/ui';
 import type { HeroSummary, Note } from '@anvil/types';
 import { api } from '../lib/api.js';
@@ -62,11 +44,12 @@ const ONBOARDING_CARD_ESTIMATED_HEIGHT = 260;
 const ONBOARDING_VIEWPORT_INSET = 16;
 const ONBOARDING_TARGET_PADDING = 8;
 const DASHBOARD_SECTION_GRID_STYLE: CSSProperties = {
-  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 30rem), 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 32rem), 1fr))',
 };
-const DASHBOARD_CARD_GRID_STYLE: CSSProperties = {
-  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr))',
-};
+const DASHBOARD_SECTION_CLASS =
+  'min-w-0 rounded-xl border border-zinc-800/65 bg-zinc-950/50 p-4 shadow-sm shadow-black/10 backdrop-blur-md';
+const DASHBOARD_ROW_CARD_CLASS =
+  'rounded-none border-0 bg-transparent shadow-none transition-colors hover:bg-zinc-900/35';
 
 interface AssetItem {
   id: string;
@@ -101,15 +84,6 @@ interface RecentCharacter {
   badge: string;
   date: string | null;
   to: string;
-}
-
-interface StatConfig {
-  id: string;
-  label: string;
-  value: string | number;
-  detail: string;
-  icon: LucideIcon;
-  tone: 'cyan' | 'amber' | 'green' | 'rose';
 }
 
 const INITIAL_DASHBOARD: DashboardState = {
@@ -211,14 +185,7 @@ const DASHBOARD_ONBOARDING_STEPS: Record<DashboardRoleKey, OnboardingStep[]> = {
       id: 'dashboard-actions',
       target: 'dashboard-actions',
       title: 'Quick actions',
-      description: 'Jump straight to Live, Campaigns, Assets, or Notes from these shortcut buttons.',
-      placement: 'bottom',
-    },
-    {
-      id: 'dashboard-stats',
-      target: 'dashboard-stats',
-      title: 'Prep snapshot',
-      description: 'These counters show live rooms, campaign volume, prepared scenes, and uploaded assets.',
+      description: 'Open the Live workspace from this primary dashboard action.',
       placement: 'bottom',
     },
     {
@@ -279,13 +246,6 @@ const DASHBOARD_ONBOARDING_STEPS: Record<DashboardRoleKey, OnboardingStep[]> = {
       target: 'dashboard-actions',
       title: 'Quick actions',
       description: 'Jump to live rooms, heroes, join codes, or notes from these shortcut buttons.',
-      placement: 'bottom',
-    },
-    {
-      id: 'dashboard-stats',
-      target: 'dashboard-stats',
-      title: 'Play snapshot',
-      description: 'These counters show live rooms, joined campaigns, heroes, and note activity.',
       placement: 'bottom',
     },
     {
@@ -355,33 +315,6 @@ interface DashboardSectionConfig {
   to?: string;
   className?: string;
   body: ReactNode;
-}
-
-function mergeOrder(savedOrder: string[], currentIds: string[]) {
-  const current = new Set(currentIds);
-  return [
-    ...savedOrder.filter((id) => current.has(id)),
-    ...currentIds.filter((id) => !savedOrder.includes(id)),
-  ];
-}
-
-function readStoredOrder(storageKey: string) {
-  try {
-    const value = localStorage.getItem(storageKey);
-    if (!value) return [];
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStoredOrder(storageKey: string, order: string[]) {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(order));
-  } catch {
-    /* noop */
-  }
 }
 
 function onboardingStorageKey(userId: string | undefined, roleKey: DashboardRoleKey) {
@@ -473,40 +406,6 @@ function getCalloutPosition(rect: OnboardingRect | null, placement: OnboardingPl
   };
 }
 
-function useSortableOrder(storageKey: string, defaultIds: string[]) {
-  const defaultSignature = defaultIds.join('|');
-  const [storedOrder, setStoredOrder] = useState<string[]>(() => readStoredOrder(storageKey));
-
-  useEffect(() => {
-    setStoredOrder(readStoredOrder(storageKey));
-  }, [storageKey]);
-
-  const orderedIds = useMemo(
-    () => mergeOrder(storedOrder, defaultIds),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storedOrder, defaultSignature],
-  );
-
-  useEffect(() => {
-    writeStoredOrder(storageKey, orderedIds);
-  }, [storageKey, orderedIds]);
-
-  const move = useCallback((activeId: string, overId: string) => {
-    if (activeId === overId) return;
-    setStoredOrder((current) => {
-      const merged = mergeOrder(current, defaultIds);
-      const oldIndex = merged.indexOf(activeId);
-      const newIndex = merged.indexOf(overId);
-      if (oldIndex === -1 || newIndex === -1) return current;
-      const next = arrayMove(merged, oldIndex, newIndex);
-      writeStoredOrder(storageKey, next);
-      return next;
-    });
-  }, [defaultIds, storageKey]);
-
-  return { orderedIds, move };
-}
-
 function toTimestamp(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Date.parse(value.replace(' ', 'T'));
@@ -551,147 +450,49 @@ function livePath(session: CampaignSession) {
   return session.status === 'lobby' ? `/app/session/${session.id}/lobby` : `/app/session/${session.id}`;
 }
 
-function DragHandle({ label, className, attributes, listeners }: {
-  label: string;
-  className?: string;
-  attributes: ReturnType<typeof useSortable>['attributes'];
-  listeners: ReturnType<typeof useSortable>['listeners'];
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      className={cn(
-        'flex size-6 shrink-0 cursor-grab items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-950/80 text-zinc-500 opacity-70 shadow-sm shadow-black/20 transition-colors hover:border-zinc-500 hover:text-zinc-200 active:cursor-grabbing',
-        className,
-      )}
-      {...attributes}
-      {...listeners}
-    >
-      <GripVertical size={14} />
-    </button>
-  );
-}
-
-function SortableCard({ id, children }: { id: string; children: ReactNode }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn('flex min-w-0 gap-1.5', isDragging && 'relative z-20 opacity-70')}
-    >
-      <DragHandle label="Move card" attributes={attributes} listeners={listeners} className="mt-2.5" />
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
-  );
-}
-
-function SortableSection({ section }: { section: DashboardSectionConfig }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: section.id });
-
+function DashboardSection({ section }: { section: DashboardSectionConfig }) {
   return (
     <section
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
       data-onboarding={`dashboard-section-${section.id}`}
-      className={cn(section.className, isDragging && 'relative z-20 opacity-70')}
+      className={cn(DASHBOARD_SECTION_CLASS, section.className)}
     >
-      <SectionHeader
-        eyebrow={section.eyebrow}
-        title={section.title}
-        to={section.to}
-        dragHandle={<DragHandle label={`Move ${section.title} section`} attributes={attributes} listeners={listeners} />}
-      />
+      <SectionHeader eyebrow={section.eyebrow} title={section.title} to={section.to} />
       {section.body}
     </section>
   );
 }
 
-function SortableGrid<T extends { id: string }>({
-  storageKey,
+function DashboardList<T extends { id: string }>({
   items,
   className,
   emptyState,
   renderItem,
 }: {
-  storageKey: string;
   items: T[];
   className?: string;
   emptyState: ReactNode;
   renderItem: (item: T) => ReactNode;
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  const defaultIds = useMemo(() => items.map((item) => item.id), [items]);
-  const { orderedIds, move } = useSortableOrder(storageKey, defaultIds);
-  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
-  const orderedItems = orderedIds
-    .map((id) => itemMap.get(id))
-    .filter((item): item is T => Boolean(item));
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    move(String(active.id), String(over.id));
-  }, [move]);
-
   if (items.length === 0) return <>{emptyState}</>;
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
-        <div className={cn('grid gap-2', className)} style={DASHBOARD_CARD_GRID_STYLE}>
-          {orderedItems.map((item) => (
-            <SortableCard key={item.id} id={item.id}>
-              {renderItem(item)}
-            </SortableCard>
-          ))}
+    <div className={cn('overflow-hidden rounded-lg border border-zinc-800/55 bg-zinc-950/30', className)}>
+      {items.map((item, index) => (
+        <div key={item.id} className={cn(index > 0 && 'border-t border-zinc-800/55')}>
+          {renderItem(item)}
         </div>
-      </SortableContext>
-    </DndContext>
+      ))}
+    </div>
   );
 }
 
-function SortableSections({ storageKey, sections }: { storageKey: string; sections: DashboardSectionConfig[] }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  const defaultIds = useMemo(() => sections.map((section) => section.id), [sections]);
-  const { orderedIds, move } = useSortableOrder(storageKey, defaultIds);
-  const sectionMap = useMemo(() => new Map(sections.map((section) => [section.id, section])), [sections]);
-  const orderedSections = orderedIds
-    .map((id) => sectionMap.get(id as DashboardSectionId))
-    .filter((section): section is DashboardSectionConfig => Boolean(section));
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    move(String(active.id), String(over.id));
-  }, [move]);
-
+function DashboardSections({ sections }: { sections: DashboardSectionConfig[] }) {
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
-        <div className="grid gap-5" style={DASHBOARD_SECTION_GRID_STYLE}>
-          {orderedSections.map((section) => (
-            <SortableSection key={section.id} section={section} />
-          ))}
-        </div>
-      </SortableContext>
-    </DndContext>
+    <div className="grid gap-5" style={DASHBOARD_SECTION_GRID_STYLE}>
+      {sections.map((section) => (
+        <DashboardSection key={section.id} section={section} />
+      ))}
+    </div>
   );
 }
 
@@ -702,7 +503,7 @@ function EmptyState({ icon: Icon, title, detail, action }: {
   action?: { label: string; to: string; icon: LucideIcon };
 }) {
   return (
-    <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-5 text-center shadow-lg shadow-black/20 backdrop-blur-sm">
+    <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800/70 bg-zinc-950/30 px-4 py-5 text-center">
       <Icon className="size-6 text-zinc-500" />
       <p className="mt-2 text-sm font-semibold text-zinc-300">{title}</p>
       <p className="mt-1 max-w-sm text-xs leading-5 text-zinc-500">{detail}</p>
@@ -722,20 +523,15 @@ function SectionHeader({
   title,
   eyebrow,
   to,
-  dragHandle,
 }: {
   title: string;
   eyebrow: string;
   to?: string;
-  dragHandle?: ReactNode;
 }) {
   return (
-    <div className="mb-2.5 flex items-end justify-between gap-3">
+    <div className="mb-3 flex items-end justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{eyebrow}</p>
-          {dragHandle}
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{eyebrow}</p>
         <h2 className="mt-1 text-sm font-semibold text-zinc-100">{title}</h2>
       </div>
       {to && (
@@ -744,41 +540,6 @@ function SectionHeader({
           <ArrowRight size={13} />
         </Link>
       )}
-    </div>
-  );
-}
-
-function StatStripItem({ stat }: { stat: StatConfig }) {
-  const Icon = stat.icon;
-  const toneClass = {
-    cyan: 'dashboard-tone-cyan',
-    amber: 'dashboard-tone-amber',
-    green: 'dashboard-tone-green',
-    rose: 'dashboard-tone-rose',
-  }[stat.tone];
-
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-md border border-zinc-800/75 bg-zinc-950/65 px-3 py-2 shadow-sm shadow-black/20 backdrop-blur-sm">
-      <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-md border', toneClass)}>
-        <Icon size={15} />
-      </div>
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <p className="shrink-0 text-lg font-semibold leading-none text-zinc-50">{stat.value}</p>
-          <p className="truncate text-xs font-medium text-zinc-300">{stat.label}</p>
-        </div>
-        <p className="mt-0.5 truncate text-[11px] leading-none text-zinc-500">{stat.detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function DashboardStatsRow({ stats }: { stats: StatConfig[] }) {
-  return (
-    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Dashboard stats" data-onboarding="dashboard-stats">
-      {stats.map((stat) => (
-        <StatStripItem key={stat.id} stat={stat} />
-      ))}
     </div>
   );
 }
@@ -1035,7 +796,7 @@ function CampaignCard({ campaign, isDirector }: { campaign: CampaignData; isDire
   const memberCount = campaign.members.filter((member) => member.role === 'player').length;
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-colors hover:border-zinc-700">
+    <Card className={DASHBOARD_ROW_CARD_CLASS}>
       <CardHeader className="p-3 pb-1.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -1075,7 +836,7 @@ function CampaignCard({ campaign, isDirector }: { campaign: CampaignData; isDire
 
 function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirector: boolean }) {
   return (
-    <Card className="dashboard-border-green bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className={DASHBOARD_ROW_CARD_CLASS}>
       <CardContent className="flex items-center justify-between gap-3 p-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -1100,7 +861,7 @@ function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirector: bo
 
 function CharacterCard({ character }: { character: RecentCharacter }) {
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className={DASHBOARD_ROW_CARD_CLASS}>
       <CardContent className="flex items-center gap-2.5 p-3">
         <div className="dashboard-tone-amber flex size-9 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold">
           {initials(character.name)}
@@ -1125,7 +886,7 @@ function CharacterCard({ character }: { character: RecentCharacter }) {
 function NoteCard({ note }: { note: DashboardNote }) {
   const preview = plainPreview(note.content);
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className={DASHBOARD_ROW_CARD_CLASS}>
       <CardContent className="p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -1159,7 +920,7 @@ function AssetCard({ asset, canOpenAssets }: { asset: AssetItem; canOpenAssets: 
   );
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className={DASHBOARD_ROW_CARD_CLASS}>
       {canOpenAssets ? <Link to="/app/assets">{content}</Link> : content}
     </Card>
   );
@@ -1304,94 +1065,9 @@ export function Home() {
       .slice(0, MAX_LIST_ITEMS);
   }, [data.campaigns, data.heroes, isDirector]);
 
-  const stats = useMemo<StatConfig[]>(() => {
-    const playerCount = new Set(
-      data.campaigns.flatMap((campaign) =>
-        campaign.members
-          .filter((member) => member.role === 'player')
-          .map((member) => member.user_id),
-      ),
-    ).size;
-    const sceneCount = data.campaigns.reduce((total, campaign) => total + campaign.scenes.length, 0);
-    const sessionCount = data.campaigns.reduce((total, campaign) => total + campaign.sessions.length, 0);
-
-    return isDirector
-      ? [
-          {
-            id: 'director-live',
-            label: 'Live tables',
-            value: liveTables.length,
-            detail: liveTables.length > 0 ? 'Ready to rejoin' : 'No active rooms',
-            icon: Clapperboard,
-            tone: 'green',
-          },
-          {
-            id: 'director-campaigns',
-            label: 'Campaigns',
-            value: data.campaigns.length,
-            detail: `${sessionCount} sessions prepared`,
-            icon: FolderKanban,
-            tone: 'cyan',
-          },
-          {
-            id: 'director-scenes',
-            label: 'Scenes ready',
-            value: sceneCount,
-            detail: `${playerCount} player characters`,
-            icon: ScrollText,
-            tone: 'amber',
-          },
-          {
-            id: 'director-assets',
-            label: 'Assets added',
-            value: data.assets.length,
-            detail: 'Uploaded files',
-            icon: Boxes,
-            tone: 'rose',
-          },
-        ]
-      : [
-          {
-            id: 'player-live',
-            label: 'Live tables',
-            value: liveTables.length,
-            detail: liveTables.length > 0 ? 'Ready to join' : 'No active rooms',
-            icon: PlayCircle,
-            tone: 'green',
-          },
-          {
-            id: 'player-campaigns',
-            label: 'Campaigns',
-            value: data.campaigns.length,
-            detail: 'Tables joined',
-            icon: Shield,
-            tone: 'cyan',
-          },
-          {
-            id: 'player-characters',
-            label: 'Characters',
-            value: data.heroes.length,
-            detail: 'Heroes in your roster',
-            icon: User,
-            tone: 'amber',
-          },
-          {
-            id: 'player-notes',
-            label: 'Notes',
-            value: data.notes.length,
-            detail: 'Personal and campaign notes',
-            icon: NotebookText,
-            tone: 'rose',
-          },
-        ];
-  }, [data.assets.length, data.campaigns, data.heroes.length, data.notes.length, isDirector, liveTables.length]);
-
   const quickActions = isDirector
     ? [
-        { label: 'Go Live', to: '/app/live', icon: Clapperboard },
-        { label: 'Campaigns', to: '/app/campaigns', icon: FolderKanban },
-        { label: 'Assets', to: '/app/assets', icon: Boxes },
-        { label: 'Notes', to: '/app/notes', icon: NotebookText },
+        { label: 'Open Live', to: '/app/live', icon: Clapperboard },
       ]
     : [
         { label: 'Live', to: '/app/live', icon: PlayCircle },
@@ -1407,8 +1083,7 @@ export function Home() {
       title: isDirector ? 'Sessions In Progress' : 'Available Sessions',
       to: '/app/live',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:live`}
+        <DashboardList
           items={liveTableItems}
           emptyState={
             <EmptyState
@@ -1428,8 +1103,7 @@ export function Home() {
       title: isDirector ? 'Campaign Activity' : 'Joined Tables',
       to: isDirector ? '/app/campaigns' : '/app/live',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:campaigns`}
+        <DashboardList
           items={recentCampaigns}
           emptyState={
             <EmptyState
@@ -1453,8 +1127,7 @@ export function Home() {
       title: 'Notebook Updates',
       to: '/app/notes',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:notes`}
+        <DashboardList
           items={data.notes.slice(0, MAX_LIST_ITEMS)}
           emptyState={
             <EmptyState
@@ -1478,8 +1151,7 @@ export function Home() {
       title: isDirector ? 'Player Roster' : 'Hero Roster',
       to: isDirector ? '/app/live' : '/app/heroes',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:characters`}
+        <DashboardList
           items={recentCharacters}
           emptyState={
             <EmptyState
@@ -1499,8 +1171,7 @@ export function Home() {
       title: 'Uploads',
       to: isDirector ? '/app/assets' : undefined,
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:assets`}
+        <DashboardList
           items={data.assets.slice(0, MAX_LIST_ITEMS)}
           emptyState={
             <EmptyState
@@ -1514,7 +1185,7 @@ export function Home() {
         />
       ),
     },
-  ], [data.assets, data.notes, isDirector, liveTableItems, recentCampaigns, recentCharacters, roleKey]);
+  ], [data.assets, data.notes, isDirector, liveTableItems, recentCampaigns, recentCharacters]);
 
   if (loading) {
     return (
@@ -1602,9 +1273,7 @@ export function Home() {
           </div>
         )}
 
-        <DashboardStatsRow stats={stats} />
-
-        <SortableSections storageKey={`anvil-dashboard:${roleKey}:sections`} sections={dashboardSections} />
+        <DashboardSections sections={dashboardSections} />
       </div>
       <DashboardOnboarding roleKey={roleKey} userId={user?.id} />
     </div>

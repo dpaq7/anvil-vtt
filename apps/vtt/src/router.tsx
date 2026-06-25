@@ -117,6 +117,11 @@ const SessionPage = lazyWithChunkReload(() =>
     default: module.SessionPage,
   })),
 );
+const StageDisplayPage = lazyWithChunkReload(() =>
+  import('./pages/session/StageDisplayPage.js').then((module) => ({
+    default: module.StageDisplayPage,
+  })),
+);
 const PhoneSessionPage = lazyWithChunkReload(() =>
   import('./pages/session/PhoneSessionPage.js').then((module) => ({
     default: module.PhoneSessionPage,
@@ -277,6 +282,13 @@ export const router = createBrowserRouter([
   {
     path: '/app/session/:id',
     element: <ProtectedRoute>{routeChunk(<SessionPage />)}</ProtectedRoute>,
+    errorElement: routeErrorElement,
+  },
+  {
+    path: '/app/session/:id/display',
+    element: (
+      <ProtectedRoute>{routeChunk(<StageDisplayPage />)}</ProtectedRoute>
+    ),
     errorElement: routeErrorElement,
   },
   {

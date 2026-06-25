@@ -23,6 +23,7 @@ import { monsterPortraitRoutes } from './routes/monster-portraits.js';
 import { sceneImportRoutes } from './routes/scene-imports.js';
 import { bugReportRoutes } from './routes/bug-reports.js';
 import { applyGlobalSecurity } from './security/index.js';
+import { hashToken } from './security/tokens.js';
 
 const app = new Hono<AppEnv>();
 
@@ -57,16 +58,19 @@ app.get('/api/sessions/:id/ws', async (c) => {
     return c.json({ error: 'Missing token' }, 401);
   }
 
+  // Tokens are stored hashed; hash the presented token before lookup.
+  const tokenHash = await hashToken(token);
+
   // Validate token
   const row = await c.env.DB.prepare(
     'SELECT * FROM ws_tokens WHERE id = ? AND session_id = ? AND expires_at > datetime(\'now\')',
   )
-    .bind(token, sessionId)
+    .bind(tokenHash, sessionId)
     .first<{ user_id: string; session_id: string; campaign_id: string; role: string; hero_id: string | null }>();
   if (!row) return c.json({ error: 'Invalid or expired token' }, 401);
 
   // Delete used token (single-use)
-  await c.env.DB.prepare('DELETE FROM ws_tokens WHERE id = ?').bind(token).run();
+  await c.env.DB.prepare('DELETE FROM ws_tokens WHERE id = ?').bind(tokenHash).run();
 
   // Look up user details
   const user = await c.env.DB.prepare('SELECT id, username, avatar_url FROM users WHERE id = ?')

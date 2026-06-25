@@ -48,6 +48,13 @@ import type {
   InventoryItemData,
 } from '../protocol.js';
 import { WS_LIMITS } from '../policy/limits.js';
+import {
+  redactStateForPlayer,
+  redactNegotiationLive,
+  parseFogZones,
+  isEntityHiddenFromPlayers,
+  type FogZone,
+} from './session-redaction.js';
 
 interface ConnectionMeta {
   userId: string;
@@ -937,6 +944,36 @@ export class SessionRoom extends DurableObject<Env> {
   private hydratePromise: Promise<void> | null = null;
 
   /**
+   * Per-connection token-bucket throttle for inbound WebSocket messages.
+   * Capacity is the burst allowance (e.g. dragging a token streams positions);
+   * refill is the sustained rate. State is in-memory only and resets after
+   * hibernation, which is acceptable — a flood keeps the DO warm anyway.
+   */
+  private wsRateState = new WeakMap<WebSocket, { tokens: number; last: number; notified: boolean }>();
+  private static readonly WS_RATE_CAPACITY = 60;
+  private static readonly WS_RATE_REFILL_PER_SEC = 30;
+
+  /** Returns true if the message is within the rate budget; consumes one token when so. */
+  private allowWsMessage(ws: WebSocket): boolean {
+    const now = Date.now();
+    const state = this.wsRateState.get(ws) ?? { tokens: SessionRoom.WS_RATE_CAPACITY, last: now, notified: false };
+    const elapsedSeconds = Math.max(0, (now - state.last) / 1000);
+    state.tokens = Math.min(
+      SessionRoom.WS_RATE_CAPACITY,
+      state.tokens + elapsedSeconds * SessionRoom.WS_RATE_REFILL_PER_SEC,
+    );
+    state.last = now;
+    if (state.tokens < 1) {
+      this.wsRateState.set(ws, state);
+      return false;
+    }
+    state.tokens -= 1;
+    state.notified = false;
+    this.wsRateState.set(ws, state);
+    return true;
+  }
+
+  /**
    * Recover connection metadata from a WebSocket's hibernation tag.
    * This works both when the Map was populated in handleWebSocket (same tick)
    * and after hibernation wake (tag persists, Map is gone).
@@ -1079,6 +1116,19 @@ export class SessionRoom extends DurableObject<Env> {
     let meta = this.getMetaForSocket(ws);
     if (!meta) return;
 
+    // Per-connection flood protection. Drop messages that exceed the budget,
+    // notifying the client at most once per throttled burst so the error itself
+    // cannot be used as an amplification vector.
+    if (!this.allowWsMessage(ws)) {
+      const state = this.wsRateState.get(ws);
+      if (state && !state.notified) {
+        state.notified = true;
+        this.wsRateState.set(ws, state);
+        this.sendTo(ws, { type: 'error', code: 'RATE_LIMITED', message: 'Too many messages — slow down' });
+      }
+      return;
+    }
+
     // Recover sessionId after hibernation wake (in-memory fields are lost)
     if (!this.sessionId) {
       this.sessionId = meta.sessionId;
@@ -1198,7 +1248,7 @@ export class SessionRoom extends DurableObject<Env> {
           await this.persistActiveSceneSnapshot();
         }
         this.broadcast({ type: 'scene_changed', sceneId: msg.sceneId });
-        if (this.sessionState) this.broadcast({ type: 'state', state: this.sessionState });
+        this.broadcastState();
         break;
 
       case 'revert_scene':
@@ -1217,8 +1267,9 @@ export class SessionRoom extends DurableObject<Env> {
         if (this.sessionState) {
           this.sessionState.entities.push(msg.entity);
         }
-        // Don't exclude sender — Director needs to see the entity they just created
-        this.broadcast({ type: 'entity_created', entity: msg.entity });
+        // Don't exclude sender — Director needs to see the entity they just created.
+        // A non-hero entity created inside fog is delivered only to directors.
+        this.broadcastForEntity(msg.entity.id, { type: 'entity_created', entity: msg.entity });
         break;
 
       case 'update_entity':
@@ -1235,7 +1286,7 @@ export class SessionRoom extends DurableObject<Env> {
           if (!changes) return;
 
           Object.assign(entity, changes);
-          this.broadcast({ type: 'entity_updated', entityId: msg.entityId, changes }, ws);
+          this.broadcastForEntity(msg.entityId, { type: 'entity_updated', entityId: msg.entityId, changes }, ws);
         }
         break;
 
@@ -1248,11 +1299,24 @@ export class SessionRoom extends DurableObject<Env> {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
           return;
         }
-        if (this.sessionState) {
-          this.sessionState.entities = this.sessionState.entities.filter((e) => e.id !== msg.entityId);
+        {
+          // Capture fog visibility before removal so a hidden entity's deletion
+          // is not announced to players (who never knew it existed).
+          const fogZones = this.getActiveFogZones();
+          const target = this.sessionState?.entities.find((e) => e.id === msg.entityId);
+          const wasHidden = fogZones.length > 0 && target ? isEntityHiddenFromPlayers(target, fogZones) : false;
+          if (this.sessionState) {
+            this.sessionState.entities = this.sessionState.entities.filter((e) => e.id !== msg.entityId);
+          }
+          const deletedMsg: ServerMessage = { type: 'entity_deleted', entityId: msg.entityId };
+          // Don't exclude sender — Director needs to see their own deletion
+          if (wasHidden) {
+            this.sendToRole('director', deletedMsg);
+            this.scheduleActiveSceneSnapshot();
+          } else {
+            this.broadcast(deletedMsg);
+          }
         }
-        // Don't exclude sender — Director needs to see their own deletion
-        this.broadcast({ type: 'entity_deleted', entityId: msg.entityId });
         break;
 
       case 'move_token': {
@@ -1268,10 +1332,31 @@ export class SessionRoom extends DurableObject<Env> {
           return;
         }
 
+        const fogZones = this.getActiveFogZones();
+        const wasHidden = fogZones.length > 0 ? isEntityHiddenFromPlayers(entity, fogZones) : false;
+
         const bounded = this.clampToActiveBattleGrid(msg.x, msg.y);
         entity.x = bounded.x;
         entity.y = bounded.y;
-        this.broadcast({ type: 'entity_moved', entityId: msg.entityId, x: bounded.x, y: bounded.y });
+
+        const nowHidden = fogZones.length > 0 ? isEntityHiddenFromPlayers(entity, fogZones) : false;
+        const movedMsg: ServerMessage = { type: 'entity_moved', entityId: msg.entityId, x: bounded.x, y: bounded.y };
+
+        if (!wasHidden && !nowHidden) {
+          this.broadcast(movedMsg);
+        } else {
+          // Directors always see the move.
+          this.sendToRole('director', movedMsg);
+          if (wasHidden && !nowHidden) {
+            // Emerged from fog — players learn about the entity now.
+            this.sendToRole('player', { type: 'entity_created', entity });
+          } else if (!wasHidden && nowHidden) {
+            // Entered fog — players lose sight of it.
+            this.sendToRole('player', { type: 'entity_deleted', entityId: msg.entityId });
+          }
+          // wasHidden && nowHidden: players never had it; nothing to send.
+          this.scheduleActiveSceneSnapshot();
+        }
         break;
       }
 
@@ -1523,7 +1608,62 @@ export class SessionRoom extends DurableObject<Env> {
     await this.ensureHydrated();
     if (this.sessionState) {
       this.sessionState.participants = await this.getParticipantList();
-      this.sendTo(ws, { type: 'state', state: this.sessionState });
+      const meta = this.getMetaForSocket(ws);
+      const state = meta?.role === 'director'
+        ? this.sessionState
+        : redactStateForPlayer(this.sessionState);
+      this.sendTo(ws, { type: 'state', state });
+    }
+  }
+
+  /**
+   * Broadcast the full session state to every connection, redacting
+   * director-only secrets (fog-hidden entities, unrevealed negotiation
+   * motivations/pitfalls) for player recipients.
+   */
+  private broadcastState(): void {
+    if (!this.sessionState) return;
+    const fullState = this.sessionState;
+    let playerState: SessionState | null = null;
+    for (const { ws, meta } of this.getConnections()) {
+      if (meta.role === 'director') {
+        this.sendTo(ws, { type: 'state', state: fullState });
+      } else {
+        if (!playerState) playerState = redactStateForPlayer(fullState);
+        this.sendTo(ws, { type: 'state', state: playerState });
+      }
+    }
+  }
+
+  /** Fog zones for the currently active scene, used for player-side entity visibility. */
+  private getActiveFogZones(): FogZone[] {
+    if (!this.sessionState) return [];
+    const activeScene = this.sessionState.scenes.find((scene) => scene.id === this.sessionState?.activeSceneId);
+    return parseFogZones(activeScene?.data);
+  }
+
+  /**
+   * Broadcast a message that concerns a single entity. If that entity is hidden
+   * from players (a non-hero token inside fog), the message is delivered only to
+   * director connections so the entity's existence and state never reach players.
+   */
+  private broadcastForEntity(entityId: string, msg: ServerMessage, exclude?: WebSocket): void {
+    const fogZones = this.getActiveFogZones();
+    const entity = this.sessionState?.entities.find((candidate) => String(candidate.id) === String(entityId));
+    const hidden = fogZones.length > 0 && entity ? isEntityHiddenFromPlayers(entity, fogZones) : false;
+    if (!hidden) {
+      this.broadcast(msg, exclude);
+      return;
+    }
+    this.sendToRole('director', msg, exclude);
+    if (this.shouldSnapshotAfterBroadcast(msg)) this.scheduleActiveSceneSnapshot();
+  }
+
+  /** Send a message only to connections with the given role. */
+  private sendToRole(role: 'director' | 'player', msg: ServerMessage, exclude?: WebSocket): void {
+    for (const { ws, meta } of this.getConnections()) {
+      if (ws === exclude) continue;
+      if (meta.role === role) this.sendTo(ws, msg);
     }
   }
 
@@ -1564,11 +1704,20 @@ export class SessionRoom extends DurableObject<Env> {
         if (typeof s.data === 'string') {
           try { preparedData = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
         }
-        preparedData = await this.hydrateSceneMedia(s.type, preparedData, session.campaign_id);
         const snapshot = this.parseSceneSnapshot(s.snapshot);
-        if (snapshot?.data) {
-          snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
-          snapshot.data = this.applyPreparedSceneMediaFallbacks(s.type, snapshot.data, preparedData);
+        // Media hydration can fail per-scene (missing/corrupt asset metadata). Degrade
+        // gracefully so one bad scene never aborts the whole session load.
+        try {
+          preparedData = await this.hydrateSceneMedia(s.type, preparedData, session.campaign_id);
+          if (snapshot?.data) {
+            snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
+            snapshot.data = this.applyPreparedSceneMediaFallbacks(s.type, snapshot.data, preparedData);
+          }
+        } catch (error) {
+          console.error('Scene media hydration failed; using un-hydrated scene data', {
+            sceneId: s.id,
+            error,
+          });
         }
         const ref = {
           id: s.id,
@@ -1968,7 +2117,7 @@ export class SessionRoom extends DurableObject<Env> {
     this.replaceSceneEntities(targetSceneId);
     this.initializeSceneLiveState(targetSceneId, false);
     this.broadcast({ type: 'scene_reverted', sceneId: targetSceneId });
-    this.broadcast({ type: 'state', state: this.sessionState });
+    this.broadcastState();
   }
 
   private buildActiveSceneSnapshot(scene: HydratedSceneRef): SceneLiveSnapshot {
@@ -3199,7 +3348,7 @@ export class SessionRoom extends DurableObject<Env> {
     }
     const after = Math.max(0, before - finalAmount);
     entity['currentStamina'] = after;
-    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { currentStamina: after } });
+    this.broadcastForEntity(String(entity['id']), { type: 'entity_updated', entityId: String(entity['id']), changes: { currentStamina: after } });
     effects.push({
       kind: 'damage',
       entityId: String(entity['id']),
@@ -3219,7 +3368,7 @@ export class SessionRoom extends DurableObject<Env> {
     const before = entity['currentStamina'];
     const after = Math.min(entity['maxStamina'], before + Math.max(0, Math.floor(amount)));
     entity['currentStamina'] = after;
-    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { currentStamina: after } });
+    this.broadcastForEntity(String(entity['id']), { type: 'entity_updated', entityId: String(entity['id']), changes: { currentStamina: after } });
     effects.push({
       kind: 'healing',
       entityId: String(entity['id']),
@@ -3257,7 +3406,7 @@ export class SessionRoom extends DurableObject<Env> {
     }
 
     entity['conditions'] = next;
-    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
+    this.broadcastForEntity(String(entity['id']), { type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
     effects.push({
       kind: 'condition-applied',
       entityId: String(entity['id']),
@@ -3276,7 +3425,7 @@ export class SessionRoom extends DurableObject<Env> {
     if (!condition) return;
     const next = this.getEntityConditions(entity).filter((candidate) => candidate !== condition);
     entity['conditions'] = next;
-    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
+    this.broadcastForEntity(String(entity['id']), { type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
     effects.push({
       kind: 'condition-removed',
       entityId: String(entity['id']),
@@ -3375,7 +3524,7 @@ export class SessionRoom extends DurableObject<Env> {
     const remaining = conditions.filter((condition) => !ConditionLogic.endsAtEndOfTurn(condition));
     if (remaining.length !== conditions.length) {
       entity['conditions'] = remaining;
-      this.broadcast({ type: 'entity_updated', entityId, changes: { conditions: remaining } });
+      this.broadcastForEntity(entityId, { type: 'entity_updated', entityId, changes: { conditions: remaining } });
     }
   }
 
@@ -3999,16 +4148,23 @@ export class SessionRoom extends DurableObject<Env> {
     const neg = this.sessionState?.negotiation;
     if (!neg) return;
     this.syncNegotiationData(neg);
-    this.broadcast({
-      type: 'negotiation_updated',
-      interest: neg.interest,
-      patience: neg.patience,
-      maxPatience: neg.maxPatience,
-      phase: neg.phase,
-      motivations: neg.motivations,
-      pitfalls: neg.pitfalls,
-      argumentLog: neg.argumentLog,
-    });
+    // Directors receive the full motivations/pitfalls; players receive a copy
+    // with unrevealed secret descriptions stripped so they cannot read ahead.
+    const playerNeg = redactNegotiationLive(neg);
+    for (const { ws, meta } of this.getConnections()) {
+      const source = meta.role === 'director' ? neg : playerNeg;
+      this.sendTo(ws, {
+        type: 'negotiation_updated',
+        interest: source.interest,
+        patience: source.patience,
+        maxPatience: source.maxPatience,
+        phase: source.phase,
+        motivations: source.motivations,
+        pitfalls: source.pitfalls,
+        argumentLog: source.argumentLog,
+      });
+    }
+    this.scheduleActiveSceneSnapshot();
   }
 
   private broadcastMontageUpdate(): void {

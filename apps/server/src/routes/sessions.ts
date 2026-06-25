@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { sessionRateLimits } from '../security/rate-limits.js';
+import { hashToken } from '../security/tokens.js';
 
 export const sessionRoutes = new Hono<AppEnv>();
 
@@ -150,12 +151,15 @@ sessionRoutes.post('/sessions/:id/ws-token', async (c) => {
     .first<{ hero_id: string | null }>();
 
   const token = crypto.randomUUID();
+  // Store only the hash; the plaintext token is returned to the client once and
+  // never persisted, so a DB read cannot be replayed to open a connection.
+  const tokenHash = await hashToken(token);
   const expiresAt = new Date(Date.now() + 30_000).toISOString();
 
   await c.env.DB.prepare(
     'INSERT INTO ws_tokens (id, user_id, session_id, campaign_id, role, hero_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(token, user.id, sessionId, session.campaign_id, role, participant?.hero_id ?? membership?.hero_id ?? null, expiresAt)
+    .bind(tokenHash, user.id, sessionId, session.campaign_id, role, participant?.hero_id ?? membership?.hero_id ?? null, expiresAt)
     .run();
 
   return c.json({ token });

@@ -9,6 +9,8 @@ import type {
 import { SCENE_IMPORT_FORMAT } from '@anvil/types';
 import { SCENE_IMPORT_LIMITS } from '../policy/limits.js';
 import {
+  exceedsJsonDepth,
+  hasUnsafeObjectKey,
   isRecord,
   jsonByteLength,
   trimString,
@@ -38,6 +40,12 @@ function parseScene(value: unknown): ValidationResult<SceneImportScene> {
   if (data !== undefined && !isRecord(data)) return { ok: false, error: 'Scene data must be an object' };
   if (data !== undefined && jsonByteLength(data) > SCENE_IMPORT_LIMITS.sceneDataBytes) {
     return { ok: false, error: 'Scene data is too large', status: 413 };
+  }
+  if (data !== undefined && hasUnsafeObjectKey(data)) {
+    return { ok: false, error: 'Scene data contains a disallowed property name' };
+  }
+  if (data !== undefined && exceedsJsonDepth(data, SCENE_IMPORT_LIMITS.maxNestingDepth)) {
+    return { ok: false, error: 'Scene data is nested too deeply', status: 413 };
   }
   return {
     ok: true,
@@ -122,6 +130,12 @@ export function parseSceneImportDocument(raw: unknown): ValidationResult<SceneIm
   if (settings !== undefined && !isRecord(settings)) return { ok: false, error: 'Campaign settings must be an object' };
   if (settings !== undefined && jsonByteLength(settings) > SCENE_IMPORT_LIMITS.settingsBytes) {
     return { ok: false, error: 'Campaign settings are too large', status: 413 };
+  }
+  if (settings !== undefined && hasUnsafeObjectKey(settings)) {
+    return { ok: false, error: 'Campaign settings contain a disallowed property name' };
+  }
+  if (settings !== undefined && exceedsJsonDepth(settings, SCENE_IMPORT_LIMITS.maxNestingDepth)) {
+    return { ok: false, error: 'Campaign settings are nested too deeply', status: 413 };
   }
 
   const rawModules = document['modules'];

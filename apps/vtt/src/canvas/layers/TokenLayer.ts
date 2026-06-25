@@ -55,6 +55,10 @@ export class TokenLayer extends Container {
   private cellSize = 64;
   private selectionRect: Graphics | null = null;
   private distanceLabel: Container | null = null;
+  // Per-token portrait image + GPU texture, tracked so they can be released
+  // explicitly on token removal (Pixi v8 does not destroy dynamically-created
+  // textures when a container is destroyed).
+  private portraitResources = new Map<string, { img: HTMLImageElement; texture: Texture | null }>();
 
   setCellSize(size: number): void {
     if (this.cellSize === size) return;
@@ -103,7 +107,7 @@ export class TokenLayer extends Container {
     // Portrait image or center glyph fallback
     const portraitUrl = entity['portraitUrl'] as string | undefined;
     if (portraitUrl) {
-      this.loadPortraitSprite(container, portraitUrl, cx, cy, radius - 3);
+      this.loadPortraitSprite(container, entity.id, portraitUrl, cx, cy, radius - 3);
     } else {
       const glyph = TYPE_GLYPHS[entity.type] ?? entity.name.slice(0, 2).toUpperCase();
       const label = new Text({
@@ -231,6 +235,7 @@ export class TokenLayer extends Container {
   /** Load a portrait image and add it as a circular-masked Sprite inside the token container. */
   private loadPortraitSprite(
     container: Container,
+    entityId: string,
     url: string,
     cx: number,
     cy: number,
@@ -240,11 +245,15 @@ export class TokenLayer extends Container {
     const img = new Image();
     const crossOrigin = mediaElementCrossOrigin(resolvedUrl);
     if (crossOrigin) img.crossOrigin = crossOrigin;
+    // Track the image immediately so an in-flight load can be cancelled on removal.
+    this.portraitResources.set(entityId, { img, texture: null });
     img.onload = () => {
       // Guard: container may have been destroyed while loading
       if (container.destroyed) return;
 
       const texture = Texture.from(img);
+      const resource = this.portraitResources.get(entityId);
+      if (resource) resource.texture = texture;
       const sprite = new Sprite(texture);
 
       // Scale to cover the circle (like CSS object-fit: cover)
@@ -330,18 +339,32 @@ export class TokenLayer extends Container {
       this.removeChild(token.container);
       token.container.destroy({ children: true });
     }
+    for (const entityId of [...this.portraitResources.keys()]) {
+      this.releasePortraitResources(entityId);
+    }
     this.tokens.clear();
     this.clearSelectionRect();
     this.clearDistanceLabel();
   }
 
   removeToken(entityId: string): void {
+    this.releasePortraitResources(entityId);
     const token = this.tokens.get(entityId);
     if (token) {
       this.removeChild(token.container);
       token.container.destroy({ children: true });
       this.tokens.delete(entityId);
     }
+  }
+
+  /** Cancel any in-flight portrait load and release its GPU texture. */
+  private releasePortraitResources(entityId: string): void {
+    const resource = this.portraitResources.get(entityId);
+    if (!resource) return;
+    resource.img.onload = null;
+    resource.img.src = '';
+    resource.texture?.destroy(true);
+    this.portraitResources.delete(entityId);
   }
 
   moveToken(entityId: string, gridX: number, gridY: number): void {

@@ -64,3 +64,20 @@ export const noteRateLimits = {
 export const importRateLimits = {
   sceneImport: (c: Context<AppEnv>, userId: string) => enforceIpAndUserProfile(c, RATE_LIMIT_PROFILES.sceneImport, userId),
 } as const;
+
+export const heroRateLimits = {
+  write: (c: Context<AppEnv>, userId: string) => enforceProfile(c, RATE_LIMIT_PROFILES.heroWrite, userId),
+} as const;
+
+export const campaignRateLimits = {
+  write: (c: Context<AppEnv>, userId: string) => enforceProfile(c, RATE_LIMIT_PROFILES.campaignWrite, userId),
+} as const;
+
+export const sceneRateLimits = {
+  write: (c: Context<AppEnv>, userId: string) => enforceProfile(c, RATE_LIMIT_PROFILES.sceneWrite, userId),
+} as const;
+
+export const accountRateLimits = {
+  backup: (c: Context<AppEnv>, userId: string) => enforceProfile(c, RATE_LIMIT_PROFILES.accountBackup, userId),
+  restore: (c: Context<AppEnv>, userId: string) => enforceProfile(c, RATE_LIMIT_PROFILES.accountRestore, userId),
+} as const;

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { Expand, Minimize2, RotateCcw } from "lucide-react";
+import { Expand, ExternalLink, Minimize2, RotateCcw } from "lucide-react";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts.js";
 import {
   AppShell,
@@ -133,7 +133,7 @@ export function DirectorView({
     [send],
   );
 
-  const sceneData = activeScene?.data ?? {};
+  const sceneData = useMemo(() => activeScene?.data ?? {}, [activeScene?.data]);
 
   const [showHelp, setShowHelp] = useState(false);
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
@@ -141,6 +141,8 @@ export function DirectorView({
   const [leftRailTab, setLeftRailTab] = useState<LeftRailTab>("combat");
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>("assets");
   const [focusMode, setFocusMode] = useState(false);
+  const [stagePopoutOpen, setStagePopoutOpen] = useState(false);
+  const stagePopoutRef = useRef<Window | null>(null);
   const [focusEntityRequest, setFocusEntityRequest] = useState<{
     entityId: string;
     nonce: number;
@@ -198,6 +200,8 @@ export function DirectorView({
     gridOffsetYOverride ?? battleData?.gridOffsetY ?? 0,
     currentGridSquareSize,
   );
+  const isBattleStageDetached =
+    stagePopoutOpen && sceneType === "battle" && !focusMode;
 
   const heroCount = useMemo(
     () => entities.filter((e) => e.type === "hero").length,
@@ -314,6 +318,27 @@ export function DirectorView({
     navigate("/app/live");
   }, [send, navigate]);
 
+  const handleToggleStagePopout = useCallback(() => {
+    if (stagePopoutOpen) {
+      stagePopoutRef.current?.close();
+      stagePopoutRef.current = null;
+      setStagePopoutOpen(false);
+      return;
+    }
+
+    const displayUrl = `${window.location.origin}/app/session/${sessionState.sessionId}/display`;
+    const popup = window.open(
+      displayUrl,
+      `anvil-stage-display-${sessionState.sessionId}`,
+      "popup,width=1280,height=720",
+    );
+
+    if (!popup) return;
+    stagePopoutRef.current = popup;
+    popup.focus();
+    setStagePopoutOpen(true);
+  }, [sessionState.sessionId, stagePopoutOpen]);
+
   const handleStartCombat = useCallback(() => {
     const heroEntityIds = entities
       .filter((entity) => entity.type === "hero")
@@ -391,6 +416,29 @@ export function DirectorView({
     setGridOffsetXOverride(null);
     setGridOffsetYOverride(null);
   }, [activeSceneId, handleSelectEntity]);
+
+  useEffect(() => {
+    if (!isBattleStageDetached) return;
+    setLeftRailCollapsed(false);
+    setRightRailCollapsed(false);
+  }, [isBattleStageDetached]);
+
+  useEffect(() => {
+    if (!stagePopoutOpen) return;
+    const interval = window.setInterval(() => {
+      if (!stagePopoutRef.current || stagePopoutRef.current.closed) {
+        stagePopoutRef.current = null;
+        setStagePopoutOpen(false);
+      }
+    }, 750);
+    return () => window.clearInterval(interval);
+  }, [stagePopoutOpen]);
+
+  useEffect(() => {
+    return () => {
+      stagePopoutRef.current?.close();
+    };
+  }, []);
 
   useEffect(() => {
     if (!leftRailTabs.some((tab) => tab.value === leftRailTab)) {
@@ -727,10 +775,19 @@ export function DirectorView({
                 variant="ghost"
                 size="icon"
                 onClick={() => setFocusMode(true)}
-                title="Focus map"
-                aria-label="Focus map"
+                title="Focus stage"
+                aria-label="Focus stage"
               >
                 <Expand className="size-4" />
+              </Button>
+              <Button
+                variant={stagePopoutOpen ? "secondary" : "ghost"}
+                size="sm"
+                onClick={handleToggleStagePopout}
+                title={stagePopoutOpen ? "Dock stage" : "Pop out stage"}
+              >
+                <ExternalLink className="mr-1 size-3.5" />
+                {stagePopoutOpen ? "Dock stage" : "Pop out"}
               </Button>
               {activeSceneId && (
                 <Button
@@ -1155,6 +1212,7 @@ export function DirectorView({
       }
       leftRailCollapsed={leftRailCollapsed}
       rightRailCollapsed={rightRailCollapsed}
+      stageDetached={isBattleStageDetached}
       onToggleLeftRail={() => setLeftRailCollapsed((value) => !value)}
       onToggleRightRail={() => setRightRailCollapsed((value) => !value)}
       statusBar={
@@ -1164,7 +1222,7 @@ export function DirectorView({
         />
       }
     >
-      {renderStage()}
+      {isBattleStageDetached ? null : renderStage()}
       {showHelp && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80"
