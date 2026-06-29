@@ -1,223 +1,283 @@
 import { create } from 'zustand';
 import type {
+  AbilityResult,
+  ServerMessage,
   SessionState,
-  ParticipantInfo,
-  EntityData,
-  CombatState,
 } from '../types/protocol.js';
-import type { MotivationType } from '@anvil/types';
 
-// ---------------------------------------------------------------------------
-// Negotiation Runtime State
-// ---------------------------------------------------------------------------
-
-export interface NegotiationMotivationState {
-  id: string;
-  type: MotivationType;
-  description: string;
-  revealed: boolean;
-}
-
-export interface NegotiationPitfallState {
-  id: string;
-  type: MotivationType;
-  description: string;
-  revealed: boolean;
-}
-
-export interface NegotiationRuntimeState {
-  npcName: string;
-  npcPortrait?: string;
-  npcAttitude: string;
-  interest: number;
-  patience: number;
-  maxPatience: number;
-  motivations: NegotiationMotivationState[];
-  pitfalls: NegotiationPitfallState[];
-  outcomes: Record<number, string>;
-  phase: 'active' | 'success' | 'failure';
-}
-
-// ---------------------------------------------------------------------------
-// Session Store
-// ---------------------------------------------------------------------------
-
-interface SessionStore {
+export interface SessionRuntimeState {
   sessionState: SessionState | null;
-  selectedEntityId: string | null;
-
-  // Negotiation runtime state
-  negotiation: NegotiationRuntimeState | null;
-
-  setSessionState: (state: SessionState | null) => void;
-  setActiveScene: (sceneId: string) => void;
-  setParticipants: (participants: ParticipantInfo[]) => void;
-  addEntity: (entity: EntityData) => void;
-  updateEntity: (entityId: string, changes: Record<string, unknown>) => void;
-  removeEntity: (entityId: string) => void;
-  moveEntity: (entityId: string, x: number, y: number) => void;
-  setCombat: (combat: CombatState | null) => void;
-  selectEntity: (entityId: string | null) => void;
-
-  // Negotiation actions
-  setNegotiation: (state: NegotiationRuntimeState | null) => void;
-  updateNegotiationInterest: (delta: number) => void;
-  updateNegotiationPatience: (delta: number) => void;
-  revealMotivation: (id: string) => void;
-  revealPitfall: (id: string) => void;
-  endNegotiation: () => void;
-
-  reset: () => void;
+  combatLog: AbilityResult[];
+  sessionStarted: boolean;
 }
 
-export const useSessionStore = create<SessionStore>((set) => ({
+interface SessionRuntimeStore extends SessionRuntimeState {
+  applyServerMessage: (message: ServerMessage) => void;
+  resetSessionRuntime: () => void;
+}
+
+export const initialSessionRuntimeState: SessionRuntimeState = {
   sessionState: null,
-  selectedEntityId: null,
-  negotiation: null,
+  combatLog: [],
+  sessionStarted: false,
+};
 
-  setSessionState: (state) => set({ sessionState: state }),
+function createInitialSessionRuntimeState(): SessionRuntimeState {
+  return {
+    sessionState: null,
+    combatLog: [],
+    sessionStarted: false,
+  };
+}
 
-  setActiveScene: (sceneId) =>
-    set((s) => ({
-      sessionState: s.sessionState ? { ...s.sessionState, activeSceneId: sceneId } : null,
-    })),
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-  setParticipants: (participants) =>
-    set((s) => ({
-      sessionState: s.sessionState ? { ...s.sessionState, participants } : null,
-    })),
+function updateSessionState(
+  current: SessionRuntimeState,
+  update: (state: SessionState) => SessionState,
+): SessionRuntimeState {
+  if (!current.sessionState) return current;
+  return { ...current, sessionState: update(current.sessionState) };
+}
 
-  addEntity: (entity) =>
-    set((s) => ({
-      sessionState: s.sessionState
-        ? { ...s.sessionState, entities: [...s.sessionState.entities, entity] }
-        : null,
-    })),
+function updateActiveSceneData(
+  state: SessionState,
+  update: (data: Record<string, unknown>) => Record<string, unknown>,
+): SessionState {
+  return {
+    ...state,
+    scenes: state.scenes.map((scene) => {
+      if (scene.id !== state.activeSceneId) return scene;
+      return { ...scene, data: update(scene.data ?? {}) };
+    }),
+  };
+}
 
-  updateEntity: (entityId, changes) =>
-    set((s) => ({
-      sessionState: s.sessionState
-        ? {
-            ...s.sessionState,
-            entities: s.sessionState.entities.map((e) =>
-              e.id === entityId ? { ...e, ...changes } : e,
-            ),
-          }
-        : null,
-    })),
+function appendActiveSceneArrayItem<T>(
+  state: SessionState,
+  key: string,
+  item: T,
+  shouldAppend: (items: unknown[]) => boolean = () => true,
+): SessionState {
+  return updateActiveSceneData(state, (data) => {
+    const current = Array.isArray(data[key]) ? [...data[key]] : [];
+    if (shouldAppend(current)) current.push(item);
+    return { ...data, [key]: current };
+  });
+}
 
-  removeEntity: (entityId) =>
-    set((s) => ({
-      sessionState: s.sessionState
-        ? { ...s.sessionState, entities: s.sessionState.entities.filter((e) => e.id !== entityId) }
-        : null,
-    })),
+function removeActiveSceneArrayItem(
+  state: SessionState,
+  key: string,
+  idKey: string,
+  id: string,
+): SessionState {
+  return updateActiveSceneData(state, (data) => {
+    const current = Array.isArray(data[key]) ? data[key] : [];
+    return {
+      ...data,
+      [key]: current.filter((entry) => !isRecord(entry) || entry[idKey] !== id),
+    };
+  });
+}
 
-  moveEntity: (entityId, x, y) =>
-    set((s) => ({
-      sessionState: s.sessionState
-        ? {
-            ...s.sessionState,
-            entities: s.sessionState.entities.map((e) =>
-              e.id === entityId ? { ...e, x, y } : e,
-            ),
-          }
-        : null,
-    })),
-
-  setCombat: (combat) =>
-    set((s) => ({
-      sessionState: s.sessionState ? { ...s.sessionState, combat } : null,
-    })),
-
-  selectEntity: (entityId) => set({ selectedEntityId: entityId }),
-
-  // ---------------------------------------------------------------------------
-  // Negotiation Actions
-  // ---------------------------------------------------------------------------
-
-  setNegotiation: (state) => set({ negotiation: state }),
-
-  updateNegotiationInterest: (delta) =>
-    set((s) => {
-      if (!s.negotiation || s.negotiation.phase !== 'active') return s;
-
-      const newInterest = Math.max(0, Math.min(5, s.negotiation.interest + delta));
-      const newPhase: 'active' | 'success' | 'failure' = newInterest >= 5 ? 'success' : 'active';
-
+export function applyServerMessageToRuntime(
+  current: SessionRuntimeState,
+  message: ServerMessage,
+): SessionRuntimeState {
+  switch (message.type) {
+    case 'state':
       return {
-        negotiation: {
-          ...s.negotiation,
-          interest: newInterest,
-          phase: newPhase,
+        ...current,
+        sessionState: {
+          ...message.state,
+          actionLog: message.state.actionLog ?? [],
         },
       };
-    }),
 
-  updateNegotiationPatience: (delta) =>
-    set((s) => {
-      if (!s.negotiation || s.negotiation.phase !== 'active') return s;
+    case 'scene_changed':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        activeSceneId: message.sceneId,
+      }));
 
-      const newPatience = Math.max(0, Math.min(s.negotiation.maxPatience, s.negotiation.patience + delta));
-      // Patience 0: Success if interest >= 3, else failure
-      const newPhase: 'active' | 'success' | 'failure' =
-        newPatience <= 0
-          ? s.negotiation.interest >= 3
-            ? 'success'
-            : 'failure'
-          : 'active';
+    case 'entity_created':
+      return updateSessionState(current, (state) => {
+        if (state.entities.some((entity) => entity.id === message.entity.id)) return state;
+        return { ...state, entities: [...state.entities, message.entity] };
+      });
 
-      return {
+    case 'entity_updated':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        entities: state.entities.map((entity) =>
+          entity.id === message.entityId ? { ...entity, ...message.changes } : entity,
+        ),
+      }));
+
+    case 'entity_deleted':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        entities: state.entities.filter((entity) => entity.id !== message.entityId),
+      }));
+
+    case 'entity_moved':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        entities: state.entities.map((entity) =>
+          entity.id === message.entityId
+            ? { ...entity, x: message.x, y: message.y }
+            : entity,
+        ),
+      }));
+
+    case 'combat_updated':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        combat: message.combat,
+      }));
+
+    case 'ability_resolved': {
+      const isDupe = current.combatLog.some(
+        (entry) =>
+          entry.timestamp === message.result.timestamp &&
+          entry.sourceId === message.result.sourceId &&
+          entry.abilityId === message.result.abilityId,
+      );
+      return isDupe
+        ? current
+        : { ...current, combatLog: [...current.combatLog, message.result] };
+    }
+
+    case 'action_logged':
+      return updateSessionState(current, (state) => {
+        const actionLog = state.actionLog ?? [];
+        if (actionLog.some((entry) => entry.id === message.entry.id)) return state;
+        return { ...state, actionLog: [...actionLog, message.entry].slice(-200) };
+      });
+
+    case 'participant_update':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        participants: message.participants,
+      }));
+
+    case 'session_started':
+      return { ...current, sessionStarted: true };
+
+    case 'session_ended':
+      return { ...current, sessionState: null };
+
+    case 'scene_drawing_added':
+      return updateSessionState(current, (state) =>
+        appendActiveSceneArrayItem(state, 'drawings', message.drawing),
+      );
+
+    case 'scene_drawing_removed':
+      return updateSessionState(current, (state) =>
+        removeActiveSceneArrayItem(state, 'drawings', 'id', message.drawingId),
+      );
+
+    case 'scene_fog_added':
+      return updateSessionState(current, (state) =>
+        appendActiveSceneArrayItem(state, 'fog', message.fog),
+      );
+
+    case 'scene_fog_removed':
+      return updateSessionState(current, (state) =>
+        removeActiveSceneArrayItem(state, 'fog', 'id', message.fogId),
+      );
+
+    case 'scene_terrain_added':
+      return updateSessionState(current, (state) =>
+        appendActiveSceneArrayItem(
+          state,
+          'terrain',
+          message.terrain,
+          (items) =>
+            !items.some((entry) => isRecord(entry) && entry['id'] === message.terrain.id),
+        ),
+      );
+
+    case 'scene_terrain_removed':
+      return updateSessionState(current, (state) =>
+        removeActiveSceneArrayItem(state, 'terrain', 'id', message.terrainId),
+      );
+
+    case 'negotiation_updated':
+      return updateSessionState(current, (state) => ({
+        ...state,
         negotiation: {
-          ...s.negotiation,
-          patience: newPatience,
-          phase: newPhase,
+          interest: message.interest,
+          patience: message.patience,
+          maxPatience: message.maxPatience,
+          phase: message.phase,
+          motivations: message.motivations,
+          pitfalls: message.pitfalls,
+          argumentLog: message.argumentLog,
         },
-      };
-    }),
+      }));
 
-  revealMotivation: (id) =>
-    set((s) => {
-      if (!s.negotiation) return s;
-
-      return {
-        negotiation: {
-          ...s.negotiation,
-          motivations: s.negotiation.motivations.map((m) =>
-            m.id === id ? { ...m, revealed: true } : m
-          ),
+    case 'montage_updated':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        montage: {
+          successes: message.successes,
+          failures: message.failures,
+          successLimit: message.successLimit,
+          failureLimit: message.failureLimit,
+          testLog: message.testLog,
+          outcome: message.outcome,
         },
-      };
-    }),
+      }));
 
-  revealPitfall: (id) =>
-    set((s) => {
-      if (!s.negotiation) return s;
-
-      return {
-        negotiation: {
-          ...s.negotiation,
-          pitfalls: s.negotiation.pitfalls.map((p) =>
-            p.id === id ? { ...p, revealed: true } : p
-          ),
+    case 'respite_updated':
+      return updateSessionState(current, (state) => ({
+        ...state,
+        respite: {
+          activities: message.activities,
+          completedBy: message.completedBy,
         },
-      };
-    }),
+      }));
 
-  endNegotiation: () =>
-    set((s) => {
-      if (!s.negotiation || s.negotiation.phase !== 'active') return s;
+    case 'audio_command':
+      return updateSessionState(current, (state) => {
+        if (message.action === 'stop') return { ...state, audio: null };
+        return {
+          ...state,
+          audio: {
+            playing: message.action === 'play',
+            audioUrl: message.audioUrl ?? state.audio?.audioUrl ?? null,
+            assetName: message.assetName ?? state.audio?.assetName ?? null,
+            loop: message.loop ?? state.audio?.loop ?? false,
+          },
+        };
+      });
 
-      // End negotiation based on current interest
-      const newPhase = s.negotiation.interest >= 3 ? 'success' : 'failure';
+    case 'story_updated':
+      return updateSessionState(current, (state) =>
+        updateActiveSceneData(state, (data) => ({
+          ...data,
+          readAloud: message.readAloudText,
+        })),
+      );
 
-      return {
-        negotiation: {
-          ...s.negotiation,
-          phase: newPhase,
-        },
-      };
-    }),
+    case 'scene_reverted':
+    case 'draw_steel_roll_resolved':
+    case 'token_action_resolved':
+    case 'error':
+    case 'pong':
+      return current;
+  }
+}
 
-  reset: () => set({ sessionState: null, selectedEntityId: null, negotiation: null }),
+export const useSessionStore = create<SessionRuntimeStore>((set) => ({
+  ...createInitialSessionRuntimeState(),
+
+  applyServerMessage: (message) =>
+    set((current) => applyServerMessageToRuntime(current, message)),
+
+  resetSessionRuntime: () => set(createInitialSessionRuntimeState()),
 }));
