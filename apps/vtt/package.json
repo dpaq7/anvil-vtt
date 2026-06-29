@@ -22,7 +22,6 @@
     "@tiptap/pm": "^3.23.1",
     "@tiptap/react": "^3.23.1",
     "@tiptap/starter-kit": "^3.23.1",
-    "@xstate/react": "^6.0.0",
     "lucide-react": "^0.563.0",
     "marked": "^17.0.1",
     "pixi.js": "^8.18.1",
@@ -31,7 +30,6 @@
     "react-router-dom": "^7.13.0",
     "sonner": "^2.0.7",
     "turndown": "^7.2.2",
-    "xstate": "^5.26.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
