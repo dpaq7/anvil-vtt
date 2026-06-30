@@ -256,17 +256,6 @@ export function Account() {
                     ))}
                   </div>
                 </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-                    <p className="font-medium text-zinc-100">Interface density</p>
-                    <p className="mt-1 text-sm text-zinc-500">Standard spacing is active for all account views.</p>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-                    <p className="font-medium text-zinc-100">Session preferences</p>
-                    <p className="mt-1 text-sm text-zinc-500">Live table options will appear here as they are added.</p>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
