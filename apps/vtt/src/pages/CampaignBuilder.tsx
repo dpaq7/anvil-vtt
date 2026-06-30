@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input, Collapsible, CollapsibleContent, CollapsibleTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@anvil/ui';
+import { Button, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input, Textarea, Collapsible, CollapsibleContent, CollapsibleTrigger, Tooltip, TooltipContent, TooltipTrigger, SceneTypeIcon, cn } from '@anvil/ui';
 import { ChevronDown, Minimize2, PanelLeftClose, PanelLeftOpen, Swords } from 'lucide-react';
 import { FORGESTEEL_MONSTERS, LORD_RELG_STATBLOCK, isMinion, isMonsterStatblock, loadMonsters } from '@anvil/data';
 import type { CompendiumItemBase, CompendiumMonster, MonsterFeature } from '@anvil/data';
-import type { SceneImportDocument } from '@anvil/types';
+import type { MotivationType, NegotiationSceneTemplate, NegotiationMotivation, NegotiationPitfall, NPCAttitude, SceneImportDocument, SceneType } from '@anvil/types';
 import { api } from '../lib/api.js';
 import { generateRoomCode } from '../lib/room-code.js';
 import { TreeSidebar } from '../components/builder/TreeSidebar.js';
@@ -16,11 +16,16 @@ interface Module { id: string; name: string; description: string; order_index: n
 interface Session { id: string; name: string; description: string; module_id: string | null; order_index: number; status?: string; }
 interface Scene { id: string; title: string; type: string; data: string; order_index: number; game_session_id: string; }
 
+type BattleDifficulty = 'easy' | 'standard' | 'hard' | 'extreme';
+
 interface BattleTokenSummary {
   id: string;
   name: string;
   type: 'monster' | 'hero' | 'npc' | string;
   monsterName?: string;
+  x?: number;
+  y?: number;
+  color?: number;
   level?: number;
   roles?: string[];
   squadId?: string;
@@ -44,6 +49,66 @@ interface BattleTokenSummary {
   maxStamina?: number;
   currentStamina?: number;
   features?: MonsterFeature[];
+}
+
+interface BattleSceneDraft {
+  mapUrl: string;
+  gridCols: number;
+  gridRows: number;
+  difficulty: BattleDifficulty;
+  creatureGroups: string;
+  notes: string;
+}
+
+interface StorySceneDraft {
+  readAloud: string;
+  notes: string;
+  assetUrl: string;
+}
+
+interface MontageSceneDraft {
+  goal: string;
+  roundLimit: number;
+  successesNeeded: number;
+  failureLimit: number;
+  challenges: string;
+  notes: string;
+}
+
+type NegotiationTraitRole = 'motivation' | 'pitfall';
+
+interface NegotiationTraitSelection {
+  id: string;
+  type: MotivationType | '';
+  note: string;
+}
+
+interface NegotiationSceneDraft {
+  npcName: string;
+  npcDescription: string;
+  startingAttitude: NPCAttitude;
+  startingInterest: number;
+  startingPatience: number;
+  impression: number;
+  motivations: NegotiationTraitSelection[];
+  pitfalls: NegotiationTraitSelection[];
+  notes: string;
+}
+
+interface RespiteSceneDraft {
+  location: string;
+  duration: string;
+  availableActivities: string[];
+  projects: string;
+  notes: string;
+}
+
+interface SceneCreationDrafts {
+  battle: BattleSceneDraft;
+  story: StorySceneDraft;
+  montage: MontageSceneDraft;
+  negotiation: NegotiationSceneDraft;
+  respite: RespiteSceneDraft;
 }
 
 interface MaliceFeatureBlock extends CompendiumItemBase {
@@ -92,6 +157,379 @@ function parseNumber(value: unknown): number {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
+}
+
+const SCENE_TYPE_OPTIONS: Array<{ value: SceneType; label: string; summary: string }> = [
+  { value: 'story', label: 'Story', summary: 'Read-aloud text, notes, and backdrop' },
+  { value: 'battle', label: 'Battle', summary: 'Map, grid, monsters, and tactics' },
+  { value: 'montage', label: 'Montage', summary: 'Goal, limits, and challenge list' },
+  { value: 'negotiation', label: 'Negotiation', summary: 'NPC, attitude, motives, and pitfalls' },
+  { value: 'respite', label: 'Respite', summary: 'Location, activities, and projects' },
+];
+
+const RESPITE_ACTIVITY_OPTIONS = [
+  { id: 'recover', label: 'Recover' },
+  { id: 'craft', label: 'Craft' },
+  { id: 'research', label: 'Research' },
+  { id: 'socialize', label: 'Socialize' },
+  { id: 'change_kit', label: 'Change Kit' },
+  { id: 'project', label: 'Project' },
+  { id: 'train', label: 'Train' },
+  { id: 'negotiate', label: 'Negotiate' },
+];
+
+const NEGOTIATION_TRAITS: Array<{
+  value: MotivationType;
+  label: string;
+  motivation: string;
+  pitfall: string;
+}> = [
+  {
+    value: 'benevolence',
+    label: 'Benevolence',
+    motivation: 'Believes in sharing what they have with others, though resources or loyalties can limit them.',
+    pitfall: 'Thinks helping others just because it is right is foolish.',
+  },
+  {
+    value: 'discovery',
+    label: 'Discovery',
+    motivation: 'Wants new lore, forgotten places, hidden truths, or artifacts.',
+    pitfall: 'Has no interest in new ideas and might fear the unknown.',
+  },
+  {
+    value: 'freedom',
+    label: 'Freedom',
+    motivation: 'Wants no authority above them and no authority over others.',
+    pitfall: 'Believes a world without authority is chaotic and dangerous.',
+  },
+  {
+    value: 'greed',
+    label: 'Greed',
+    motivation: 'Desires wealth and resources above all else.',
+    pitfall: 'Holds ideals above material desires and is offended by attempts to buy their partnership.',
+  },
+  {
+    value: 'higher_authority',
+    label: 'Higher Authority',
+    motivation: 'Is staunchly loyal to an organization, deity, monarch, or personal hero.',
+    pitfall: 'Scoffs at serving another and refuses to answer to anyone.',
+  },
+  {
+    value: 'justice',
+    label: 'Justice',
+    motivation: 'Wants the righteous rewarded and the wicked punished according to their own moral compass.',
+    pitfall: 'Views justice as a naive illusion in a world of eternal conflict.',
+  },
+  {
+    value: 'legacy',
+    label: 'Legacy',
+    motivation: 'Wants fame in life and acclaim that outlasts death.',
+    pitfall: 'Believes trying to leave a personal mark on the world is vain and wasteful.',
+  },
+  {
+    value: 'peace',
+    label: 'Peace',
+    motivation: 'Wants calm and to be left alone to run their business or realm.',
+    pitfall: 'Hates boredom and craves excitement, drama, and danger.',
+  },
+  {
+    value: 'power',
+    label: 'Power',
+    motivation: 'Covets authority and wants more influence through conquest, command, or artifacts.',
+    pitfall: 'Rejects authority and hates the thought of ruling over other people.',
+  },
+  {
+    value: 'protection',
+    label: 'Protection',
+    motivation: 'Has land, people, or items they want to keep safe above all else.',
+    pitfall: 'Believes everyone should fend for themselves and rejects risking life for others.',
+  },
+  {
+    value: 'revelry',
+    label: 'Revelry',
+    motivation: 'Wants fun, social connection, and indulgent pleasures.',
+    pitfall: 'Views socializing and debauchery as a waste, finding value in work or character.',
+  },
+  {
+    value: 'vengeance',
+    label: 'Vengeance',
+    motivation: 'Wants to harm those who hurt them, through death, failure, or embarrassment.',
+    pitfall: 'Believes revenge solves nothing and disapproves of those who seek it.',
+  },
+];
+
+function createEmptyNegotiationTrait(): NegotiationTraitSelection {
+  return {
+    id: generateDraftId('negotiation-trait'),
+    type: '',
+    note: '',
+  };
+}
+
+function createInitialSceneDrafts(): SceneCreationDrafts {
+  return {
+    battle: {
+      mapUrl: '',
+      gridCols: 30,
+      gridRows: 20,
+      difficulty: 'standard',
+      creatureGroups: '',
+      notes: '',
+    },
+    story: {
+      readAloud: '',
+      notes: '',
+      assetUrl: '',
+    },
+    montage: {
+      goal: '',
+      roundLimit: 2,
+      successesNeeded: 5,
+      failureLimit: 5,
+      challenges: '',
+      notes: '',
+    },
+    negotiation: {
+      npcName: '',
+      npcDescription: '',
+      startingAttitude: 'neutral',
+      startingInterest: 2,
+      startingPatience: 4,
+      impression: 5,
+      motivations: [createEmptyNegotiationTrait(), createEmptyNegotiationTrait()],
+      pitfalls: [createEmptyNegotiationTrait()],
+      notes: '',
+    },
+    respite: {
+      location: '',
+      duration: '',
+      availableActivities: ['recover', 'craft', 'research', 'socialize'],
+      projects: '',
+      notes: '',
+    },
+  };
+}
+
+function generateDraftId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function splitDraftLines(value: string): string[] {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function clampWholeNumber(value: number, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function parseCreatureGroup(line: string): { name: string; count: number } {
+  const countMatch = line.match(/^(.*?)\s*(?:x|×)\s*(\d+)$/i);
+  if (!countMatch) return { name: line.trim(), count: 1 };
+  const name = countMatch[1]?.trim() ?? '';
+  const count = clampWholeNumber(Number(countMatch[2]), 1, 1, 24);
+  return { name: name || line.trim(), count };
+}
+
+function createBattleTokens(draft: BattleSceneDraft, monsterByName: Map<string, CompendiumMonster>): BattleTokenSummary[] {
+  const tokens: BattleTokenSummary[] = [];
+  const groupLines = splitDraftLines(draft.creatureGroups);
+  const placementWidth = Math.max(1, Math.min(8, draft.gridCols - 2));
+
+  for (const line of groupLines) {
+    const group = parseCreatureGroup(line);
+    const monster = monsterByName.get(group.name.toLowerCase()) ?? null;
+    const tokenBaseName = monster?.name ?? group.name;
+    const maxStamina = parseNumber(monster?.stamina);
+    const size = Math.max(1, parseNumber(monster?.size) || 1);
+    const squadId = group.count > 1 ? generateDraftId('squad') : undefined;
+
+    for (let index = 0; index < group.count; index += 1) {
+      const tokenIndex = tokens.length;
+      const tokenName = group.count > 1 ? `${tokenBaseName} ${index + 1}` : tokenBaseName;
+      tokens.push({
+        id: generateDraftId('monster'),
+        name: tokenName,
+        type: 'monster',
+        monsterName: tokenBaseName,
+        x: 2 + (tokenIndex % placementWidth) * 2,
+        y: 2 + Math.floor(tokenIndex / placementWidth) * 2,
+        size,
+        color: 0xef4444,
+        level: monster?.level,
+        roles: monster?.roles,
+        squadId,
+        squadSize: group.count > 1 ? group.count : undefined,
+        ev: monster?.ev,
+        speed: monster?.speed,
+        freeStrike: monster?.free_strike,
+        stability: monster?.stability,
+        ancestry: monster?.ancestry,
+        immunities: monster?.immunities,
+        weaknesses: monster?.weaknesses,
+        movement: monster?.movement,
+        maxStamina: maxStamina || undefined,
+        currentStamina: maxStamina || undefined,
+        characteristics: {
+          might: monster?.might ?? 0,
+          agility: monster?.agility ?? 0,
+          reason: monster?.reason ?? 0,
+          intuition: monster?.intuition ?? 0,
+          presence: monster?.presence ?? 0,
+        },
+        features: monster?.features,
+      });
+    }
+  }
+
+  return tokens;
+}
+
+function isSelectedNegotiationTrait(selection: NegotiationTraitSelection): selection is NegotiationTraitSelection & { type: MotivationType } {
+  return selection.type !== '';
+}
+
+function negotiationTraitText(type: MotivationType, role: NegotiationTraitRole): string {
+  const trait = NEGOTIATION_TRAITS.find((item) => item.value === type);
+  if (!trait) return '';
+  return role === 'motivation' ? trait.motivation : trait.pitfall;
+}
+
+function createNegotiationMotivations(selections: NegotiationTraitSelection[]): NegotiationMotivation[] {
+  return selections.filter(isSelectedNegotiationTrait).map((selection) => ({
+    id: selection.id,
+    type: selection.type,
+    description: selection.note.trim() || negotiationTraitText(selection.type, 'motivation'),
+    revealed: false,
+  }));
+}
+
+function createNegotiationPitfalls(selections: NegotiationTraitSelection[]): NegotiationPitfall[] {
+  return selections.filter(isSelectedNegotiationTrait).map((selection) => ({
+    id: selection.id,
+    type: selection.type,
+    description: selection.note.trim() || negotiationTraitText(selection.type, 'pitfall'),
+    revealed: false,
+  }));
+}
+
+function isNegotiationDraftReady(draft: NegotiationSceneDraft): boolean {
+  return draft.motivations.filter(isSelectedNegotiationTrait).length >= 2
+    && draft.pitfalls.filter(isSelectedNegotiationTrait).length >= 1;
+}
+
+function createNegotiationTemplate(draft: NegotiationSceneDraft): NegotiationSceneTemplate {
+  return {
+    npc: {
+      name: draft.npcName.trim(),
+      description: draft.npcDescription.trim(),
+      portraitUrl: '',
+    },
+    startingAttitude: draft.startingAttitude,
+    startingInterest: draft.startingInterest,
+    startingPatience: draft.startingPatience,
+    impression: draft.impression,
+    impressionModifiers: [],
+    motivations: createNegotiationMotivations(draft.motivations),
+    pitfalls: createNegotiationPitfalls(draft.pitfalls),
+    characteristics: { might: 0, agility: 0, reason: 0, intuition: 0, presence: 0 },
+    skills: [],
+    languages: [],
+    responses: {
+      interest0: { label: 'No, and...', text: '' },
+      interest1: { label: 'No.', text: '' },
+      interest2: { label: 'No, but...', text: '' },
+      interest3: { label: 'Yes, but...', text: '' },
+      interest4: { label: 'Yes.', text: '' },
+      interest5: { label: 'Yes, and...', text: '' },
+    },
+  };
+}
+
+function createSceneData(
+  type: SceneType,
+  drafts: SceneCreationDrafts,
+  monsterByName: Map<string, CompendiumMonster>,
+): Record<string, unknown> {
+  switch (type) {
+    case 'battle': {
+      const draft = drafts.battle;
+      return {
+        mapUrl: draft.mapUrl.trim(),
+        mapAssetId: '',
+        gridCols: clampWholeNumber(draft.gridCols, 30, 5, 80),
+        gridRows: clampWholeNumber(draft.gridRows, 20, 5, 80),
+        gridCellSize: 48,
+        gridType: 'square',
+        gridOpacity: 0.4,
+        gridColor: '#444444',
+        tokens: createBattleTokens(draft, monsterByName),
+        drawings: [],
+        terrain: [],
+        fog: [],
+        difficulty: draft.difficulty,
+        creatureGroups: draft.creatureGroups,
+        notes: draft.notes,
+      };
+    }
+    case 'story': {
+      const draft = drafts.story;
+      return {
+        readAloud: draft.readAloud,
+        notes: draft.notes,
+        assetUrl: draft.assetUrl.trim(),
+        mapAssetId: '',
+      };
+    }
+    case 'montage': {
+      const draft = drafts.montage;
+      return {
+        goal: draft.goal,
+        roundLimit: clampWholeNumber(draft.roundLimit, 2, 1, 12),
+        heroCount: 5,
+        successesNeeded: clampWholeNumber(draft.successesNeeded, 5, 1, 20),
+        failureLimit: clampWholeNumber(draft.failureLimit, 5, 1, 20),
+        challenges: splitDraftLines(draft.challenges).map((name, index) => ({
+          id: generateDraftId('challenge'),
+          name,
+          description: '',
+          suggestedSkills: [],
+          suggestedCharacteristics: [],
+          order: index,
+        })),
+        totalSuccess: '',
+        partialSuccess: '',
+        totalFailure: '',
+        notes: draft.notes,
+      };
+    }
+    case 'negotiation': {
+      const draft = drafts.negotiation;
+      return {
+        template: createNegotiationTemplate(draft),
+        notes: draft.notes,
+      };
+    }
+    case 'respite': {
+      const draft = drafts.respite;
+      return {
+        location: draft.location,
+        duration: draft.duration,
+        availableActivities: draft.availableActivities,
+        projects: splitDraftLines(draft.projects).map((name) => ({
+          id: generateDraftId('project'),
+          name,
+          goalPoints: 10,
+        })),
+        notes: draft.notes,
+      };
+    }
+    default:
+      return {};
+  }
 }
 
 function compactText(parts: Array<string | number | undefined | null>, fallback = '-'): string {
@@ -253,7 +691,8 @@ export function CampaignBuilder() {
   const [addSessionOpen, setAddSessionOpen] = useState(false);
   const [addSceneOpen, setAddSceneOpen] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newSceneType, setNewSceneType] = useState('story');
+  const [newSceneType, setNewSceneType] = useState<SceneType>('story');
+  const [sceneDrafts, setSceneDrafts] = useState<SceneCreationDrafts>(() => createInitialSceneDrafts());
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [structureOpen, setStructureOpen] = useState(true);
@@ -321,7 +760,7 @@ export function CampaignBuilder() {
           type: 'session' as const,
           children: scenes
             .filter((sc) => sc.game_session_id === s.id)
-            .map((sc) => ({ id: sc.id, label: sc.title, type: 'scene' as const, sceneType: sc.type })),
+            .map((sc) => ({ id: sc.id, label: sc.title, type: 'scene' as const, sceneType: sc.type, sessionId: s.id })),
         })),
       };
     });
@@ -334,7 +773,7 @@ export function CampaignBuilder() {
       type: 'session' as const,
       children: scenes
         .filter((sc) => sc.game_session_id === s.id)
-        .map((sc) => ({ id: sc.id, label: sc.title, type: 'scene' as const, sceneType: sc.type })),
+        .map((sc) => ({ id: sc.id, label: sc.title, type: 'scene' as const, sceneType: sc.type, sessionId: s.id })),
     }));
 
     return [
@@ -377,12 +816,91 @@ export function CampaignBuilder() {
     await load();
   };
 
-  const addScene = async () => {
-    if (!newName.trim() || !selectedId || selectedType !== 'session') return;
-    await api.post(`/api/sessions/${selectedId}/scenes`, { title: newName, type: newSceneType });
+  const resetSceneCreationForm = useCallback(() => {
     setNewName('');
+    setNewSceneType('story');
+    setSceneDrafts(createInitialSceneDrafts());
+  }, []);
+
+  const handleAddSceneOpenChange = useCallback((open: boolean) => {
+    setAddSceneOpen(open);
+    if (open) {
+      resetSceneCreationForm();
+    }
+  }, [resetSceneCreationForm]);
+
+  const updateSceneDraft = useCallback(
+    <T extends SceneType>(type: T, updates: Partial<SceneCreationDrafts[T]>) => {
+      setSceneDrafts((current) => ({
+        ...current,
+        [type]: {
+          ...current[type],
+          ...updates,
+        },
+      } as SceneCreationDrafts));
+    },
+    [],
+  );
+
+  const updateNegotiationTrait = useCallback(
+    (role: NegotiationTraitRole, id: string, updates: Partial<NegotiationTraitSelection>) => {
+      const key = role === 'motivation' ? 'motivations' : 'pitfalls';
+      setSceneDrafts((current) => ({
+        ...current,
+        negotiation: {
+          ...current.negotiation,
+          [key]: current.negotiation[key].map((selection) =>
+            selection.id === id ? { ...selection, ...updates } : selection,
+          ),
+        },
+      }));
+    },
+    [],
+  );
+
+  const addNegotiationTrait = useCallback((role: NegotiationTraitRole) => {
+    const key = role === 'motivation' ? 'motivations' : 'pitfalls';
+    setSceneDrafts((current) => ({
+      ...current,
+      negotiation: {
+        ...current.negotiation,
+        [key]: [...current.negotiation[key], createEmptyNegotiationTrait()],
+      },
+    }));
+  }, []);
+
+  const removeNegotiationTrait = useCallback((role: NegotiationTraitRole, id: string) => {
+    const key = role === 'motivation' ? 'motivations' : 'pitfalls';
+    const minCount = role === 'motivation' ? 2 : 1;
+    setSceneDrafts((current) => {
+      const currentList = current.negotiation[key];
+      if (currentList.length <= minCount) return current;
+      return {
+        ...current,
+        negotiation: {
+          ...current.negotiation,
+          [key]: currentList.filter((selection) => selection.id !== id),
+        },
+      };
+    });
+  }, []);
+
+  const canCreateScene = Boolean(newName.trim())
+    && (newSceneType !== 'negotiation' || isNegotiationDraftReady(sceneDrafts.negotiation));
+
+  const addScene = async () => {
+    if (!canCreateScene || !selectedId || selectedType !== 'session') return;
+    const sceneData = createSceneData(newSceneType, sceneDrafts, monsterByName);
+    const result = await api.post<{ id: string }>(`/api/sessions/${selectedId}/scenes`, {
+      title: newName,
+      type: newSceneType,
+      data: JSON.stringify(sceneData),
+    });
+    resetSceneCreationForm();
     setAddSceneOpen(false);
     await load();
+    setSelectedId(result.id);
+    setSelectedType('scene');
   };
 
   const handleGoLive = async () => {
@@ -412,6 +930,28 @@ export function CampaignBuilder() {
     await api.post(`/api/campaigns/${campaignId}/import`, { document });
     await load();
   };
+
+  const handleDeleteScene = useCallback(async (sceneId: string) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+    if (!scene) return;
+    const confirmed = window.confirm(`Delete "${scene.title}"? This removes it from the campaign structure.`);
+    if (!confirmed) return;
+
+    await api.delete(`/api/scenes/${sceneId}`);
+    if (selectedId === sceneId) {
+      setSelectedId(scene.game_session_id);
+      setSelectedType('session');
+    }
+    await load();
+  }, [load, scenes, selectedId]);
+
+  const handleMoveScene = useCallback(async (sceneId: string, targetSessionId: string) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+    if (!scene || scene.game_session_id === targetSessionId) return;
+
+    await api.put(`/api/scenes/${sceneId}`, { game_session_id: targetSessionId });
+    await load();
+  }, [load, scenes]);
 
   const handleSidebarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -575,6 +1115,429 @@ export function CampaignBuilder() {
     setExpandedInitiativeItems((current) => ({ ...current, [itemId]: !current[itemId] }));
   }, []);
 
+  const renderNegotiationTraitRows = (role: NegotiationTraitRole, selections: NegotiationTraitSelection[]) => {
+    const title = role === 'motivation' ? 'Motivations' : 'Pitfalls';
+    const minimum = role === 'motivation' ? 'Choose at least two traits the NPC responds well to.' : 'Choose at least one trait that sparks ire, shame, or fear.';
+    const addLabel = role === 'motivation' ? 'Add motivation' : 'Add pitfall';
+    const minCount = role === 'motivation' ? 2 : 1;
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-zinc-300">{title}</p>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">{minimum}</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => addNegotiationTrait(role)}
+            disabled={selections.length >= 4}
+          >
+            {addLabel}
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {selections.map((selection, index) => {
+            const trait = selection.type
+              ? NEGOTIATION_TRAITS.find((item) => item.value === selection.type) ?? null
+              : null;
+            const ruleText = trait ? (role === 'motivation' ? trait.motivation : trait.pitfall) : '';
+            return (
+              <div key={selection.id} className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 shrink-0 text-xs font-semibold text-zinc-500">{index + 1}</span>
+                  <select
+                    className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    value={selection.type}
+                    onChange={(event) => updateNegotiationTrait(role, selection.id, { type: event.target.value as MotivationType | '' })}
+                  >
+                    <option value="">Select trait</option>
+                    {NEGOTIATION_TRAITS.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-zinc-500 hover:text-red-300"
+                    onClick={() => removeNegotiationTrait(role, selection.id)}
+                    disabled={selections.length <= minCount}
+                  >
+                    Remove
+                  </Button>
+                </div>
+                {ruleText ? (
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">{ruleText}</p>
+                ) : (
+                  <p className="mt-2 text-xs leading-5 text-zinc-600">Select one of the twelve Draw Steel negotiation traits.</p>
+                )}
+                <Textarea
+                  className="mt-2 min-h-20"
+                  value={selection.note}
+                  onChange={(event) => updateNegotiationTrait(role, selection.id, { note: event.target.value })}
+                  placeholder={role === 'motivation' ? 'NPC-specific reason this appeals to them' : 'NPC-specific phrase or action that triggers this pitfall'}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSceneCreationFields = () => {
+    switch (newSceneType) {
+      case 'battle': {
+        const draft = sceneDrafts.battle;
+        return (
+          <div className="space-y-4 rounded-md border border-red-900/50 bg-red-950/10 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Map image URL</span>
+                <Input
+                  className="mt-1"
+                  value={draft.mapUrl}
+                  onChange={(event) => updateSceneDraft('battle', { mapUrl: event.target.value })}
+                  placeholder="https://..."
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Difficulty</span>
+                <select
+                  className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  value={draft.difficulty}
+                  onChange={(event) => updateSceneDraft('battle', { difficulty: event.target.value as BattleDifficulty })}
+                >
+                  <option value="easy">Easy</option>
+                  <option value="standard">Standard</option>
+                  <option value="hard">Hard</option>
+                  <option value="extreme">Extreme</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Grid columns</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={5}
+                  max={80}
+                  value={draft.gridCols}
+                  onChange={(event) => updateSceneDraft('battle', { gridCols: Number(event.target.value) })}
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Grid rows</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={5}
+                  max={80}
+                  value={draft.gridRows}
+                  onChange={(event) => updateSceneDraft('battle', { gridRows: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Monster groups</span>
+              <Textarea
+                className="mt-1 min-h-24"
+                value={draft.creatureGroups}
+                onChange={(event) => updateSceneDraft('battle', { creatureGroups: event.target.value })}
+                placeholder={'Goblin x3\nGoblin Cursespitter x1'}
+              />
+            </label>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Tactical notes</span>
+              <Textarea
+                className="mt-1"
+                value={draft.notes}
+                onChange={(event) => updateSceneDraft('battle', { notes: event.target.value })}
+                placeholder="Encounter notes"
+              />
+            </label>
+          </div>
+        );
+      }
+      case 'story': {
+        const draft = sceneDrafts.story;
+        return (
+          <div className="space-y-4 rounded-md border border-purple-900/50 bg-purple-950/10 p-4">
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Read-aloud text</span>
+              <Textarea
+                className="mt-1 min-h-28"
+                value={draft.readAloud}
+                onChange={(event) => updateSceneDraft('story', { readAloud: event.target.value })}
+                placeholder="Scene text"
+              />
+            </label>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Background image URL</span>
+              <Input
+                className="mt-1"
+                value={draft.assetUrl}
+                onChange={(event) => updateSceneDraft('story', { assetUrl: event.target.value })}
+                placeholder="https://..."
+              />
+            </label>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Director notes</span>
+              <Textarea
+                className="mt-1"
+                value={draft.notes}
+                onChange={(event) => updateSceneDraft('story', { notes: event.target.value })}
+                placeholder="Private scene notes"
+              />
+            </label>
+          </div>
+        );
+      }
+      case 'montage': {
+        const draft = sceneDrafts.montage;
+        return (
+          <div className="space-y-4 rounded-md border border-amber-900/50 bg-amber-950/10 p-4">
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Goal</span>
+              <Input
+                className="mt-1"
+                value={draft.goal}
+                onChange={(event) => updateSceneDraft('montage', { goal: event.target.value })}
+                placeholder="Escape the collapsing ruins"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Rounds</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={draft.roundLimit}
+                  onChange={(event) => updateSceneDraft('montage', { roundLimit: Number(event.target.value) })}
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Successes</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={draft.successesNeeded}
+                  onChange={(event) => updateSceneDraft('montage', { successesNeeded: Number(event.target.value) })}
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Failures</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={draft.failureLimit}
+                  onChange={(event) => updateSceneDraft('montage', { failureLimit: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Challenges</span>
+              <Textarea
+                className="mt-1 min-h-24"
+                value={draft.challenges}
+                onChange={(event) => updateSceneDraft('montage', { challenges: event.target.value })}
+                placeholder={'Navigate the flooded passage\nDisable the spinning blades'}
+              />
+            </label>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Director notes</span>
+              <Textarea
+                className="mt-1"
+                value={draft.notes}
+                onChange={(event) => updateSceneDraft('montage', { notes: event.target.value })}
+                placeholder="Montage notes"
+              />
+            </label>
+          </div>
+        );
+      }
+      case 'negotiation': {
+        const draft = sceneDrafts.negotiation;
+        return (
+          <div className="space-y-4 rounded-md border border-blue-900/50 bg-blue-950/10 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">NPC name</span>
+                <Input
+                  className="mt-1"
+                  value={draft.npcName}
+                  onChange={(event) => updateSceneDraft('negotiation', { npcName: event.target.value })}
+                  placeholder="Magistrate Venn"
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Starting attitude</span>
+                <select
+                  className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  value={draft.startingAttitude}
+                  onChange={(event) => updateSceneDraft('negotiation', { startingAttitude: event.target.value as NPCAttitude })}
+                >
+                  <option value="hostile">Hostile</option>
+                  <option value="unfriendly">Unfriendly</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="helpful">Helpful</option>
+                </select>
+              </label>
+            </div>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">NPC description</span>
+              <Textarea
+                className="mt-1"
+                value={draft.npcDescription}
+                onChange={(event) => updateSceneDraft('negotiation', { npcDescription: event.target.value })}
+                placeholder="What the NPC wants and how they behave"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Interest</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={0}
+                  max={5}
+                  value={draft.startingInterest}
+                  onChange={(event) => updateSceneDraft('negotiation', { startingInterest: Number(event.target.value) })}
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Patience</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={0}
+                  max={5}
+                  value={draft.startingPatience}
+                  onChange={(event) => updateSceneDraft('negotiation', { startingPatience: Number(event.target.value) })}
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Impression</span>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={draft.impression}
+                  onChange={(event) => updateSceneDraft('negotiation', { impression: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <div className="rounded-md border border-zinc-800 bg-zinc-950/40 p-3 text-xs leading-5 text-zinc-500">
+              Draw Steel negotiations use twelve traits as either motivations or pitfalls. Configure at least two motivations and one pitfall before creating the scene.
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {renderNegotiationTraitRows('motivation', draft.motivations)}
+              {renderNegotiationTraitRows('pitfall', draft.pitfalls)}
+            </div>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Director notes</span>
+              <Textarea
+                className="mt-1"
+                value={draft.notes}
+                onChange={(event) => updateSceneDraft('negotiation', { notes: event.target.value })}
+                placeholder="Negotiation notes"
+              />
+            </label>
+          </div>
+        );
+      }
+      case 'respite': {
+        const draft = sceneDrafts.respite;
+        return (
+          <div className="space-y-4 rounded-md border border-emerald-900/50 bg-emerald-950/10 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Location</span>
+                <Input
+                  className="mt-1"
+                  value={draft.location}
+                  onChange={(event) => updateSceneDraft('respite', { location: event.target.value })}
+                  placeholder="The Old Lantern Inn"
+                />
+              </label>
+              <label className="text-sm text-zinc-400">
+                <span className="font-medium text-zinc-300">Duration</span>
+                <Input
+                  className="mt-1"
+                  value={draft.duration}
+                  onChange={(event) => updateSceneDraft('respite', { duration: event.target.value })}
+                  placeholder="One evening"
+                />
+              </label>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-300">Activities</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {RESPITE_ACTIVITY_OPTIONS.map((activity) => {
+                  const checked = draft.availableActivities.includes(activity.id);
+                  return (
+                    <label
+                      key={activity.id}
+                      className={cn(
+                        'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
+                        checked ? 'border-emerald-700 bg-emerald-950/40 text-zinc-100' : 'border-zinc-800 bg-zinc-900 text-zinc-400',
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => {
+                          updateSceneDraft('respite', {
+                            availableActivities: event.target.checked
+                              ? [...draft.availableActivities, activity.id]
+                              : draft.availableActivities.filter((id) => id !== activity.id),
+                          });
+                        }}
+                      />
+                      <span>{activity.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Projects</span>
+              <Textarea
+                className="mt-1"
+                value={draft.projects}
+                onChange={(event) => updateSceneDraft('respite', { projects: event.target.value })}
+                placeholder={'Repair the broken ward\nResearch the baroness'}
+              />
+            </label>
+            <label className="text-sm text-zinc-400">
+              <span className="font-medium text-zinc-300">Director notes</span>
+              <Textarea
+                className="mt-1"
+                value={draft.notes}
+                onChange={(event) => updateSceneDraft('respite', { notes: event.target.value })}
+                placeholder="Respite notes"
+              />
+            </label>
+          </div>
+        );
+      }
+      default:
+        return null;
+    }
+  };
+
   if (!campaign) return <div className="p-8 text-zinc-400">Loading...</div>;
 
   const builderSidebar = (
@@ -618,6 +1581,8 @@ export function CampaignBuilder() {
             nodes={buildTree()}
             selectedId={selectedId}
             onSelect={(id, type) => { setSelectedId(id); setSelectedType(type); }}
+            onDeleteScene={handleDeleteScene}
+            onMoveScene={handleMoveScene}
           />
         </CollapsibleContent>
       </Collapsible>
@@ -793,26 +1758,51 @@ export function CampaignBuilder() {
             </Dialog>
           )}
           {selectedType === 'session' && (
-            <Dialog open={addSceneOpen} onOpenChange={setAddSceneOpen}>
+            <Dialog open={addSceneOpen} onOpenChange={handleAddSceneOpenChange}>
               <DialogTrigger asChild><Button size="sm" className="bg-sidebar-director text-zinc-900 hover:bg-sidebar-director/80">Add Scene</Button></DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
                 <DialogTitle>New Scene</DialogTitle>
-                <div className="mt-4 flex flex-col gap-4">
-                  <Input placeholder="Scene title" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                  <select
-                    className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                    value={newSceneType}
-                    onChange={(e) => setNewSceneType(e.target.value)}
-                  >
-                    <option value="story">Story</option>
-                    <option value="battle">Battle</option>
-                    <option value="montage">Montage</option>
-                    <option value="negotiation">Negotiation</option>
-                    <option value="respite">Respite</option>
-                  </select>
+                <div className="mt-4 flex flex-col gap-5">
+                  <label className="text-sm text-zinc-400">
+                    <span className="font-medium text-zinc-300">Scene title</span>
+                    <Input
+                      className="mt-1"
+                      placeholder="Scene title"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                  </label>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-300">Scene type</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-5">
+                      {SCENE_TYPE_OPTIONS.map((option) => {
+                        const selected = newSceneType === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setNewSceneType(option.value)}
+                            className={cn(
+                              'flex min-h-[92px] flex-col items-start gap-2 rounded-md border px-3 py-2 text-left transition',
+                              selected
+                                ? 'border-sidebar-director bg-sidebar-director/15 text-zinc-100'
+                                : 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+                            )}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-semibold">
+                              <SceneTypeIcon type={option.value} className="size-4" />
+                              {option.label}
+                            </span>
+                            <span className="text-xs leading-4 text-zinc-500">{option.summary}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {renderSceneCreationFields()}
                   <div className="flex justify-end gap-2">
                     <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
-                    <Button onClick={addScene}>Create</Button>
+                    <Button onClick={addScene} disabled={!canCreateScene}>Create Scene</Button>
                   </div>
                 </div>
               </DialogContent>

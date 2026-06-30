@@ -79,13 +79,44 @@ sceneRoutes.put('/scenes/:id', async (c) => {
   const accessError = await requireSceneDirector(c, sceneId, user);
   if (accessError) return accessError;
 
-  const body = await c.req.json<{ title?: string; data?: string; order_index?: number }>();
+  const body = await c.req.json<{ title?: string; data?: string; order_index?: number; game_session_id?: string }>();
   const sets: string[] = [];
   const vals: unknown[] = [];
 
   if (body.title !== undefined) { sets.push('title = ?'); vals.push(body.title.trim()); }
   if (body.data !== undefined) { sets.push('data = ?'); vals.push(body.data); }
   if (body.order_index !== undefined) { sets.push('order_index = ?'); vals.push(body.order_index); }
+  if (body.game_session_id !== undefined) {
+    const sessionId = body.game_session_id.trim();
+    const sessionAccessError = await requireSessionDirector(c, sessionId, user);
+    if (sessionAccessError) return sessionAccessError;
+
+    const campaignPair = await c.env.DB.prepare(
+      `SELECT source_gs.campaign_id as source_campaign_id, target_gs.campaign_id as target_campaign_id
+       FROM scenes s
+       JOIN game_sessions source_gs ON source_gs.id = s.game_session_id
+       JOIN game_sessions target_gs ON target_gs.id = ?
+       WHERE s.id = ? AND s.deleted_at IS NULL`,
+    )
+      .bind(sessionId, sceneId)
+      .first<{ source_campaign_id: string; target_campaign_id: string }>();
+    if (!campaignPair || campaignPair.source_campaign_id !== campaignPair.target_campaign_id) {
+      return c.json({ error: 'Target session must be in the same campaign' }, 400);
+    }
+
+    const last = await c.env.DB.prepare(
+      'SELECT MAX(order_index) as max_idx FROM scenes WHERE game_session_id = ? AND deleted_at IS NULL',
+    )
+      .bind(sessionId)
+      .first<{ max_idx: number | null }>();
+
+    sets.push('game_session_id = ?');
+    vals.push(sessionId);
+    if (body.order_index === undefined) {
+      sets.push('order_index = ?');
+      vals.push((last?.max_idx ?? -1) + 1);
+    }
+  }
 
   if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
   vals.push(sceneId);
