@@ -1,4 +1,5 @@
 import { Container, Sprite, Texture } from 'pixi.js';
+import { isConfiguredApiUrl, resolveApiUrl } from '../../lib/api.js';
 
 export interface ImageLoadedInfo {
   naturalWidth: number;
@@ -33,17 +34,18 @@ export class BackgroundLayer extends Container {
       return;
     }
 
-    this.loadingUrl = url;
+    const resolvedUrl = resolveApiUrl(url) ?? url;
+    this.loadingUrl = resolvedUrl;
 
     // Use a plain HTMLImageElement to load the URL. This avoids PixiJS's
     // Assets.load() resolver which requires a file extension to pick the
     // correct parser. Our asset URLs (/api/assets/{id}/data) have no
     // extension, so we load the image directly and build a Texture from it.
     const img = new Image();
-    if (this.shouldUseCors(url)) img.crossOrigin = 'anonymous';
+    if (this.shouldUseCors(resolvedUrl)) img.crossOrigin = isConfiguredApiUrl(resolvedUrl) ? 'use-credentials' : 'anonymous';
     img.onload = () => {
       // Guard against stale loads (URL changed while loading) or destroyed layer
-      if (this.loadingUrl !== url || this.destroyed) return;
+      if (this.loadingUrl !== resolvedUrl || this.destroyed) return;
 
       const texture = Texture.from(img);
 
@@ -65,7 +67,7 @@ export class BackgroundLayer extends Container {
     img.onerror = () => {
       // Image failed to load (404, network error, etc.) — silently ignore
     };
-    img.src = url;
+    img.src = resolvedUrl;
   }
 
   setColor(color: number, width: number, height: number): void {

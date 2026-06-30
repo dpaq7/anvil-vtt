@@ -17,6 +17,7 @@ import { AddToSceneMenu } from './AddToSceneMenu.js';
 import { MonsterPortraitDialog } from './MonsterPortraitDialog.js';
 import { BestiaryFilterBar } from './BestiaryFilterBar.js';
 import type { BestiaryFilters } from './BestiaryFilterBar.js';
+import { resolveApiUrl } from '../../lib/api.js';
 
 export interface BestiaryTableProps {
   monsters: CompendiumMonster[];
@@ -35,6 +36,8 @@ function charMod(value: number | undefined): string {
 
 /** Token-style circle matching the canvas token aesthetic. Shows portrait if available, otherwise a placeholder glyph. */
 function MonsterToken({ portraitUrl, editable }: { portraitUrl?: string | null; editable?: boolean }) {
+  const resolvedPortraitUrl = resolveApiUrl(portraitUrl);
+
   return (
     <div className="group/token relative flex size-7 shrink-0 items-center justify-center">
       {/* Outer black ring */}
@@ -42,9 +45,9 @@ function MonsterToken({ portraitUrl, editable }: { portraitUrl?: string | null; 
       {/* Inner colored ring */}
       <div className="absolute inset-[2px] rounded-full ring-[1.5px] ring-red-500" />
       {/* Content: portrait or placeholder */}
-      {portraitUrl ? (
+      {resolvedPortraitUrl ? (
         <img
-          src={portraitUrl}
+          src={resolvedPortraitUrl}
           alt=""
           className="relative size-[22px] rounded-full object-cover"
         />

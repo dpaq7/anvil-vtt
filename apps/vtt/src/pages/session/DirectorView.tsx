@@ -25,6 +25,7 @@ import { MontageStage } from '../../components/stages/MontageStage.js';
 import { NegotiationStage } from '../../components/stages/NegotiationStage.js';
 import { RespiteStage } from '../../components/stages/RespiteStage.js';
 import { BattleStage } from '../../components/stages/BattleStage.js';
+import { resolveApiUrl } from '../../lib/api.js';
 
 // Grid color presets (shared with BattleWorkspace)
 const GRID_COLORS = [
@@ -129,7 +130,7 @@ export function DirectorView({ sessionState, connectionStatus, send, combatLog }
       setActiveAudioId(newAudioId);
       if (newAudioId) {
         const asset = audioAssets.find((a) => a.id === newAudioId);
-        const url = asset?.audioUrl ?? (asset?.assetId ? `/api/assets/${asset.assetId}/data` : undefined);
+        const url = resolveApiUrl(asset?.audioUrl ?? (asset?.assetId ? `/api/assets/${asset.assetId}/data` : undefined));
         if (url) {
           send({ type: 'audio_play', audioAssetId: newAudioId, loop: true });
         }

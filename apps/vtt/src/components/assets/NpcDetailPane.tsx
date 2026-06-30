@@ -3,6 +3,7 @@ import { X, Trash2, UserCircle, Upload } from 'lucide-react';
 import { Button, Input, Textarea } from '@anvil/ui';
 import type { Npc, UpdateNpcInput } from '@anvil/types';
 import { uploadFile } from '../../stores/assetsStore.js';
+import { resolveApiUrl } from '../../lib/api.js';
 
 export interface NpcDetailPaneProps {
   npc: Npc;
@@ -19,6 +20,7 @@ export function NpcDetailPane({ npc, onUpdate, onDelete, onClose }: NpcDetailPan
   const [uploadingPortrait, setUploadingPortrait] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const portraitUrl = resolveApiUrl(npc.portraitUrl);
 
   const isDirty =
     name !== npc.name ||
@@ -88,9 +90,9 @@ export function NpcDetailPane({ npc, onUpdate, onDelete, onClose }: NpcDetailPan
         {/* Portrait */}
         <div className="flex flex-col items-center gap-2">
           <div className="flex size-24 items-center justify-center overflow-hidden rounded-lg bg-zinc-800">
-            {npc.portraitUrl ? (
+            {portraitUrl ? (
               <img
-                src={npc.portraitUrl}
+                src={portraitUrl}
                 alt={npc.name}
                 className="size-24 object-cover"
               />

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music, Pause, Play } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '@anvil/ui';
 import type { AudioAsset } from '@anvil/types';
+import { isConfiguredApiUrl, resolveApiUrl } from '../../lib/api.js';
 
 const MOOD_COLORS: Record<string, string> = {
   combat: 'text-red-400 bg-red-600/20',
@@ -113,12 +114,12 @@ export function AudioGrid({ audioAssets, onSelect, selectedId, compact }: AudioG
       }
 
       // Derive the URL from the asset ID when audioUrl isn't populated
-      const url = asset.audioUrl ?? (asset.assetId ? `/api/assets/${asset.assetId}/data` : null);
+      const url = resolveApiUrl(asset.audioUrl ?? (asset.assetId ? `/api/assets/${asset.assetId}/data` : null));
       if (!url) return;
 
       const audio = new Audio();
       audio.preload = 'auto';
-      audio.crossOrigin = 'anonymous';
+      audio.crossOrigin = isConfiguredApiUrl(url) ? 'use-credentials' : 'anonymous';
       audio.volume = 0.5;
       audioRef.current = audio;
 

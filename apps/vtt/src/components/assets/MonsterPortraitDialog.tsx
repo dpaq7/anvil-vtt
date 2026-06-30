@@ -9,6 +9,7 @@ import {
   Button,
 } from '@anvil/ui';
 import { uploadFile } from '../../stores/assetsStore.js';
+import { resolveApiUrl } from '../../lib/api.js';
 
 export interface MonsterPortraitDialogProps {
   monsterName: string;
@@ -162,6 +163,7 @@ export function MonsterPortraitDialog({
 
   // Preview size in CSS pixels
   const previewSize = 200;
+  const currentPreviewUrl = resolveApiUrl(currentPortraitUrl);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -236,13 +238,13 @@ export function MonsterPortraitDialog({
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3 py-6">
-            {currentPortraitUrl && (
+            {currentPreviewUrl && (
               <div
                 className="overflow-hidden rounded-full border-2 border-zinc-700"
                 style={{ width: previewSize * 0.6, height: previewSize * 0.6 }}
               >
                 <img
-                  src={currentPortraitUrl}
+                  src={currentPreviewUrl}
                   alt=""
                   className="size-full object-cover"
                 />

@@ -23,6 +23,7 @@ import type { DrawingData } from '../../canvas/layers/DrawingLayer.js';
 import type { TerrainZoneData } from '../../canvas/layers/TerrainLayer.js';
 import type { FogZoneData } from '../../canvas/layers/FogLayer.js';
 import { useAssetsStore } from '../../stores/assetsStore.js';
+import { resolveApiUrl } from '../../lib/api.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -253,6 +254,7 @@ function BuilderTokenContextMenu({
   const menuHeight = 420;
   const clampedX = Math.min(Math.max(8, x), window.innerWidth - menuWidth - 8);
   const clampedY = Math.min(Math.max(8, y), window.innerHeight - menuHeight - 8);
+  const portraitUrl = resolveApiUrl(token.portraitUrl);
 
   return (
     <div
@@ -266,7 +268,7 @@ function BuilderTokenContextMenu({
           className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold uppercase text-white"
           style={{ backgroundColor: `#${token.color.toString(16).padStart(6, '0')}` }}
         >
-          {token.portraitUrl ? <img src={token.portraitUrl} alt="" className="h-full w-full object-cover" /> : token.type.slice(0, 1)}
+          {portraitUrl ? <img src={portraitUrl} alt="" className="h-full w-full object-cover" /> : token.type.slice(0, 1)}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-zinc-100">{token.name}</p>
@@ -467,10 +469,11 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
     notes: (data['notes'] as string) ?? '',
     creatureGroups: (data['creatureGroups'] as string) ?? '',
   };
+  const resolvedMapUrl = resolveApiUrl(battleData.mapUrl) ?? '';
 
   // When a background is loaded, derive grid cols/rows from image dimensions and cell size.
   // Otherwise use the manually-set gridCols/gridRows.
-  const hasBackground = !!bgNaturalSize && !!battleData.mapUrl;
+  const hasBackground = !!bgNaturalSize && !!resolvedMapUrl;
   const effectiveCellSize = battleData.gridCellSize;
   const effectiveCols = hasBackground
     ? Math.ceil(bgNaturalSize.width / effectiveCellSize)
@@ -902,7 +905,7 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
           cellSize={effectiveCellSize}
           entities={entities}
           selectedEntityId={null}
-          backgroundUrl={battleData.mapUrl || null}
+          backgroundUrl={resolvedMapUrl || null}
           isDirector={true}
           onSelectEntity={handleSelectEntity}
           onMoveEntity={handleMoveEntity}
@@ -1003,11 +1006,11 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
 
           <RightRailSection title="Battle Map" icon={<Map className="size-4" />}>
             <div className="flex flex-col gap-3">
-              {battleData.mapUrl && (
+              {resolvedMapUrl && (
                 <div className="relative aspect-video overflow-hidden rounded-md border border-zinc-700 bg-zinc-800">
                   <img
-                    key={battleData.mapUrl}
-                    src={battleData.mapUrl}
+                    key={resolvedMapUrl}
+                    src={resolvedMapUrl}
                     alt="Battle map preview"
                     className={`h-full w-full object-cover ${mapPreviewError ? 'opacity-0' : 'opacity-100'}`}
                     onLoad={() => setMapPreviewError(false)}
@@ -1286,40 +1289,44 @@ export function BattleWorkspace({ data, onChange, campaignId, focusMode = false 
                   No tokens yet. Add monsters or NPCs to the battle.
                 </p>
               )}
-              {battleData.tokens.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2"
-                >
+              {battleData.tokens.map((t) => {
+                const portraitUrl = resolveApiUrl(t.portraitUrl);
+
+                return (
                   <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
-                    style={{ backgroundColor: `#${t.color.toString(16).padStart(6, '0')}` }}
+                    key={t.id}
+                    className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2"
                   >
-                    {t.portraitUrl ? (
-                      <img src={t.portraitUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="text-[10px] font-semibold uppercase text-white/80">{t.type.slice(0, 1)}</span>
-                    )}
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full"
+                      style={{ backgroundColor: `#${t.color.toString(16).padStart(6, '0')}` }}
+                    >
+                      {portraitUrl ? (
+                        <img src={portraitUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-[10px] font-semibold uppercase text-white/80">{t.type.slice(0, 1)}</span>
+                      )}
+                    </div>
+                    <Input
+                      value={t.name}
+                      onChange={(e) => updateToken(t.id, { name: e.target.value })}
+                      placeholder="Token name"
+                      className="min-w-0 flex-1 text-sm"
+                    />
+                    <span className="shrink-0 text-xs text-zinc-500">
+                      ({t.x}, {t.y})
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeToken(t.id)}
+                      className="shrink-0 text-red-400 hover:text-red-300"
+                    >
+                      Remove
+                    </Button>
                   </div>
-                  <Input
-                    value={t.name}
-                    onChange={(e) => updateToken(t.id, { name: e.target.value })}
-                    placeholder="Token name"
-                    className="min-w-0 flex-1 text-sm"
-                  />
-                  <span className="shrink-0 text-xs text-zinc-500">
-                    ({t.x}, {t.y})
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeToken(t.id)}
-                    className="shrink-0 text-red-400 hover:text-red-300"
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </RightRailSection>
 

@@ -18,6 +18,7 @@ import {
 } from '@anvil/ui';
 import { TERRAIN_CATEGORY_NAMES, getTerrainDescription, getTerrainStaminaDescription } from '@anvil/data';
 import type { CompendiumTerrain, TerrainCategory, CustomTerrain } from '@anvil/types';
+import { resolveApiUrl } from '../../lib/api.js';
 
 export interface TerrainGridProps {
   builtInTerrains: CompendiumTerrain[];
@@ -143,6 +144,7 @@ export function TerrainGrid({
         {/* Custom terrain cards */}
         {filteredCustom.map((terrain) => {
           const accent = CATEGORY_ACCENTS[terrain.category];
+          const imageUrl = resolveApiUrl(terrain.imageUrl);
 
           return (
             <Card
@@ -167,9 +169,9 @@ export function TerrainGrid({
               ) : (
                 <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
                   <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-md', accent.iconBackground)}>
-                    {terrain.imageUrl ? (
+                    {imageUrl ? (
                       <img
-                        src={terrain.imageUrl}
+                        src={imageUrl}
                         alt={terrain.name}
                         className="size-10 rounded-md object-cover"
                       />

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { AudioLiveState } from '../types/protocol.js';
+import { isConfiguredApiUrl, resolveApiUrl } from '../lib/api.js';
 
 /**
  * Synchronises client-side HTML5 Audio playback with the server's audio state.
@@ -30,9 +31,10 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
     }
 
     const { playing, audioUrl, loop } = audioState;
+    const resolvedAudioUrl = resolveApiUrl(audioUrl) ?? null;
 
     // If URL changed, swap audio element
-    if (audioUrl && audioUrl !== lastUrlRef.current) {
+    if (resolvedAudioUrl && resolvedAudioUrl !== lastUrlRef.current) {
       // Stop old audio
       if (audioRef.current) {
         audioRef.current.pause();
@@ -41,13 +43,13 @@ export function useAudioSync(audioState: AudioLiveState | null, volume = 0.4) {
       }
 
       const audio = new Audio();
-      audio.crossOrigin = 'anonymous';
+      audio.crossOrigin = isConfiguredApiUrl(resolvedAudioUrl) ? 'use-credentials' : 'anonymous';
       audio.preload = 'auto';
       audio.volume = volume;
       audio.loop = loop;
-      audio.src = audioUrl;
+      audio.src = resolvedAudioUrl;
       audioRef.current = audio;
-      lastUrlRef.current = audioUrl;
+      lastUrlRef.current = resolvedAudioUrl;
 
       if (playing) {
         audio.play().catch(() => {

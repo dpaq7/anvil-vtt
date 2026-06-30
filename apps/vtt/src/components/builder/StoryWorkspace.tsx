@@ -13,6 +13,7 @@ import { SceneAudioPanel } from '../session/SceneAudioPanel.js';
 import type { Scene } from './SceneWorkspace.js';
 import type { MapAsset } from '@anvil/types';
 import { useAssetsStore } from '../../stores/assetsStore.js';
+import { resolveApiUrl } from '../../lib/api.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,6 +83,7 @@ export function StoryWorkspace({ data, onChange, campaignId }: StoryWorkspacePro
   }, [data, onChange]);
 
   const hasPreviewText = Boolean(storyData.readAloud || storyData.notes);
+  const assetPreviewUrl = resolveApiUrl(storyData.assetUrl);
 
   return (
     <div className="flex h-full">
@@ -89,10 +91,10 @@ export function StoryWorkspace({ data, onChange, campaignId }: StoryWorkspacePro
       <div className="flex-1 overflow-auto bg-zinc-950">
         <div className="relative h-full">
           {/* Background asset if provided */}
-          {storyData.assetUrl && (
+          {assetPreviewUrl && (
             <div
               className="absolute inset-0 bg-cover bg-center opacity-20"
-              style={{ backgroundImage: `url(${storyData.assetUrl})` }}
+              style={{ backgroundImage: `url(${assetPreviewUrl})` }}
             />
           )}
 
@@ -158,10 +160,10 @@ export function StoryWorkspace({ data, onChange, campaignId }: StoryWorkspacePro
             <span className="text-sm font-medium text-zinc-300">Background Asset</span>
 
             {/* Asset preview */}
-            {storyData.assetUrl && (
+            {assetPreviewUrl && (
               <div className="relative aspect-video overflow-hidden rounded-md border border-zinc-700 bg-zinc-800">
                 <img
-                  src={storyData.assetUrl}
+                  src={assetPreviewUrl}
                   alt="Background asset"
                   className="h-full w-full object-cover"
                   onError={(e) => {

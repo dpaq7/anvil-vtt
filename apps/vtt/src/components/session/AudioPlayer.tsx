@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music, Pause, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@anvil/ui';
 import type { AudioAsset } from '@anvil/types';
+import { isConfiguredApiUrl, resolveApiUrl } from '../../lib/api.js';
 
 export interface AudioPlayerProps {
   /** The audio asset to play (null = nothing selected) */
@@ -53,12 +54,12 @@ export function AudioPlayer({ track, onClear }: AudioPlayerProps) {
     setError(null);
 
     // Derive the URL from the asset ID when audioUrl isn't populated
-    const url = track?.audioUrl ?? (track?.assetId ? `/api/assets/${track.assetId}/data` : null);
+    const url = resolveApiUrl(track?.audioUrl ?? (track?.assetId ? `/api/assets/${track.assetId}/data` : null));
     if (!url) return;
 
     const audio = new Audio();
     audio.preload = 'auto';
-    audio.crossOrigin = 'anonymous';
+    audio.crossOrigin = isConfiguredApiUrl(url) ? 'use-credentials' : 'anonymous';
     audio.volume = mutedRef.current ? 0 : volumeRef.current;
     audio.loop = loopRef.current;
     audioRef.current = audio;

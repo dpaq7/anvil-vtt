@@ -11,6 +11,7 @@ import {
   SelectItem,
 } from '@anvil/ui';
 import type { MapAsset, UpdateMapInput } from '@anvil/types';
+import { resolveApiUrl } from '../../lib/api.js';
 
 // ── Option lists for dropdowns ──
 
@@ -54,6 +55,7 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
   const [biomes, setBiomes] = useState<string[]>(map.biomes);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const imageUrl = resolveApiUrl(map.imageUrl);
 
   // Track dirty state
   const isDirty =
@@ -119,9 +121,9 @@ export function MapDetailPane({ map, onUpdate, onDelete, onClose }: MapDetailPan
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {/* Thumbnail — full image, not cropped */}
         <div className="overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900">
-          {map.imageUrl ? (
+          {imageUrl ? (
             <img
-              src={map.imageUrl}
+              src={imageUrl}
               alt={map.name}
               className="w-full object-contain"
             />
