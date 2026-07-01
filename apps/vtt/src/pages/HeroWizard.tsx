@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { WizardLogic } from '@anvil/data';
 import { useWizardStore } from '../stores/wizardStore.js';
@@ -39,6 +39,8 @@ async function uploadPortraitDataUrl(dataUrl: string): Promise<string> {
 
 export function HeroWizard() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isMobileRoute = location.pathname.startsWith('/app/mobile');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -118,7 +120,10 @@ export function HeroWizard() {
       }
       await clearWizardState();
       reset();
-      navigate(`/app/heroes/${result.id}`, { replace: true });
+      navigate(
+        isMobileRoute ? `/app/mobile/heroes/${result.id}` : `/app/heroes/${result.id}`,
+        { replace: true },
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Hero creation failed');
       setSaving(false);

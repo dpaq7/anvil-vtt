@@ -121,7 +121,7 @@ export function ComplicationStep({ character, onChange }: Props) {
   );
 
   return (
-    <div className="h-[500px] flex flex-col">
+    <div className="flex h-[70dvh] flex-col md:h-[500px]">
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Complication</h2>
         <p className="mb-4 text-sm text-zinc-400">

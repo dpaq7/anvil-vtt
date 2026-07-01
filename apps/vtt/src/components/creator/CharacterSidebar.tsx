@@ -105,7 +105,7 @@ export function CharacterSidebar({ character, visible }: Props) {
   return (
     <div
       className={cn(
-        'shrink-0 border-l border-creator-border bg-creator-bg transition-all duration-300 overflow-hidden',
+        'hidden shrink-0 border-l border-creator-border bg-creator-bg transition-all duration-300 overflow-hidden md:block',
         visible ? 'w-64' : 'w-0'
       )}
     >

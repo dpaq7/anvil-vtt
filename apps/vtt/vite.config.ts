@@ -8,7 +8,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        // Override when the local worker runs on a non-default port.
+        target: process.env['ANVIL_API_PROXY'] ?? 'http://localhost:8787',
         changeOrigin: true,
         ws: true,
       },

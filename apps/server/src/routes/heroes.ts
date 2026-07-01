@@ -19,6 +19,17 @@ export const heroRoutes = new Hono<AppEnv>();
 
 heroRoutes.use('/*', authMiddleware);
 
+// Tracker fields players may update out of session (in session, SessionRoom
+// applies the same clamping via hero_tracker_update).
+const TRACKER_DATA_KEYS = [
+  'staminaCurrent',
+  'recoveriesCurrent',
+  'victories',
+  'xp',
+  'heroicResourceCurrent',
+] as const;
+const TRACKER_VALUE_MAX = 9999;
+
 // ── Helpers ──
 
 interface HeroRow {
@@ -532,8 +543,11 @@ heroRoutes.put('/:id', async (c) => {
   if (body.data !== undefined) {
     const hasInventory = Object.prototype.hasOwnProperty.call(body.data, 'inventory');
     const hasHeroBannerAssetId = Object.prototype.hasOwnProperty.call(body.data, 'heroBannerAssetId');
-    if (!hasInventory && !hasHeroBannerAssetId) {
-      return c.json({ error: 'Only inventory and hero banner data can be updated directly' }, 400);
+    const trackerKeys = TRACKER_DATA_KEYS.filter((key) =>
+      Object.prototype.hasOwnProperty.call(body.data, key),
+    );
+    if (!hasInventory && !hasHeroBannerAssetId && trackerKeys.length === 0) {
+      return c.json({ error: 'Only inventory, hero banner, and tracker data can be updated directly' }, 400);
     }
 
     const existingData = parseJson<Record<string, unknown>>(existing.data, {});
@@ -564,6 +578,19 @@ heroRoutes.put('/:id', async (c) => {
       } else {
         delete nextData['heroBannerAssetId'];
       }
+    }
+
+    for (const key of trackerKeys) {
+      const value = body.data[key];
+      if (value === null) {
+        // null resets a "current" tracker to its derived default (treated as full)
+        delete nextData[key];
+        continue;
+      }
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return c.json({ error: `Invalid ${key} value` }, 400);
+      }
+      nextData[key] = Math.max(0, Math.min(TRACKER_VALUE_MAX, Math.round(value)));
     }
 
     sets.push('data = ?');
