@@ -1,0 +1,25 @@
+{
+  "name": "Anvil VTT",
+  "short_name": "Anvil",
+  "description": "Virtual tabletop for Draw Steel — campaign prep, live sessions, and the phone companion.",
+  "start_url": "/app/mobile",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
