@@ -77,7 +77,7 @@ export function JoinSession() {
 
   return (
     <div className="flex h-full items-center justify-center">
-      <Card className="w-96">
+      <Card className="mx-4 w-full max-w-96">
         <CardHeader>
           <CardTitle>Join Session</CardTitle>
         </CardHeader>

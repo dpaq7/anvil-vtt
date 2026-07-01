@@ -143,14 +143,15 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
         <div className="space-y-2 border-t border-zinc-800/30 bg-zinc-900/50 px-3 py-2">
           {/* Quick damage/heal */}
           <div className="flex items-center gap-1">
+            {/* size-9 keeps these frequent combat controls tappable on tablets */}
             <Button
               variant="ghost"
               size="icon"
-              className="size-6"
+              className="size-9"
               onClick={() => handleDamage(1)}
               title="1 damage"
             >
-              <Minus className="size-3 text-red-400" />
+              <Minus className="size-3.5 text-red-400" />
             </Button>
             <input
               type="number"
@@ -160,25 +161,25 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
                 if (e.key === 'Enter') handleQuickDamageHeal();
               }}
               placeholder="+/-"
-              className="h-6 w-14 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
+              className="h-9 w-14 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
             />
             <Button
               variant="ghost"
               size="icon"
-              className="size-6"
+              className="size-9"
               onClick={() => handleHeal(1)}
               title="1 heal"
             >
-              <Plus className="size-3 text-emerald-400" />
+              <Plus className="size-3.5 text-emerald-400" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="ml-auto size-6 text-zinc-500 hover:text-red-400"
+              className="ml-auto size-9 text-zinc-500 hover:text-red-400"
               onClick={handleRemove}
               title="Remove creature"
             >
-              <Trash2 className="size-3" />
+              <Trash2 className="size-3.5" />
             </Button>
           </div>
 
