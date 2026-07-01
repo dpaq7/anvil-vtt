@@ -22,6 +22,8 @@ export interface CultureSelection {
   environment: string | null;
   organization: string | null;
   upbringing: string | null;
+  preset?: string | null;
+  language?: string | null;
 }
 
 /**
@@ -148,6 +150,8 @@ export function createEmptyCharacter(): CharacterInProgress {
       environment: null,
       organization: null,
       upbringing: null,
+      preset: null,
+      language: null,
     },
     career: null,
     incitingIncident: null,

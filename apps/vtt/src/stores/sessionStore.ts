@@ -83,6 +83,28 @@ function removeActiveSceneArrayItem(
   });
 }
 
+function upsertActiveSceneArrayItem<T>(
+  state: SessionState,
+  key: string,
+  idKey: string,
+  id: string,
+  item: T,
+): SessionState {
+  return updateActiveSceneData(state, (data) => {
+    const current = Array.isArray(data[key]) ? data[key] : [];
+    let replaced = false;
+    const next: unknown[] = current.map((entry) => {
+      if (isRecord(entry) && entry[idKey] === id) {
+        replaced = true;
+        return item;
+      }
+      return entry;
+    });
+    if (!replaced) next.push(item);
+    return { ...data, [key]: next };
+  });
+}
+
 export function applyServerMessageToRuntime(
   current: SessionRuntimeState,
   message: ServerMessage,
@@ -201,6 +223,11 @@ export function applyServerMessageToRuntime(
         ),
       );
 
+    case 'scene_terrain_updated':
+      return updateSessionState(current, (state) =>
+        upsertActiveSceneArrayItem(state, 'terrain', 'id', message.terrain.id, message.terrain),
+      );
+
     case 'scene_terrain_removed':
       return updateSessionState(current, (state) =>
         removeActiveSceneArrayItem(state, 'terrain', 'id', message.terrainId),
@@ -267,6 +294,7 @@ export function applyServerMessageToRuntime(
     case 'scene_reverted':
     case 'draw_steel_roll_resolved':
     case 'token_action_resolved':
+    case 'phone_anchor_status':
     case 'error':
     case 'pong':
       return current;

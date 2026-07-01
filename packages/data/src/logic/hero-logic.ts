@@ -38,7 +38,7 @@ export type Echelon = 1 | 2 | 3 | 4;
  * Heroic resource types by class.
  */
 export type HeroicResourceType =
-  | 'ferocity'   // Fury
+  | 'ferocity'   // Beastheart, Fury
   | 'piety'      // Conduit
   | 'focus'      // Tactician
   | 'insight'    // Shadow
@@ -47,7 +47,7 @@ export type HeroicResourceType =
   | 'clarity'    // Talent
   | 'drama'      // Troubadour
   | 'essence'    // Elementalist, Summoner
-  | 'rage'       // Beastheart
+  | 'rage'       // Legacy fallback
   | 'heroic';    // Generic fallback
 
 /**
@@ -67,6 +67,14 @@ export interface Characteristics {
 }
 
 export type CharacteristicName = keyof Characteristics;
+
+export interface LevelAdvancementChoice {
+  featureId: string;
+  choiceId: string;
+  category?: string;
+}
+
+export type LevelAdvancementChoices = Record<number, LevelAdvancementChoice[]>;
 
 // ---------------------------------------------------------------------------
 // Class Configuration (stamina base values)
@@ -94,7 +102,7 @@ const CLASS_STAMINA_CONFIG: Record<HeroClass, { level1: number; perLevel: number
  * Heroic resource type by class.
  */
 const CLASS_HEROIC_RESOURCE: Record<HeroClass, HeroicResourceType> = {
-  beastheart: 'rage',
+  beastheart: 'ferocity',
   censor: 'wrath',
   conduit: 'piety',
   elementalist: 'essence',
@@ -123,6 +131,17 @@ const CLASS_POTENCY_CHARACTERISTICS: Record<HeroClass, CharacteristicName[]> = {
   talent: ['reason', 'presence'],
   troubadour: ['presence', 'agility'],
 };
+
+const CHARACTERISTIC_NAMES: CharacteristicName[] = [
+  'might',
+  'agility',
+  'reason',
+  'intuition',
+  'presence',
+];
+
+const XP_PER_LEVEL = 16;
+const MAX_HERO_LEVEL = 10;
 
 // ---------------------------------------------------------------------------
 // Level & Echelon
@@ -169,6 +188,60 @@ export function getEchelonMinLevel(echelon: Echelon): number {
     case 4:
       return 10;
   }
+}
+
+/**
+ * Get the minimum XP required to be a specific level.
+ *
+ * Draw Steel advancement uses 16 XP bands:
+ * - Level 1: 0 XP
+ * - Level 2: 16 XP
+ * - ...
+ * - Level 10: 144 XP
+ */
+export function getMinXPForLevel(level: number): number {
+  if (typeof level !== 'number' || level < 1 || level > MAX_HERO_LEVEL || !Number.isInteger(level)) {
+    throw new Error(`HeroLogic.getMinXPForLevel: level must be 1-10, got ${level}`);
+  }
+
+  return (level - 1) * XP_PER_LEVEL;
+}
+
+/**
+ * Get the total XP threshold for the next level, or null at level 10.
+ */
+export function getMinXPForNextLevel(currentLevel: number): number | null {
+  if (typeof currentLevel !== 'number' || currentLevel < 1 || currentLevel > MAX_HERO_LEVEL || !Number.isInteger(currentLevel)) {
+    throw new Error(`HeroLogic.getMinXPForNextLevel: level must be 1-10, got ${currentLevel}`);
+  }
+
+  if (currentLevel >= MAX_HERO_LEVEL) return null;
+  return getMinXPForLevel(currentLevel + 1);
+}
+
+/**
+ * Get remaining XP needed to advance one level.
+ */
+export function getXPNeededForNextLevel(currentLevel: number, currentXP: number): number | null {
+  const nextThreshold = getMinXPForNextLevel(currentLevel);
+  if (nextThreshold === null) return null;
+  return Math.max(0, nextThreshold - currentXP);
+}
+
+/**
+ * Determine the highest level unlocked by a total XP value.
+ */
+export function getLevelForXP(xp: number): number {
+  const totalXP = Math.max(0, Math.floor(Number.isFinite(xp) ? xp : 0));
+  return Math.min(MAX_HERO_LEVEL, Math.floor(totalXP / XP_PER_LEVEL) + 1);
+}
+
+/**
+ * Check whether a hero can advance one level with their current XP.
+ */
+export function canAdvanceLevel(currentLevel: number, currentXP: number): boolean {
+  const nextThreshold = getMinXPForNextLevel(currentLevel);
+  return nextThreshold !== null && currentXP >= nextThreshold;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,6 +316,53 @@ export function getMaxStaminaWithKit(
   const echelon = getEchelon(level);
   const kitBonus = kitStaminaPerEchelon * echelon;
   return baseStamina + kitBonus;
+}
+
+function hasLevelUpChoice(
+  levelUpChoices: LevelAdvancementChoices | null | undefined,
+  category: string,
+  choiceId: string
+): boolean {
+  return Object.values(levelUpChoices ?? {})
+    .flat()
+    .some((choice) => {
+      if (choice.category !== category) return false;
+      if (choice.choiceId === choiceId) return true;
+      return choiceId === 'conjured-ward' && (
+        choice.choiceId === 'summoner-3-2a' ||
+        choice.choiceId.includes('conjured-ward')
+      );
+    });
+}
+
+/**
+ * Calculate Stamina bonuses granted by level-up choices.
+ */
+export function getLevelAdvancementStaminaBonus(
+  heroClass: HeroClass,
+  level: number,
+  levelUpChoices?: LevelAdvancementChoices | null
+): number {
+  if (heroClass === 'summoner' && hasLevelUpChoice(levelUpChoices, 'ward', 'conjured-ward')) {
+    return 3 * getEchelon(level);
+  }
+
+  return 0;
+}
+
+/**
+ * Calculate maximum stamina including kit and level-up choice bonuses.
+ */
+export function getMaxStaminaWithAdvancements(
+  heroClass: HeroClass,
+  level: number,
+  kitStaminaPerEchelon: number,
+  levelUpChoices?: LevelAdvancementChoices | null
+): number {
+  return (
+    getMaxStaminaWithKit(heroClass, level, kitStaminaPerEchelon) +
+    getLevelAdvancementStaminaBonus(heroClass, level, levelUpChoices)
+  );
 }
 
 /**
@@ -544,6 +664,113 @@ export function getTotalCharacteristics(characteristics: Characteristics): numbe
     characteristics.intuition +
     characteristics.presence
   );
+}
+
+/**
+ * Get the characteristic scores that increase automatically at levels 4 and 10.
+ */
+export function getAdvancementFixedCharacteristics(heroClass: HeroClass): CharacteristicName[] {
+  return [...CLASS_POTENCY_CHARACTERISTICS[heroClass]];
+}
+
+function normalizeCharacteristics(characteristics: Partial<Characteristics>): Characteristics {
+  return {
+    might: typeof characteristics.might === 'number' ? characteristics.might : 0,
+    agility: typeof characteristics.agility === 'number' ? characteristics.agility : 0,
+    reason: typeof characteristics.reason === 'number' ? characteristics.reason : 0,
+    intuition: typeof characteristics.intuition === 'number' ? characteristics.intuition : 0,
+    presence: typeof characteristics.presence === 'number' ? characteristics.presence : 0,
+  };
+}
+
+function setCharacteristicMinimum(
+  characteristics: Characteristics,
+  name: CharacteristicName,
+  minimum: number
+): void {
+  characteristics[name] = Math.max(characteristics[name], minimum);
+}
+
+function increaseCharacteristic(
+  characteristics: Characteristics,
+  name: CharacteristicName,
+  maximum: number
+): void {
+  characteristics[name] = Math.min(maximum, characteristics[name] + 1);
+}
+
+function characteristicChoiceId(choiceId: string): CharacteristicName | null {
+  const id = choiceId.includes(':') ? choiceId.split(':').pop() ?? choiceId : choiceId;
+  const normalized = id.toLowerCase().replace(/[^a-z]+/g, '');
+  return isValidCharacteristic(normalized) ? normalized : null;
+}
+
+function getCharacteristicLevelChoices(
+  levelUpChoices: LevelAdvancementChoices | null | undefined,
+  level: number
+): CharacteristicName[] {
+  return (levelUpChoices?.[level] ?? [])
+    .filter((choice) => choice.category === 'characteristic')
+    .map((choice) => characteristicChoiceId(choice.choiceId))
+    .filter((choice): choice is CharacteristicName => choice !== null);
+}
+
+/**
+ * Apply level-based characteristic advancement to stored starting characteristics.
+ *
+ * Stored heroes keep their original creation characteristics. This helper derives the
+ * live character-sheet values by applying the fixed class increases and the one-stat
+ * choices made at levels 4 and 10.
+ */
+export function applyLevelAdvancementCharacteristics(
+  heroClass: HeroClass,
+  level: number,
+  baseCharacteristics: Partial<Characteristics>,
+  levelUpChoices?: LevelAdvancementChoices | null
+): Characteristics {
+  if (typeof level !== 'number' || level < 1 || level > 10) {
+    throw new Error(`HeroLogic.applyLevelAdvancementCharacteristics: level must be 1-10, got ${level}`);
+  }
+
+  const characteristics = normalizeCharacteristics(baseCharacteristics);
+  const fixed = getAdvancementFixedCharacteristics(heroClass);
+  const fixedSet = new Set<CharacteristicName>(fixed);
+
+  if (level >= 4) {
+    for (const name of fixed) {
+      setCharacteristicMinimum(characteristics, name, 3);
+    }
+
+    if (fixed.length === 1) {
+      for (const choice of getCharacteristicLevelChoices(levelUpChoices, 4)) {
+        if (!fixedSet.has(choice)) {
+          increaseCharacteristic(characteristics, choice, 3);
+        }
+      }
+    }
+  }
+
+  if (level >= 7) {
+    for (const name of CHARACTERISTIC_NAMES) {
+      increaseCharacteristic(characteristics, name, 4);
+    }
+  }
+
+  if (level >= 10) {
+    for (const name of fixed) {
+      setCharacteristicMinimum(characteristics, name, 5);
+    }
+
+    if (fixed.length === 1) {
+      for (const choice of getCharacteristicLevelChoices(levelUpChoices, 10)) {
+        if (!fixedSet.has(choice)) {
+          increaseCharacteristic(characteristics, choice, 5);
+        }
+      }
+    }
+  }
+
+  return characteristics;
 }
 
 // ---------------------------------------------------------------------------

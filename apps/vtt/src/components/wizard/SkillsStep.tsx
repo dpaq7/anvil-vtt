@@ -182,17 +182,42 @@ export function SkillsStep({ character, onChange }: Props) {
       }
     }
 
+    // Class source - fixed named skills are granted; group choices are player selections.
+    if (character.heroClass) {
+      const classDef = GameData.getClass(character.heroClass);
+      if (classDef) {
+        if (classDef.fixedSkills.length > 0) {
+          sources.push({
+            id: "class-granted",
+            label: `Class: ${classDef.name} (Granted)`,
+            description: "These skills are automatically granted",
+            skillGroups: classDef.fixedSkills,
+            selectedSkill: classDef.fixedSkills[0] ?? null,
+            isGranted: true,
+          });
+        }
+
+        for (const slot of WizardLogic.getClassSkillChoiceSlots(character)) {
+          sources.push({
+            id: slot.id,
+            label: slot.label,
+            description: slot.description,
+            skillGroups: slot.groups,
+            selectedSkill: character.classSkillChoices?.[slot.index] ?? null,
+          });
+        }
+      }
+    }
+
     return sources;
   }, [
-    character.culture,
-    character.career,
-    character.cultureSkills,
-    character.careerSkillChoices,
+    character,
   ]);
 
   const handleSelectSkill = (sourceId: string, skillName: string) => {
     let newCultureSkills = { ...character.cultureSkills };
     const newCareerChoices = [...(character.careerSkillChoices ?? [])];
+    const newClassChoices = [...(character.classSkillChoices ?? [])];
 
     if (sourceId === "environment") {
       newCultureSkills = { ...newCultureSkills, environment: skillName };
@@ -203,17 +228,22 @@ export function SkillsStep({ character, onChange }: Props) {
     } else if (sourceId.startsWith("career-choice-")) {
       const index = parseInt(sourceId.replace("career-choice-", ""), 10);
       newCareerChoices[index] = skillName;
+    } else if (sourceId.startsWith("class-skill-")) {
+      const index = parseInt(sourceId.replace("class-skill-", ""), 10);
+      newClassChoices[index] = skillName;
     }
 
     const nextCharacter = {
       ...character,
       cultureSkills: newCultureSkills,
       careerSkillChoices: newCareerChoices,
+      classSkillChoices: newClassChoices,
     };
 
     onChange({
       cultureSkills: newCultureSkills,
       careerSkillChoices: newCareerChoices,
+      classSkillChoices: newClassChoices,
       selectedSkills: WizardLogic.getSelectedSkillNames(nextCharacter),
     });
   };
@@ -230,7 +260,7 @@ export function SkillsStep({ character, onChange }: Props) {
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Select Skills</h2>
         <p className="mb-4 text-sm text-zinc-400">
-          Your skills come from your culture and career. Select one skill from
+          Your skills come from your culture, career, and class. Select one skill from
           each source below.
         </p>
       </div>

@@ -31,13 +31,13 @@ export type HeroicResourceType =
   | 'wrath'      // Censor
   | 'piety'      // Conduit
   | 'essence'    // Elementalist, Summoner
-  | 'ferocity'   // Fury
+  | 'ferocity'   // Beastheart, Fury
   | 'discipline' // Null
   | 'insight'    // Shadow
   | 'focus'      // Tactician
   | 'clarity'    // Talent
   | 'drama'      // Troubadour
-  | 'rage';      // Beastheart
+  | 'rage';      // Legacy fallback
 
 // Shared stamina pool interface
 export interface StaminaPool {
@@ -494,7 +494,7 @@ export function isTroubadourHero(hero: Hero): hero is TroubadourHero {
 
 // Get heroic resource type for a class
 export type HeroicResourceForClass<T extends HeroClass> =
-  T extends 'beastheart' ? 'rage' :
+  T extends 'beastheart' ? 'ferocity' :
   T extends 'censor' ? 'wrath' :
   T extends 'conduit' ? 'piety' :
   T extends 'elementalist' ? 'essence' :

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { WizardLogic } from '@anvil/data';
 import { useWizardStore } from '../stores/wizardStore.js';
-import { loadWizardState, clearWizardState, useWizardPersistence } from '../hooks/useWizardPersistence.js';
+import { clearWizardState, useWizardPersistence } from '../hooks/useWizardPersistence.js';
 import { HeroCreatorLayout, LevelSelectStep, LevelUpStep } from '../components/creator/index.js';
 import { AncestryStep } from '../components/wizard/AncestryStep.js';
 import { CultureStep } from '../components/wizard/CultureStep.js';
@@ -20,6 +21,21 @@ import { AbilitiesStep } from '../components/wizard/AbilitiesStep.js';
 import { PersonalStep } from '../components/wizard/PersonalStep.js';
 import { ReviewStep } from '../components/wizard/ReviewStep.js';
 import { api } from '../lib/api.js';
+import { uploadFile } from '../stores/assetsStore.js';
+
+const MAX_PORTRAIT_UPLOAD_BYTES = 2 * 1024 * 1024;
+const ALLOWED_PORTRAIT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+async function uploadPortraitDataUrl(dataUrl: string): Promise<string> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  if (!ALLOWED_PORTRAIT_TYPES.has(blob.type)) throw new Error('Choose a PNG, JPEG, WEBP, or GIF portrait.');
+  if (blob.size > MAX_PORTRAIT_UPLOAD_BYTES) throw new Error('Choose a portrait under 2 MB.');
+
+  const extension = blob.type.split('/')[1] ?? 'png';
+  const file = new File([blob], `hero-portrait.${extension}`, { type: blob.type });
+  return uploadFile(file, 'portrait');
+}
 
 export function HeroWizard() {
   const navigate = useNavigate();
@@ -29,40 +45,35 @@ export function HeroWizard() {
   const character = useWizardStore((state) => state.character);
   const currentStepId = useWizardStore((state) => state.currentStepId);
   const patch = useWizardStore((state) => state.patch);
-  const loadFromSaved = useWizardStore((state) => state.loadFromSaved);
   const reset = useWizardStore((state) => state.reset);
 
-  // Load saved state from IndexedDB on mount
+  // `/heroes/new` is always a new creation flow; stale drafts should not repopulate it.
   useEffect(() => {
-    loadWizardState().then((saved) => {
-      if (saved) {
-        // Need to migrate old saved state to new format if needed
-        const savedCharacter = saved.character;
-        // Ensure level and levelUpChoices exist
-        if (!('level' in savedCharacter)) {
-          (savedCharacter as { level?: number }).level = 1;
-        }
-        if (!('levelUpChoices' in savedCharacter)) {
-          (savedCharacter as { levelUpChoices?: Record<number, unknown[]> }).levelUpChoices = {};
-        }
-        // Convert old numeric step to step ID
-        const stepId = typeof saved.step === 'number'
-          ? convertLegacyStepToId(saved.step)
-          : saved.step;
-        loadFromSaved(savedCharacter, stepId);
+    let cancelled = false;
+    clearWizardState().then(() => {
+      if (!cancelled) {
+        reset();
+        setLoaded(true);
       }
-      setLoaded(true);
     });
-  }, [loadFromSaved]);
+    return () => { cancelled = true; };
+  }, [reset]);
 
   // Persist to IndexedDB on change (after initial load)
-  useWizardPersistence(currentStepId, character);
+  useWizardPersistence(currentStepId, character, loaded && !saving);
 
   const handleSave = async () => {
     if (!WizardLogic.isCharacterComplete(character)) return;
 
     setSaving(true);
     try {
+      let portraitAssetId: string | null = null;
+      let portraitUrl = character.portraitUrl;
+      if (portraitUrl?.startsWith('data:')) {
+        portraitAssetId = await uploadPortraitDataUrl(portraitUrl);
+        portraitUrl = null;
+      }
+
       const result = await api.post<{ id: string }>('/api/heroes', {
         name: character.name,
         level: character.level,
@@ -74,31 +85,42 @@ export function HeroWizard() {
         characteristics: character.characteristics,
         kit: character.kit,
         skills: WizardLogic.getSelectedSkillNames(character),
-        abilities: character.selectedAbilities,
-        portraitUrl: character.portraitUrl,
+        abilities: WizardLogic.getSelectedAbilityIds(character),
+        portraitAssetId,
+        portraitUrl,
         data: {
           heroClass: character.heroClass,
           subclass: character.subclass,
           culture: character.culture,
           kit: character.kit,
+          secondaryKit: character.secondaryKit,
           cultureSkills: character.cultureSkills,
           careerSkillChoices: character.careerSkillChoices,
+          classSkillChoices: character.classSkillChoices,
           ancestryTraits: character.ancestryTraits,
           incitingIncident: character.incitingIncident,
+          careerPerk: character.careerPerk,
           complication: character.complication,
           selectedLanguages: character.selectedLanguages,
-          selectedPerks: character.selectedPerks,
+          selectedPerks: WizardLogic.getSelectedPerkIds(character),
           selectedTitles: character.selectedTitles,
+          abilityChoices: character.abilityChoices,
+          summonerMinionChoices: character.summonerMinionChoices,
+          companion: character.companion,
           pronouns: character.pronouns,
           backstory: character.backstory,
           appearance: character.appearance,
           levelUpChoices: character.levelUpChoices,
         },
       });
+      if (!result.id) {
+        throw new Error('Hero was created without an id');
+      }
       await clearWizardState();
       reset();
-      navigate(`/app/heroes/${result.id}`);
-    } catch {
+      navigate(`/app/heroes/${result.id}`, { replace: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Hero creation failed');
       setSaving(false);
     }
   };
@@ -164,28 +186,4 @@ export function HeroWizard() {
       {renderStep()}
     </HeroCreatorLayout>
   );
-}
-
-/**
- * Convert legacy numeric step to step ID for backward compatibility.
- */
-function convertLegacyStepToId(step: number): string {
-  const mapping: Record<number, string> = {
-    1: WizardLogic.WIZARD_STEP_IDS.ANCESTRY,
-    2: WizardLogic.WIZARD_STEP_IDS.CULTURE,
-    3: WizardLogic.WIZARD_STEP_IDS.CAREER,
-    4: WizardLogic.WIZARD_STEP_IDS.CLASS,
-    5: WizardLogic.WIZARD_STEP_IDS.SUBCLASS,
-    6: WizardLogic.WIZARD_STEP_IDS.COMPLICATION,
-    7: WizardLogic.WIZARD_STEP_IDS.CHARACTERISTICS,
-    8: WizardLogic.WIZARD_STEP_IDS.KIT,
-    9: WizardLogic.WIZARD_STEP_IDS.SKILLS,
-    10: WizardLogic.WIZARD_STEP_IDS.LANGUAGES,
-    11: WizardLogic.WIZARD_STEP_IDS.PERKS,
-    12: WizardLogic.WIZARD_STEP_IDS.TITLES,
-    13: WizardLogic.WIZARD_STEP_IDS.ABILITIES,
-    14: WizardLogic.WIZARD_STEP_IDS.PERSONAL,
-    15: WizardLogic.WIZARD_STEP_IDS.REVIEW,
-  };
-  return mapping[step] || WizardLogic.WIZARD_STEP_IDS.LEVEL;
 }

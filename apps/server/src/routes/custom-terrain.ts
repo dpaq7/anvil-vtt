@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
+import { validateOwnedImageAsset } from '../security/assets.js';
 import type { CreateCustomTerrainInput, CustomTerrain } from '@anvil/types';
 
 export const customTerrainRoutes = new Hono<AppEnv>();
@@ -18,33 +19,6 @@ interface CustomTerrainRow {
   grid_height: number;
   material: string | null;
   created_at: string;
-}
-
-async function getCampaignRole(c: Context<AppEnv>, campaignId: string, userId: string): Promise<string | null> {
-  const row = await c.env.DB.prepare(
-    `SELECT cm.role FROM campaign_members cm
-     JOIN campaigns c ON c.id = cm.campaign_id
-     WHERE cm.campaign_id = ? AND cm.user_id = ? AND c.deleted_at IS NULL`,
-  ).bind(campaignId, userId).first<{ role: string }>();
-  return row?.role ?? null;
-}
-
-async function requireCampaignMember(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
-}
-
-async function requireCampaignDirector(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) === 'director' ? null : c.json({ error: 'Forbidden' }, 403);
-}
-
-async function validateOwnedImageAsset(c: Context<AppEnv>, assetId: string | null | undefined, user: AuthUser): Promise<Response | null> {
-  if (!assetId) return null;
-  const asset = await c.env.DB.prepare('SELECT content_type FROM assets WHERE id = ? AND user_id = ?')
-    .bind(assetId, user.id)
-    .first<{ content_type: string | null }>();
-  if (!asset) return c.json({ error: 'Asset not found' }, 404);
-  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('image/')) return c.json({ error: 'Asset must be an image' }, 400);
-  return null;
 }
 
 function rowToCustomTerrain(row: CustomTerrainRow): CustomTerrain {

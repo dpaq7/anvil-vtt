@@ -192,6 +192,7 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
       set((s) => ({ maps: s.maps.map((m) => (m.id === mapId ? map : m)) }));
     } catch (e) {
       set({ error: (e as Error).message });
+      throw e;
     }
   },
 
@@ -204,6 +205,7 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
       }));
     } catch (e) {
       set({ error: (e as Error).message });
+      throw e;
     }
   },
 
@@ -316,6 +318,7 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
       set((s) => ({ audioAssets: s.audioAssets.map((a) => (a.id === audioId ? audio : a)) }));
     } catch (e) {
       set({ error: (e as Error).message });
+      throw e;
     }
   },
 
@@ -328,6 +331,7 @@ export const useAssetsStore = create<AssetsState>((set, _get) => ({
       }));
     } catch (e) {
       set({ error: (e as Error).message });
+      throw e;
     }
   },
 

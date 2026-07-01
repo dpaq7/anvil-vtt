@@ -73,7 +73,7 @@ const ECHELON_MAP: Array<{ level: number; echelon: 1 | 2 | 3 | 4 }> = [
  * hero-logic.ts CLASS_HEROIC_RESOURCE is the source of truth for runtime.
  */
 const EXPECTED_HEROIC_RESOURCES: Record<HeroClassName, HeroLogic.HeroicResourceType> = {
-  beastheart: 'rage',
+  beastheart: 'ferocity',
   censor: 'wrath',
   conduit: 'piety',
   elementalist: 'essence',

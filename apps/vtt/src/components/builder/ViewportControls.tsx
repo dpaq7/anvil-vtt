@@ -5,6 +5,8 @@ export interface ViewportControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToMap: () => void;
+  className?: string;
+  orientation?: 'vertical' | 'horizontal';
 }
 
 export function ViewportControls({
@@ -12,9 +14,16 @@ export function ViewportControls({
   onZoomIn,
   onZoomOut,
   onFitToMap,
+  className,
+  orientation = 'vertical',
 }: ViewportControlsProps) {
+  const isHorizontal = orientation === 'horizontal';
+  const defaultClassName = isHorizontal
+    ? 'flex items-center gap-0.5'
+    : 'absolute bottom-4 right-4 z-10 flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm';
+
   return (
-    <div className="absolute bottom-4 right-4 z-10 flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm">
+    <div className={className ?? defaultClassName}>
       <button
         type="button"
         className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
@@ -34,7 +43,13 @@ export function ViewportControls({
       >
         <ZoomOut className="size-4" />
       </button>
-      <div className="my-0.5 h-px w-full bg-zinc-700" />
+      <div
+        className={
+          isHorizontal
+            ? 'mx-0.5 h-5 w-px bg-zinc-700'
+            : 'my-0.5 h-px w-full bg-zinc-700'
+        }
+      />
       <button
         type="button"
         className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"

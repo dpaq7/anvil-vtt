@@ -7,6 +7,8 @@ import { CreatureCard } from './CreatureCard.js';
 export interface CreatureTrackerProps {
   entities: EntityData[];
   combat: CombatState | null;
+  selectedEntityIds?: string[];
+  onSelectEntities?: (entityIds: string[]) => void;
   send: (msg: ClientMessage) => void;
 }
 
@@ -24,7 +26,7 @@ interface MinionSquad {
  * Provides quick HP tracking, condition toggles, and removal.
  * Minions with the same squadId are grouped into squads.
  */
-export function CreatureTracker({ entities, combat, send }: CreatureTrackerProps) {
+export function CreatureTracker({ entities, combat, selectedEntityIds = [], onSelectEntities, send }: CreatureTrackerProps) {
   // Separate minion squads from solo creatures
   const { soloCreatures, squads } = useMemo(() => {
     const monsters = entities.filter((e) => e.type === 'monster' || e.type === 'npc');
@@ -62,6 +64,21 @@ export function CreatureTracker({ entities, combat, send }: CreatureTrackerProps
   const totalCount = soloCreatures.length + squads.reduce((n, s) => n + s.members.length, 0);
 
   const currentTurnEntityId = combat?.activeEntityId ?? null;
+  const selectedSet = new Set(selectedEntityIds);
+
+  const selectIds = (ids: string[], additive: boolean) => {
+    if (!onSelectEntities) return;
+    if (!additive) {
+      onSelectEntities(ids);
+      return;
+    }
+    const next = new Set(selectedSet);
+    for (const id of ids) {
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+    }
+    onSelectEntities([...next]);
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -96,6 +113,8 @@ export function CreatureTracker({ entities, combat, send }: CreatureTrackerProps
                 key={squad.squadId}
                 squad={squad}
                 currentTurnEntityId={currentTurnEntityId}
+                selectedEntityIds={selectedEntityIds}
+                onSelect={(ids, additive) => selectIds(ids, additive)}
                 send={send}
               />
             ))}
@@ -105,6 +124,8 @@ export function CreatureTracker({ entities, combat, send }: CreatureTrackerProps
                 key={entity.id}
                 entity={entity}
                 isActive={entity.id === currentTurnEntityId}
+                selected={selectedSet.has(entity.id)}
+                onSelect={(event) => selectIds([entity.id], event.ctrlKey || event.metaKey || event.shiftKey)}
                 send={send}
               />
             ))}
@@ -120,14 +141,17 @@ export function CreatureTracker({ entities, combat, send }: CreatureTrackerProps
 interface SquadCardProps {
   squad: MinionSquad;
   currentTurnEntityId: string | null;
+  selectedEntityIds: string[];
+  onSelect?: (entityIds: string[], additive: boolean) => void;
   send: (msg: ClientMessage) => void;
 }
 
-function SquadCard({ squad, currentTurnEntityId, send }: SquadCardProps) {
+function SquadCard({ squad, currentTurnEntityId, selectedEntityIds, onSelect, send }: SquadCardProps) {
   const { members, totalStamina, totalMaxStamina, perMinionMax } = squad;
   const alive = members.length;
   const baseName = members[0]?.['monsterName'] as string ?? members[0]?.name ?? 'Minion';
   const isActive = members.some((m) => m.id === currentTurnEntityId);
+  const isSelected = members.some((m) => selectedEntityIds.includes(m.id));
 
   const handleSquadDamage = (amount: number) => {
     if (amount <= 0 || perMinionMax <= 0) return;
@@ -174,7 +198,14 @@ function SquadCard({ squad, currentTurnEntityId, send }: SquadCardProps) {
   return (
     <div className={`border-b border-zinc-800/50 ${isActive ? 'bg-red-950/20' : ''}`}>
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      <button
+        type="button"
+        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition hover:bg-zinc-800/50 ${isSelected ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-400/50' : ''}`}
+        onClick={(event) => onSelect?.(
+          members.map((member) => member.id),
+          event.ctrlKey || event.metaKey || event.shiftKey,
+        )}
+      >
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-950/40 ring-2 ring-red-500/70">
           <span className="text-[10px] font-bold text-red-300">{alive}</span>
         </div>
@@ -189,7 +220,7 @@ function SquadCard({ squad, currentTurnEntityId, send }: SquadCardProps) {
         <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
           Minion
         </Badge>
-      </div>
+      </button>
 
       {/* Collective stamina bar */}
       {totalMaxStamina > 0 && (

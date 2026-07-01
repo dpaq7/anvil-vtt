@@ -9,3 +9,19 @@ coverage/
 .dev.vars
 .wrangler/
 docs/forgesteel-ref/
+
+# Local automation/tool artifacts
+.playwright-cli/
+.playwright-mcp/
+.serena/
+output/
+
+# Generated browser test artifacts
+/phase*.png
+/test-*.png
+docs/testing/
+
+# Large/local rules references
+docs/rules_references/
+docs/Draw Steel v101/Draw_Steel_Heroes*.pdf
+docs/Draw Steel v101/Draw_Steel_Monsters*.pdf

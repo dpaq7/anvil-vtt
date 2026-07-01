@@ -1,6 +1,7 @@
-import { GameData } from '@anvil/data';
+import { useMemo, useState } from 'react';
+import { GameData, WizardLogic } from '@anvil/data';
 import type { CharacterInProgress, HeroLogic as HeroLogicTypes } from '@anvil/data';
-import { Card, CardHeader, CardTitle, CardContent, cn } from '@anvil/ui';
+import { Card, CardHeader, CardTitle, CardContent, Input, cn } from '@anvil/ui';
 import { Check } from 'lucide-react';
 
 interface Props {
@@ -9,6 +10,22 @@ interface Props {
 }
 
 export function SubclassStep({ character, onChange }: Props) {
+  const [companionSearch, setCompanionSearch] = useState('');
+  const companionOptions = useMemo(() => WizardLogic.getCompanionOptions(), []);
+  const filteredCompanions = useMemo(() => {
+    const query = companionSearch.trim().toLowerCase();
+    const options = query
+      ? companionOptions.filter((option) => {
+          return (
+            option.name.toLowerCase().includes(query) ||
+            option.roles.some((role) => role.toLowerCase().includes(query)) ||
+            option.ancestry?.some((ancestry) => ancestry.toLowerCase().includes(query))
+          );
+        })
+      : companionOptions;
+    return options.slice(0, 60);
+  }, [companionOptions, companionSearch]);
+
   if (!character.heroClass) {
     return <p className="text-zinc-500">Select a class first.</p>;
   }
@@ -74,6 +91,58 @@ export function SubclassStep({ character, onChange }: Props) {
           );
         })}
       </div>
+
+      {WizardLogic.isCompanionRequired(character) && (
+        <section className="mt-6 rounded-lg border border-creator-border bg-creator-card p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="font-medium text-creator-text">Choose Your Companion</h3>
+              <p className="mt-1 text-sm text-creator-text-muted">
+                Beasthearts choose one bonded companion to fight beside them.
+              </p>
+            </div>
+            {character.companion && (
+              <span className="rounded-full border border-creator-highlight px-2 py-1 text-xs text-creator-highlight">
+                Selected
+              </span>
+            )}
+          </div>
+
+          <Input
+            className="mb-3"
+            value={companionSearch}
+            onChange={(event) => setCompanionSearch(event.target.value)}
+            placeholder="Search companions, roles, or ancestries..."
+          />
+
+          <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            {filteredCompanions.map((option) => {
+              const selected = character.companion === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => onChange({ companion: option.id })}
+                  className={cn(
+                    'rounded-md border px-3 py-2 text-left text-sm transition',
+                    selected
+                      ? 'border-creator-highlight bg-creator-highlight/20 text-creator-highlight'
+                      : 'border-creator-border text-creator-text hover:border-creator-text-muted hover:bg-creator-card-hover',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium">{option.name}</span>
+                    {selected && <Check className="mt-0.5 h-4 w-4 shrink-0" />}
+                  </div>
+                  <div className="mt-1 text-xs text-creator-text-muted">
+                    Level {option.level} / {option.roles.join(', ')}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

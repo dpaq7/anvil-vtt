@@ -6,6 +6,7 @@
  * changes to the data schema only need to be made in one place.
  */
 import type { MotivationType } from '@anvil/types';
+import { resolveApiBackedMediaUrl } from './api-url.js';
 
 // ---------------------------------------------------------------------------
 // Montage
@@ -15,12 +16,20 @@ export interface ParsedChallenge {
   id: string;
   name: string;
   completed: boolean;
+  description?: string;
+  suggestedSkills?: string[];
+  suggestedCharacteristics?: string[];
 }
 
 export interface MontageStageData {
   goal: string;
+  roundLimit: number;
+  heroCount: number;
   successLimit: number;
   failureLimit: number;
+  totalSuccess: string;
+  partialSuccess: string;
+  totalFailure: string;
   challenges: ParsedChallenge[];
 }
 
@@ -28,11 +37,28 @@ export function parseMontageData(sceneData: Record<string, unknown>): MontageSta
   let challenges: ParsedChallenge[] = [];
   const rawChallenges = sceneData['challenges'];
   if (Array.isArray(rawChallenges)) {
-    challenges = rawChallenges.map((c: { id: string; name: string; completed?: boolean }) => ({
-      id: c.id,
-      name: c.name,
-      completed: c.completed ?? false,
-    }));
+    challenges = rawChallenges.map((c: unknown, idx) => {
+      if (typeof c === 'string') {
+        return {
+          id: `challenge-${idx + 1}`,
+          name: c.trim() || `Challenge ${idx + 1}`,
+          completed: false,
+        };
+      }
+
+      const challenge = c && typeof c === 'object' ? c as Record<string, unknown> : {};
+      const stringList = (value: unknown): string[] | undefined =>
+        Array.isArray(value) ? value.map(String).filter(Boolean) : undefined;
+
+      return {
+        id: typeof challenge['id'] === 'string' && challenge['id'] ? challenge['id'] : `challenge-${idx + 1}`,
+        name: typeof challenge['name'] === 'string' && challenge['name'] ? challenge['name'] : `Challenge ${idx + 1}`,
+        completed: typeof challenge['completed'] === 'boolean' ? challenge['completed'] : false,
+        description: typeof challenge['description'] === 'string' ? challenge['description'] : undefined,
+        suggestedSkills: stringList(challenge['suggestedSkills']),
+        suggestedCharacteristics: stringList(challenge['suggestedCharacteristics']),
+      };
+    });
   } else if (typeof rawChallenges === 'string' && rawChallenges.trim()) {
     challenges = rawChallenges
       .split('\n')
@@ -46,8 +72,13 @@ export function parseMontageData(sceneData: Record<string, unknown>): MontageSta
 
   return {
     goal: (sceneData['goal'] as string) ?? '',
+    roundLimit: (sceneData['roundLimit'] as number) ?? 2,
+    heroCount: (sceneData['heroCount'] as number) ?? 5,
     successLimit: (sceneData['successesNeeded'] as number) ?? 5,
     failureLimit: (sceneData['failureLimit'] as number) ?? 3,
+    totalSuccess: (sceneData['totalSuccess'] as string) ?? '',
+    partialSuccess: (sceneData['partialSuccess'] as string) ?? '',
+    totalFailure: (sceneData['totalFailure'] as string) ?? '',
     challenges,
   };
 }
@@ -206,6 +237,7 @@ export interface TerrainEntry {
   y: number;
   w: number;
   h: number;
+  hidden?: boolean;
 }
 
 export interface BattleStageData {
@@ -215,6 +247,8 @@ export interface BattleStageData {
   cellSize: number;
   gridOpacity: number;
   gridColor: string;
+  gridOffsetX: number;
+  gridOffsetY: number;
   drawings: DrawingEntry[];
   fogZones: FogEntry[];
   terrain: TerrainEntry[];
@@ -225,14 +259,22 @@ export function parseBattleData(sceneData: Record<string, unknown>): BattleStage
     const raw = sceneData[key];
     return Array.isArray(raw) ? (raw as T[]) : [];
   };
+  const stringValue = (key: string): string | null => {
+    const value = sceneData[key];
+    return typeof value === 'string' && value.trim() ? value : null;
+  };
+
+  const backgroundUrl = stringValue('mapUrl') ?? stringValue('backgroundUrl');
 
   return {
     cols: (sceneData['gridCols'] as number) ?? (sceneData['gridSize'] as number) ?? 30,
     rows: (sceneData['gridRows'] as number) ?? 20,
-    backgroundUrl: (sceneData['mapUrl'] as string) ?? null,
+    backgroundUrl: backgroundUrl ? resolveApiBackedMediaUrl(backgroundUrl) : null,
     cellSize: (sceneData['gridCellSize'] as number) ?? 48,
     gridOpacity: (sceneData['gridOpacity'] as number) ?? 0.4,
     gridColor: (sceneData['gridColor'] as string) ?? '#444444',
+    gridOffsetX: (sceneData['gridOffsetX'] as number) ?? 0,
+    gridOffsetY: (sceneData['gridOffsetY'] as number) ?? 0,
     drawings: parseArray<DrawingEntry>('drawings'),
     fogZones: parseArray<FogEntry>('fog'),
     terrain: parseArray<TerrainEntry>('terrain'),

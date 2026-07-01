@@ -52,13 +52,13 @@ export type HeroicResource =
   | 'wrath'      // Censor - builds through damage and divine judgment
   | 'piety'      // Conduit - builds through healing and support
   | 'essence'    // Elementalist, Summoner - builds through elemental/minion actions
-  | 'ferocity'   // Fury - builds through taking/dealing damage
+  | 'ferocity'   // Beastheart, Fury - builds through primal combat triggers
   | 'discipline' // Null - builds through psionics and control
   | 'insight'    // Shadow - builds through positioning and stealth
   | 'focus'      // Tactician - builds through commands and tactics
   | 'clarity'    // Talent - builds through psychic powers
   | 'drama'      // Troubadour - builds through performance and allies
-  | 'rage';      // Beastheart - builds through companion and ferocity
+  | 'rage';      // Legacy fallback
 
 /**
  * Action types for abilities.

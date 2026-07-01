@@ -516,6 +516,7 @@ export type HeroicResourceTrigger =
   | 'ally-triggered'    // Tactician: Focus when ally uses triggered action
   | 'kill'              // Various: some classes gain on defeating enemy
   | 'winded'            // Fury: bonus Ferocity when becoming winded
+  | 'companion-adjacent-damage' // Beastheart: Ferocity when a creature adjacent to companion takes damage
   | 'prayer'            // Conduit: Piety from Pray maneuver
   | 'judgment'          // Censor: Wrath from Judgment feature
   | 'minion-summoned'   // Summoner: Essence tracking
@@ -542,10 +543,10 @@ export interface HeroicResourceConfig {
  */
 export const CLASS_HEROIC_RESOURCE_CONFIG: Record<HeroClass, HeroicResourceConfig> = {
   beastheart: {
-    name: 'Rage',
+    name: 'Ferocity',
     maxResource: null,
     minResource: 0,
-    gainTriggers: ['turn-start', 'damage-taken'],
+    gainTriggers: ['turn-start', 'companion-adjacent-damage'],
     turnStartGain: 1,
   },
   censor: {

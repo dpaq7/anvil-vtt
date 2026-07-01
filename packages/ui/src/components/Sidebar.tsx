@@ -22,13 +22,14 @@ type SidebarVariant = 'director' | 'player' | 'default';
 interface SidebarContextValue {
   collapsed: boolean;
   toggle: () => void;
+  expand: () => void;
   variant: SidebarVariant;
   setVariant: (v: SidebarVariant) => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
 
-const STORAGE_KEY = 'anvil-sidebar-collapsed';
+const STORAGE_KEY = 'anvil-sidebar-collapsed:v2';
 
 export interface SidebarProviderProps {
   children: ReactNode;
@@ -55,6 +56,7 @@ export function SidebarProvider({ children, labels = [] }: SidebarProviderProps)
   }, [collapsed]);
 
   const toggle = useCallback(() => setCollapsed((c) => !c), []);
+  const expand = useCallback(() => setCollapsed(false), []);
 
   // Calculate width: icon (18px) + gap (12px) + text + padding (16px each side)
   // Base: 18 + 12 + 32 = 62px + text width
@@ -64,7 +66,7 @@ export function SidebarProvider({ children, labels = [] }: SidebarProviderProps)
   const sidebarWidth = Math.max(144, 78 + textWidth);
 
   return (
-    <SidebarContext.Provider value={{ collapsed, toggle, variant, setVariant }}>
+    <SidebarContext.Provider value={{ collapsed, toggle, expand, variant, setVariant }}>
       <div style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}>
         {children}
       </div>
@@ -156,8 +158,8 @@ export const SidebarNavItem = forwardRef<HTMLAnchorElement, SidebarNavItemProps>
           !isColored && 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100',
           !isColored && active && 'border-l-2 border-anvil-accent bg-zinc-800 text-zinc-100',
           // Colored (light) variants - use dark text
-          isColored && 'text-zinc-800 hover:bg-black/10 hover:text-zinc-900',
-          isColored && active && 'border-l-2 border-zinc-800 bg-black/15 text-zinc-900 font-semibold',
+          isColored && 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
+          isColored && active && 'border-l-2 border-anvil-ink bg-black/15 text-anvil-ink font-semibold',
           collapsed && 'justify-center',
           className,
         )}
@@ -191,31 +193,39 @@ export function SidebarToggle({ className }: { className?: string }) {
   const isColored = variant === 'director' || variant === 'player';
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
+    <div
       className={cn(
-        'flex items-center justify-center border-t p-2 transition-colors',
-        !isColored && 'border-zinc-800 text-zinc-500 hover:text-zinc-100',
-        isColored && 'border-black/10 text-zinc-700 hover:text-zinc-900',
-        className,
+        'w-full border-t',
+        !isColored && 'border-zinc-800',
+        isColored && 'border-black/10',
       )}
-      aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={cn('transition-transform', collapsed && 'rotate-180')}
+      <button
+        type="button"
+        onClick={toggle}
+        className={cn(
+          'flex items-center justify-center p-2 transition-colors',
+          !isColored && 'text-zinc-500 hover:text-zinc-100',
+          isColored && 'text-anvil-ink/70 hover:text-anvil-ink',
+          className,
+        )}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        <path d="m15 18-6-6 6-6" />
-      </svg>
-    </button>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={cn('transition-transform', collapsed && 'rotate-180')}
+        >
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      </button>
+    </div>
   );
 }

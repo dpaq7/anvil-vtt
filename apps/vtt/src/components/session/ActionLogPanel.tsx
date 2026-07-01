@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Coffee, Dices, MessageSquare, Share2, Swords, Wrench } from 'lucide-react';
+import { useMemo } from 'react';
+import { Coffee, MessageSquare, Share2, Swords, Wrench } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger, cn } from '@anvil/ui';
 import type {
   ActionLogEntry,
   ClientMessage,
   DrawSteelDieResult,
-  DrawSteelRollKind,
   SceneActionLogType,
 } from '../../types/protocol.js';
+import { DiceRollControls } from './DiceRollControls.js';
 
 interface ActionLogPanelProps {
   entries: ActionLogEntry[];
   sceneType: string | null;
-  send: (msg: ClientMessage) => void;
+  activeSceneId?: string | null;
+  send?: (msg: ClientMessage) => void;
+  showDiceControls?: boolean;
   className?: string;
 }
 
@@ -33,118 +35,66 @@ function asLogSceneType(sceneType: string | null): SceneActionLogType | null {
     : null;
 }
 
-export function ActionLogPanel({ entries, sceneType, send, className }: ActionLogPanelProps) {
+export function ActionLogPanel({
+  entries,
+  sceneType,
+  activeSceneId,
+  send,
+  showDiceControls = true,
+  className,
+}: ActionLogPanelProps) {
   const currentSection = asLogSceneType(sceneType);
-  const [openSection, setOpenSection] = useState<SceneActionLogType | null>(currentSection);
-  const [modifier, setModifier] = useState('0');
 
-  useEffect(() => {
-    if (currentSection) setOpenSection(currentSection);
-  }, [currentSection]);
-
-  const groupedEntries = useMemo(() => {
-    const groups = new Map<SceneActionLogType, ActionLogEntry[]>();
-    for (const section of LOG_SECTIONS) groups.set(section.id, []);
-    for (const entry of entries) {
-      groups.get(entry.sceneType)?.push(entry);
-    }
-    return groups;
-  }, [entries]);
+  const currentEntries = useMemo(() => {
+    if (!currentSection) return [];
+    return entries.filter((entry) => {
+      if (activeSceneId && entry.sceneId) return entry.sceneId === activeSceneId;
+      return entry.sceneType === currentSection;
+    });
+  }, [activeSceneId, currentSection, entries]);
 
   if (!currentSection) return null;
 
-  const roll = (kind: DrawSteelRollKind) => {
-    const parsedModifier = Number.parseInt(modifier, 10);
-    send({
-      type: 'draw_steel_roll',
-      roll: {
-        kind,
-        modifier: kind === 'power' && Number.isFinite(parsedModifier) ? parsedModifier : undefined,
-      },
-    });
-  };
+  const section = LOG_SECTIONS.find((item) => item.id === currentSection);
+  const Icon = section?.Icon ?? Swords;
+  const label = section?.label ?? 'Scene';
 
   return (
     <div className={cn('flex min-h-0 flex-col border-zinc-800 bg-zinc-900/60', className)}>
-      <div className="shrink-0 border-b border-zinc-800 p-2">
-        <div className="mb-2 flex items-center gap-2">
-          <Dices className="size-3.5 text-zinc-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Draw Steel Dice</span>
+      {showDiceControls && send && (
+        <div className="shrink-0 border-b border-zinc-800 p-2">
+          <DiceRollControls send={send} className="h-auto flex-wrap justify-start bg-transparent p-0 shadow-none" />
         </div>
-        <div className="grid grid-cols-3 gap-1">
-          <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('power')}>
-            Power
-          </Button>
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('heroic-resource')}>
-            Resource
-          </Button>
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('d6')}>
-            d6
-          </Button>
-        </div>
-        <label className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-500">
-          Mod
-          <input
-            type="number"
-            value={modifier}
-            onChange={(event) => setModifier(event.target.value)}
-            className="h-7 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
-          />
-        </label>
+      )}
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2 text-xs text-zinc-300">
+        <Icon className="size-3.5 text-zinc-500" />
+        <span className="min-w-0 flex-1 font-semibold uppercase tracking-wider text-zinc-500">Action Log</span>
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{currentEntries.length}</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 text-zinc-500 hover:text-zinc-100"
+              onClick={() => exportActionLog(label, currentEntries)}
+              aria-label={`Export ${label} log`}
+            >
+              <Share2 className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="text-xs">export log</TooltipContent>
+        </Tooltip>
       </div>
 
-      <div className="shrink-0 border-b border-zinc-800 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-        Action Log
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {LOG_SECTIONS.map(({ id, label, Icon }) => {
-          const sectionEntries = groupedEntries.get(id) ?? [];
-          const isOpen = openSection === id;
-          return (
-            <section key={id} className="border-b border-zinc-800/70">
-              <div className="flex items-center text-xs text-zinc-300 transition hover:bg-zinc-800/60">
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
-                  onClick={() => setOpenSection(isOpen ? null : id)}
-                  aria-expanded={isOpen}
-                >
-                  <Icon className="size-3.5 text-zinc-500" />
-                  <span className="min-w-0 flex-1 font-medium">{label}</span>
-                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{sectionEntries.length}</span>
-                  <ChevronDown className={cn('size-3.5 text-zinc-500 transition', isOpen && 'rotate-180')} />
-                </button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="mr-2 size-7 shrink-0 text-zinc-500 hover:text-zinc-100"
-                      onClick={() => exportActionLog(label, sectionEntries)}
-                      aria-label={`Export ${label} log`}
-                    >
-                      <Share2 className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="text-xs">export log</TooltipContent>
-                </Tooltip>
-              </div>
-              {isOpen && (
-                <div className="divide-y divide-zinc-800/60">
-                  {sectionEntries.length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-zinc-600">No actions yet.</p>
-                  ) : (
-                    [...sectionEntries].reverse().map((entry) => (
-                      <LogEntryRow key={entry.id} entry={entry} />
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
+      <div className="min-h-0 flex-1 divide-y divide-zinc-800/60 overflow-y-auto">
+        {currentEntries.length === 0 ? (
+          <p className="px-3 py-3 text-xs text-zinc-600">No actions yet.</p>
+        ) : (
+          [...currentEntries].reverse().map((entry) => (
+            <LogEntryRow key={entry.id} entry={entry} />
+          ))
+        )}
       </div>
     </div>
   );

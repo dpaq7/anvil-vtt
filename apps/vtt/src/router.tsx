@@ -1,26 +1,132 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './pages/ProtectedRoute.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { RouteErrorFallback } from './components/RouteErrorFallback.js';
+import { lazyWithChunkReload } from './lib/chunk-reload.js';
 
-const Landing = lazy(() => import('./pages/Landing.js').then((module) => ({ default: module.Landing })));
-const About = lazy(() => import('./pages/About.js').then((module) => ({ default: module.About })));
-const Auth = lazy(() => import('./pages/Auth.js').then((module) => ({ default: module.Auth })));
-const JoinCampaign = lazy(() => import('./pages/JoinCampaign.js').then((module) => ({ default: module.JoinCampaign })));
-const AppLayout = lazy(() => import('./components/layout/AppLayout.js').then((module) => ({ default: module.AppLayout })));
-const CampaignList = lazy(() => import('./pages/CampaignList.js').then((module) => ({ default: module.CampaignList })));
-const CampaignBuilder = lazy(() => import('./pages/CampaignBuilder.js').then((module) => ({ default: module.CampaignBuilder })));
-const HeroList = lazy(() => import('./pages/HeroList.js').then((module) => ({ default: module.HeroList })));
-const HeroWizard = lazy(() => import('./pages/HeroWizard.js').then((module) => ({ default: module.HeroWizard })));
-const HeroSheet = lazy(() => import('./pages/HeroSheet.js').then((module) => ({ default: module.HeroSheet })));
-const JoinSession = lazy(() => import('./pages/JoinSession.js').then((module) => ({ default: module.JoinSession })));
-const Lobby = lazy(() => import('./pages/Lobby.js').then((module) => ({ default: module.Lobby })));
-const Home = lazy(() => import('./pages/Home.js').then((module) => ({ default: module.Home })));
-const Assets = lazy(() => import('./pages/Assets.js').then((module) => ({ default: module.Assets })));
-const Notes = lazy(() => import('./pages/Notes.js').then((module) => ({ default: module.Notes })));
-const Account = lazy(() => import('./pages/Account.js').then((module) => ({ default: module.Account })));
-const SessionPage = lazy(() => import('./pages/session/SessionPage.js').then((module) => ({ default: module.SessionPage })));
-const LivePage = lazy(() => import('./pages/LivePage.js').then((module) => ({ default: module.LivePage })));
+const Landing = lazyWithChunkReload(() =>
+  import('./pages/Landing.js').then((module) => ({ default: module.Landing })),
+);
+const About = lazyWithChunkReload(() =>
+  import('./pages/About.js').then((module) => ({ default: module.About })),
+);
+const Contact = lazyWithChunkReload(() =>
+  import('./pages/Contact.js').then((module) => ({ default: module.Contact })),
+);
+const Auth = lazyWithChunkReload(() =>
+  import('./pages/Auth.js').then((module) => ({ default: module.Auth })),
+);
+const JoinCampaign = lazyWithChunkReload(() =>
+  import('./pages/JoinCampaign.js').then((module) => ({
+    default: module.JoinCampaign,
+  })),
+);
+const AppLayout = lazyWithChunkReload(() =>
+  import('./components/layout/AppLayout.js').then((module) => ({
+    default: module.AppLayout,
+  })),
+);
+const CampaignList = lazyWithChunkReload(() =>
+  import('./pages/CampaignList.js').then((module) => ({
+    default: module.CampaignList,
+  })),
+);
+const CampaignBuilder = lazyWithChunkReload(() =>
+  import('./pages/CampaignBuilder.js').then((module) => ({
+    default: module.CampaignBuilder,
+  })),
+);
+const HeroList = lazyWithChunkReload(() =>
+  import('./pages/HeroList.js').then((module) => ({
+    default: module.HeroList,
+  })),
+);
+const HeroWizard = lazyWithChunkReload(() =>
+  import('./pages/HeroWizard.js').then((module) => ({
+    default: module.HeroWizard,
+  })),
+);
+const HeroSheet = lazyWithChunkReload(() =>
+  import('./pages/HeroSheet.js').then((module) => ({
+    default: module.HeroSheet,
+  })),
+);
+const JoinSession = lazyWithChunkReload(() =>
+  import('./pages/JoinSession.js').then((module) => ({
+    default: module.JoinSession,
+  })),
+);
+const Lobby = lazyWithChunkReload(() =>
+  import('./pages/Lobby.js').then((module) => ({ default: module.Lobby })),
+);
+const Home = lazyWithChunkReload(() =>
+  import('./pages/Home.js').then((module) => ({ default: module.Home })),
+);
+const Assets = lazyWithChunkReload(() =>
+  import('./pages/Assets.js').then((module) => ({ default: module.Assets })),
+);
+const Notes = lazyWithChunkReload(() =>
+  import('./pages/Notes.js').then((module) => ({ default: module.Notes })),
+);
+const Account = lazyWithChunkReload(() =>
+  import('./pages/Account.js').then((module) => ({ default: module.Account })),
+);
+const MobileAppLayout = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileAppLayout,
+  })),
+);
+const MobileHome = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileHome,
+  })),
+);
+const MobileCharacters = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileCharacters,
+  })),
+);
+const MobileHeroDetail = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileHeroDetail,
+  })),
+);
+const MobileNotes = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileNotes,
+  })),
+);
+const MobileAssets = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileAssets,
+  })),
+);
+const MobileCampaigns = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileCampaigns,
+  })),
+);
+const MobileAccount = lazyWithChunkReload(() =>
+  import('./pages/mobile/MobileApp.js').then((module) => ({
+    default: module.MobileAccount,
+  })),
+);
+const SessionPage = lazyWithChunkReload(() =>
+  import('./pages/session/SessionPage.js').then((module) => ({
+    default: module.SessionPage,
+  })),
+);
+const PhoneSessionPage = lazyWithChunkReload(() =>
+  import('./pages/session/PhoneSessionPage.js').then((module) => ({
+    default: module.PhoneSessionPage,
+  })),
+);
+const LivePage = lazyWithChunkReload(() =>
+  import('./pages/LivePage.js').then((module) => ({
+    default: module.LivePage,
+  })),
+);
 
 const routeFallback = (
   <div className="flex h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-400">
@@ -32,36 +138,42 @@ function routeChunk(element: ReactNode) {
   return <Suspense fallback={routeFallback}>{element}</Suspense>;
 }
 
+const routeErrorElement = <RouteErrorFallback />;
+
 export const router = createBrowserRouter([
   {
     path: '/',
     element: routeChunk(<Landing />),
+    errorElement: routeErrorElement,
   },
   {
     path: '/about',
     element: routeChunk(<About />),
+    errorElement: routeErrorElement,
+  },
+  {
+    path: '/contact',
+    element: routeChunk(<Contact />),
+    errorElement: routeErrorElement,
   },
   {
     path: '/auth',
     element: routeChunk(<Auth />),
+    errorElement: routeErrorElement,
   },
   {
     path: '/join/:token',
-    element: (
-      <ProtectedRoute>
-        {routeChunk(<JoinCampaign />)}
-      </ProtectedRoute>
-    ),
+    element: <ProtectedRoute>{routeChunk(<JoinCampaign />)}</ProtectedRoute>,
+    errorElement: routeErrorElement,
   },
   {
     path: '/app',
     element: (
       <ProtectedRoute>
-        <ErrorBoundary label="app">
-          {routeChunk(<AppLayout />)}
-        </ErrorBoundary>
+        <ErrorBoundary label="app">{routeChunk(<AppLayout />)}</ErrorBoundary>
       </ProtectedRoute>
     ),
+    errorElement: routeErrorElement,
     children: [
       {
         index: true,
@@ -114,15 +226,69 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    path: '/app/session/:id',
+    path: '/app/mobile',
     element: (
       <ProtectedRoute>
-        {routeChunk(<SessionPage />)}
+        <ErrorBoundary label="mobile-app">
+          {routeChunk(<MobileAppLayout />)}
+        </ErrorBoundary>
       </ProtectedRoute>
     ),
+    errorElement: routeErrorElement,
+    children: [
+      {
+        index: true,
+        element: routeChunk(<MobileHome />),
+      },
+      {
+        path: 'heroes',
+        element: routeChunk(<MobileCharacters />),
+      },
+      {
+        path: 'heroes/new',
+        element: routeChunk(<HeroWizard />),
+      },
+      {
+        path: 'heroes/:id',
+        element: routeChunk(<MobileHeroDetail />),
+      },
+      {
+        path: 'notes',
+        element: routeChunk(<MobileNotes />),
+      },
+      {
+        path: 'assets',
+        element: routeChunk(<MobileAssets />),
+      },
+      {
+        path: 'campaigns',
+        element: routeChunk(<MobileCampaigns />),
+      },
+      {
+        path: 'account',
+        element: routeChunk(<MobileAccount />),
+      },
+      {
+        path: '*',
+        element: <Navigate to="/app/mobile" replace />,
+      },
+    ],
+  },
+  {
+    path: '/app/session/:id',
+    element: <ProtectedRoute>{routeChunk(<SessionPage />)}</ProtectedRoute>,
+    errorElement: routeErrorElement,
+  },
+  {
+    path: '/app/session/:id/phone',
+    element: (
+      <ProtectedRoute>{routeChunk(<PhoneSessionPage />)}</ProtectedRoute>
+    ),
+    errorElement: routeErrorElement,
   },
   {
     path: '*',
     element: <Navigate to="/" replace />,
+    errorElement: routeErrorElement,
   },
 ]);

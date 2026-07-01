@@ -47,6 +47,18 @@ export {
   needsUpdate,
 } from './logic/index.js';
 
+export {
+  BEASTHEART_COMPANION_COMBAT_RULES,
+  BEASTHEART_COMPANION_OPTIONS,
+  BEASTHEART_RAMPAGE_THRESHOLDS,
+  getBeastheartCompanionOption,
+} from './rules/classes/beastheart/companions.js';
+
+export type {
+  BeastheartCompanionOption,
+  BeastheartRampageThreshold,
+} from './rules/classes/beastheart/companions.js';
+
 // Logic Layer types
 export type {
   // Dice Logic
@@ -67,6 +79,8 @@ export type {
   HealthStatus,
   Characteristics,
   CharacteristicName,
+  LevelAdvancementChoice,
+  LevelAdvancementChoices,
   // Wizard Logic
   CharacterInProgress,
   CultureSelection,
@@ -77,8 +91,15 @@ export type {
   GrantedItems,
   StepValidationResult,
   LevelUpChoice,
+  LevelUpFeatureChoiceOption,
+  LevelUpFeatureView,
   StepStatus,
   WizardStepDefinition,
+  AbilityChoiceSlot,
+  ClassSkillChoiceSlot,
+  CompanionChoiceOption,
+  SummonerMinionChoiceOption,
+  PerkChoiceSlot,
   // Kit Logic
   KitType,
   KitBonuses,
@@ -229,6 +250,27 @@ export * from './pregen/index.js';
 
 // Items (imbuements)
 export * from './items/index.js';
+
+// Magic and psionic treasures
+export {
+  CONSUMABLE_ITEMS,
+  TRINKET_ITEMS,
+  LEVELED_ITEMS,
+  ARTIFACT_ITEMS,
+  ALL_MAGIC_ITEMS,
+  getItemsByCategory,
+  getItemsByEchelon,
+  getItemById,
+  parseItemBonuses,
+  getEnhancementTier,
+} from './game-data/data/magicItems.js';
+export type {
+  MagicItem,
+  ItemCategory as MagicItemCategory,
+  EquipmentSlot as MagicEquipmentSlot,
+  ItemEnhancement as MagicItemEnhancement,
+  ParsedBonus as MagicItemParsedBonus,
+} from './game-data/data/magicItems.js';
 
 // Supplementary monsters (from Forgesteel)
 export * from './monsters/index.js';

@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
-import { Upload } from 'lucide-react';
+import { useState, useRef, useCallback } from "react";
+import { Upload } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -14,12 +14,27 @@ import {
   SelectContent,
   SelectItem,
   Progress,
-} from '@anvil/ui';
-import type { CreateMapInput, SceneType, GridType, MapSize } from '@anvil/types';
+} from "@anvil/ui";
+import type {
+  CreateMapInput,
+  SceneType,
+  GridType,
+  MapSize,
+} from "@anvil/types";
+import {
+  BACKGROUND_SCENE_TYPES,
+  type BackgroundSceneType,
+} from "../../lib/scene-backgrounds.js";
 
-const SCENE_TYPES: SceneType[] = ['battle', 'negotiation', 'montage', 'story', 'respite'];
-const GRID_TYPES: GridType[] = ['gridded', 'gridless', 'hex'];
-const MAP_SIZES: MapSize[] = ['small', 'medium', 'large'];
+const SCENE_TYPES: SceneType[] = [
+  "battle",
+  "negotiation",
+  "montage",
+  "story",
+  "respite",
+];
+const GRID_TYPES: GridType[] = ["gridded", "gridless", "hex"];
+const MAP_SIZES: MapSize[] = ["small", "medium", "large"];
 
 export interface MapUploadDialogProps {
   onUpload: (input: CreateMapInput, file: File) => Promise<void>;
@@ -34,27 +49,41 @@ interface UploadEntry {
 export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<UploadEntry[]>([]);
-  const [sceneType, setSceneType] = useState<SceneType | ''>('');
-  const [gridType, setGridType] = useState<GridType>('gridded');
-  const [size, setSize] = useState<MapSize>('medium');
+  const [sceneType, setSceneType] = useState<SceneType | "">("");
+  const [backgroundTags, setBackgroundTags] = useState<BackgroundSceneType[]>(
+    [],
+  );
+  const [gridType, setGridType] = useState<GridType>("gridded");
+  const [size, setSize] = useState<MapSize>("medium");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isBulk = files.length > 1;
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files;
-    if (!selected) return;
-    const entries: UploadEntry[] = Array.from(selected).map((f) => ({
-      file: f,
-      name: f.name.replace(/\.[^.]+$/, ''), // strip extension for default name
-    }));
-    setFiles(entries);
-  }, []);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selected = e.target.files;
+      if (!selected) return;
+      const entries: UploadEntry[] = Array.from(selected).map((f) => ({
+        file: f,
+        name: f.name.replace(/\.[^.]+$/, ""), // strip extension for default name
+      }));
+      setFiles(entries);
+    },
+    [],
+  );
 
   const updateFileName = useCallback((index: number, name: string) => {
-    setFiles((prev) => prev.map((entry, i) => (i === index ? { ...entry, name } : entry)));
+    setFiles((prev) =>
+      prev.map((entry, i) => (i === index ? { ...entry, name } : entry)),
+    );
+  }, []);
+
+  const toggleBackgroundTag = useCallback((tag: BackgroundSceneType) => {
+    setBackgroundTags((prev) =>
+      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag],
+    );
   }, []);
 
   const handleUpload = useCallback(async () => {
@@ -70,37 +99,43 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
           sceneType: sceneType || undefined,
           gridType,
           size,
+          tags: backgroundTags,
         };
         await onUpload(input, entry.file);
         setProgress(Math.round(((i + 1) / files.length) * 100));
       }
       // Reset and close
       setFiles([]);
-      setSceneType('');
-      setGridType('gridded');
-      setSize('medium');
+      setSceneType("");
+      setBackgroundTags([]);
+      setGridType("gridded");
+      setSize("medium");
       setOpen(false);
     } finally {
       setUploading(false);
       setProgress(0);
     }
-  }, [files, sceneType, gridType, size, onUpload]);
+  }, [files, sceneType, gridType, size, backgroundTags, onUpload]);
 
   const resetAndClose = useCallback(() => {
     setFiles([]);
-    setSceneType('');
-    setGridType('gridded');
-    setSize('medium');
+    setSceneType("");
+    setBackgroundTags([]);
+    setGridType("gridded");
+    setSize("medium");
     setUploading(false);
     setProgress(0);
     setOpen(false);
   }, []);
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : resetAndClose())}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => (v ? setOpen(true) : resetAndClose())}
+    >
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="max-w-md">
-        <DialogTitle>{isBulk ? 'Bulk Upload Maps' : 'Upload Map'}</DialogTitle>
+        <DialogTitle>{isBulk ? "Bulk Upload Maps" : "Upload Map"}</DialogTitle>
 
         <div className="mt-4 space-y-4">
           {/* File picker */}
@@ -121,17 +156,19 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
             >
               <Upload className="mr-2 size-4" />
               {files.length > 0
-                ? `${files.length} file${files.length > 1 ? 's' : ''} selected`
-                : 'Choose images...'}
+                ? `${files.length} file${files.length > 1 ? "s" : ""} selected`
+                : "Choose images..."}
             </Button>
           </div>
 
           {/* Single file name */}
           {files.length === 1 && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">Name</label>
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                Name
+              </label>
               <Input
-                value={files[0]?.name ?? ''}
+                value={files[0]?.name ?? ""}
                 onChange={(e) => updateFileName(0, e.target.value)}
                 disabled={uploading}
               />
@@ -159,7 +196,9 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
           {/* Shared metadata */}
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">Scene Type</label>
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                Scene Type
+              </label>
               <Select
                 value={sceneType}
                 onValueChange={(v: string) => setSceneType(v as SceneType)}
@@ -178,8 +217,13 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">Grid</label>
-              <Select value={gridType} onValueChange={(v: string) => setGridType(v as GridType)}>
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                Grid
+              </label>
+              <Select
+                value={gridType}
+                onValueChange={(v: string) => setGridType(v as GridType)}
+              >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -194,8 +238,13 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">Size</label>
-              <Select value={size} onValueChange={(v: string) => setSize(v as MapSize)}>
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                Size
+              </label>
+              <Select
+                value={size}
+                onValueChange={(v: string) => setSize(v as MapSize)}
+              >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -207,6 +256,32 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+              Background Tags
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {BACKGROUND_SCENE_TYPES.map((tag) => {
+                const active = backgroundTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleBackgroundTag(tag)}
+                    disabled={uploading}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize transition-colors disabled:opacity-50 ${
+                      active
+                        ? "border-anvil-accent/50 bg-anvil-accent/15 text-anvil-accent"
+                        : "border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -230,10 +305,10 @@ export function MapUploadDialog({ onUpload, children }: MapUploadDialogProps) {
               disabled={files.length === 0 || uploading}
             >
               {uploading
-                ? 'Uploading...'
+                ? "Uploading..."
                 : isBulk
                   ? `Upload ${files.length} Maps`
-                  : 'Upload Map'}
+                  : "Upload Map"}
             </Button>
           </div>
         </div>

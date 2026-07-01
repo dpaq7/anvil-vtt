@@ -9,6 +9,7 @@ export interface TerrainZoneData {
   w: number; // grid width
   h: number; // grid height
   color?: number;
+  hidden?: boolean;
 }
 
 /** Terrain zone colors by category */
@@ -25,18 +26,21 @@ export class TerrainLayer extends Container {
   private zones = new Map<string, { container: Container; zone: TerrainZoneData }>();
   private preview: Graphics | null = null;
   private cellSize = 64;
+  private directorMode = false;
+
+  setDirectorMode(enabled: boolean): void {
+    if (this.directorMode === enabled) return;
+    const zones = [...this.zones.values()].map((entry) => entry.zone);
+    this.directorMode = enabled;
+    this.redrawAll(zones);
+  }
 
   setCellSize(size: number): void {
     if (this.cellSize === size) return;
     const zones = [...this.zones.values()].map((entry) => entry.zone);
     this.cellSize = size;
     if (zones.length > 0) {
-      for (const [, entry] of this.zones) {
-        this.removeChild(entry.container);
-        entry.container.destroy({ children: true });
-      }
-      this.zones.clear();
-      this.sync(zones);
+      this.redrawAll(zones);
     }
   }
 
@@ -75,23 +79,27 @@ export class TerrainLayer extends Container {
       a.y !== b.y ||
       a.w !== b.w ||
       a.h !== b.h ||
-      a.color !== b.color;
+      a.color !== b.color ||
+      a.hidden !== b.hidden;
   }
 
   private renderZone(zone: TerrainZoneData): Container {
     const container = new Container();
+    if (zone.hidden && !this.directorMode) return container;
+
     const color = zone.color ?? this.inferColor(zone.terrainId);
     const px = zone.x * this.cellSize;
     const py = zone.y * this.cellSize;
     const pw = zone.w * this.cellSize;
     const ph = zone.h * this.cellSize;
+    const zoneAlpha = zone.hidden ? 0.5 : 1;
 
     // Background fill
     const bg = new Graphics();
     bg.rect(0, 0, pw, ph);
-    bg.fill({ color, alpha: 0.2 });
+    bg.fill({ color, alpha: zone.hidden ? 0.1 : 0.2 });
     bg.rect(0, 0, pw, ph);
-    bg.stroke({ width: 2, color, alpha: 0.6 });
+    bg.stroke({ width: 2, color, alpha: zone.hidden ? 0.35 : 0.6 });
     container.addChild(bg);
 
     // Label
@@ -106,11 +114,21 @@ export class TerrainLayer extends Container {
     });
     label.x = 4;
     label.y = 2;
-    label.alpha = 0.8;
+    label.alpha = zone.hidden ? 0.45 : 0.8;
     container.addChild(label);
+
+    if (this.directorMode) {
+      const handleSize = Math.max(8, Math.min(14, this.cellSize * 0.22));
+      const handle = new Graphics();
+      handle.rect(pw - handleSize, ph - handleSize, handleSize, handleSize);
+      handle.fill({ color: 0xffffff, alpha: zone.hidden ? 0.22 : 0.35 });
+      handle.stroke({ width: 1, color, alpha: 0.9 });
+      container.addChild(handle);
+    }
 
     container.x = px;
     container.y = py;
+    container.alpha = zoneAlpha;
     container.eventMode = 'static';
     container.cursor = 'pointer';
 
@@ -145,11 +163,54 @@ export class TerrainLayer extends Container {
       const zoneY = zone.y;
       const zoneW = zone.w;
       const zoneH = zone.h;
+      if (zone.hidden && !this.directorMode) continue;
       if (gridX >= zoneX && gridX < zoneX + zoneW && gridY >= zoneY && gridY < zoneY + zoneH) {
         return id;
       }
     }
     return null;
+  }
+
+  getZone(id: string): TerrainZoneData | null {
+    return this.zones.get(id)?.zone ?? null;
+  }
+
+  getResizeHandleAtWorld(worldX: number, worldY: number): string | null {
+    const handlePadding = Math.max(8, this.cellSize * 0.22);
+    const entries = [...this.zones.entries()].reverse();
+    for (const [id, entry] of entries) {
+      const { zone } = entry;
+      if (zone.hidden && !this.directorMode) continue;
+      const right = (zone.x + zone.w) * this.cellSize;
+      const bottom = (zone.y + zone.h) * this.cellSize;
+      if (
+        worldX >= right - handlePadding &&
+        worldX <= right + handlePadding &&
+        worldY >= bottom - handlePadding &&
+        worldY <= bottom + handlePadding
+      ) {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  moveZone(id: string, x: number, y: number): void {
+    const entry = this.zones.get(id);
+    if (!entry) return;
+    entry.zone = { ...entry.zone, x, y };
+    entry.container.x = x * this.cellSize;
+    entry.container.y = y * this.cellSize;
+  }
+
+  resizeZone(id: string, next: TerrainZoneData): void {
+    const entry = this.zones.get(id);
+    if (!entry) return;
+    this.removeChild(entry.container);
+    entry.container.destroy({ children: true });
+    const container = this.renderZone(next);
+    this.addChild(container);
+    this.zones.set(id, { container, zone: next });
   }
 
   clear(): void {
@@ -159,6 +220,15 @@ export class TerrainLayer extends Container {
     }
     this.zones.clear();
     this.clearPreview();
+  }
+
+  private redrawAll(zones: TerrainZoneData[]): void {
+    for (const [, entry] of this.zones) {
+      this.removeChild(entry.container);
+      entry.container.destroy({ children: true });
+    }
+    this.zones.clear();
+    this.sync(zones);
   }
 
   previewZone(gridX: number, gridY: number, w: number, h: number, color: number = TERRAIN_COLORS['default']!): void {

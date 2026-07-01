@@ -1,10 +1,13 @@
-import { User } from 'lucide-react';
+import { Camera, User } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '@anvil/ui';
 import type { HeroSummary } from '@anvil/types';
+import { HeroPortraitDialog } from './HeroPortraitDialog.js';
 
 export interface HeroGridProps {
   heroes: HeroSummary[];
   onSelect: (heroId: string) => void;
+  onPortraitSave?: (heroId: string, assetId: string) => Promise<void>;
+  onPortraitRemove?: (heroId: string) => Promise<void>;
   selectedId?: string | null;
   compact?: boolean;
 }
@@ -17,7 +20,35 @@ function classLabel(hero: HeroSummary): string {
   return `${base}${sub}`;
 }
 
-export function HeroGrid({ heroes, onSelect, selectedId, compact }: HeroGridProps) {
+function HeroPortrait({ hero, editable }: { hero: HeroSummary; editable?: boolean }) {
+  return (
+    <div className="group/portrait relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-zinc-800">
+      {hero.portraitUrl ? (
+        <img
+          src={hero.portraitUrl}
+          alt={hero.name}
+          className="size-12 object-cover"
+        />
+      ) : (
+        <User className="size-6 text-zinc-500" />
+      )}
+      {editable && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/portrait:opacity-100">
+          <Camera className="size-4 text-zinc-200" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function HeroGrid({
+  heroes,
+  onSelect,
+  onPortraitSave,
+  onPortraitRemove,
+  selectedId,
+  compact,
+}: HeroGridProps) {
   if (heroes.length === 0) {
     return <p className="p-8 text-center text-zinc-500">No heroes yet.</p>;
   }
@@ -39,18 +70,25 @@ export function HeroGrid({ heroes, onSelect, selectedId, compact }: HeroGridProp
           onClick={() => onSelect(hero.id)}
         >
           <CardHeader className="flex flex-row items-start gap-3 space-y-0 p-4">
-            {/* Portrait placeholder */}
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-              {hero.portraitUrl ? (
-                <img
-                  src={hero.portraitUrl}
-                  alt={hero.name}
-                  className="size-12 rounded-md object-cover"
-                />
-              ) : (
-                <User className="size-6 text-zinc-500" />
-              )}
-            </div>
+            {onPortraitSave ? (
+              <HeroPortraitDialog
+                heroName={hero.name}
+                currentPortraitUrl={hero.portraitUrl}
+                onSave={(assetId) => onPortraitSave(hero.id, assetId)}
+                onRemove={onPortraitRemove && hero.portraitUrl ? () => onPortraitRemove(hero.id) : undefined}
+              >
+                <button
+                  type="button"
+                  aria-label={`Edit ${hero.name} portrait`}
+                  onClick={(event) => event.stopPropagation()}
+                  className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+                >
+                  <HeroPortrait hero={hero} editable />
+                </button>
+              </HeroPortraitDialog>
+            ) : (
+              <HeroPortrait hero={hero} />
+            )}
             <div className="min-w-0 flex-1">
               <CardTitle className="truncate text-sm font-bold">{hero.name}</CardTitle>
               <p className="mt-0.5 text-xs text-zinc-500">{classLabel(hero)}</p>

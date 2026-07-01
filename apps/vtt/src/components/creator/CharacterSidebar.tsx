@@ -28,6 +28,9 @@ function StatField({ label, value }: { label: string; value: string | number }) 
 }
 
 function getCultureDisplay(character: CharacterInProgress): string | null {
+  const preset = character.culture.preset
+    ? GameData.getPrebuiltCulture(character.culture.preset)
+    : null;
   const environment = character.culture.environment
     ? GameData.getCulturesByType('environment').find((item) => item.id === character.culture.environment)?.name
     : null;
@@ -39,6 +42,10 @@ function getCultureDisplay(character: CharacterInProgress): string | null {
     : null;
 
   const parts = [environment, organization, upbringing].filter(Boolean);
+  if (preset?.type === 'bespoke') {
+    return parts.length > 0 ? `${preset.name}: ${parts.join(' / ')}` : preset.name;
+  }
+  if (preset?.type === 'professional') return preset.name;
   return parts.length > 0 ? parts.join(' / ') : null;
 }
 
@@ -55,6 +62,10 @@ export function CharacterSidebar({ character, visible }: Props) {
   const kitName = character.kit
     ? GameData.getKit(character.kit)?.name ?? character.kit
     : null;
+  const secondaryKitName = character.secondaryKit
+    ? GameData.getKit(character.secondaryKit)?.name ?? character.secondaryKit
+    : null;
+  const kitDisplay = [kitName, secondaryKitName].filter(Boolean).join(', ') || null;
 
   const cultureDisplay = getCultureDisplay(character);
   const complicationName = character.complication?.name ?? null;
@@ -124,7 +135,7 @@ export function CharacterSidebar({ character, visible }: Props) {
               <SidebarField label="Class" value={className} />
               <SidebarField label="Subclass" value={subclassDisplay} />
               <SidebarField label="Complication" value={complicationName} />
-              <SidebarField label="Kit" value={kitName} />
+              <SidebarField label={secondaryKitName ? "Kits" : "Kit"} value={kitDisplay} />
             </div>
           </div>
 
