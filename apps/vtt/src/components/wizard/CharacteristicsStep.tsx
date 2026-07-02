@@ -158,7 +158,7 @@ export function CharacteristicsStep({ character, onChange }: Props) {
           . Choose a set of values for the other characteristics.
         </p>
 
-        <div className="grid grid-cols-5 gap-2 mb-4">
+        <div className="grid grid-cols-3 gap-2 mb-4 sm:grid-cols-5">
           {CHARACTERISTIC_NAMES.map((name) => {
             const fixedValue = rules.fixed[name];
             const currentValue = character.characteristics?.[name];

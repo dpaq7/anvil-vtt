@@ -137,24 +137,24 @@ export function AncestryStep({ character, onChange }: Props) {
   );
 
   return (
-    <div className="h-[500px]">
+    <div className="flex h-[70dvh] flex-col md:h-[500px]">
       <p className="mb-4 text-sm text-zinc-400">
         Your ancestry determines your size, speed, and unique traits. Click an ancestry to preview, then select it to continue.
       </p>
 
-      <SplitViewSelector
-        items={ancestries}
-        selectedId={character.ancestry}
-        onPreview={setPreviewedAncestry}
-        onSelect={handleSelect}
-        renderCard={renderCard}
-        renderDetail={renderDetail}
-        previewedItem={previewedAncestry}
-        emptyMessage="No ancestries available"
-        gridCols={2}
-        listClassName="w-1/2"
-        detailClassName="w-1/2"
-      />
+      <div className="min-h-0 flex-1">
+        <SplitViewSelector
+          items={ancestries}
+          selectedId={character.ancestry}
+          onPreview={setPreviewedAncestry}
+          onSelect={handleSelect}
+          renderCard={renderCard}
+          renderDetail={renderDetail}
+          previewedItem={previewedAncestry}
+          emptyMessage="No ancestries available"
+          gridCols={2}
+        />
+      </div>
     </div>
   );
 }

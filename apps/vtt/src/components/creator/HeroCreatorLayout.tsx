@@ -48,7 +48,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="mx-auto max-w-5xl">
             {/* Step Header */}
             <div className="mb-6">
@@ -67,7 +67,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
       </div>
 
       {/* Footer Navigation */}
-      <div className="flex items-center justify-between border-t border-creator-border px-6 py-3 bg-creator-card">
+      <div className="flex items-center justify-between border-t border-creator-border px-4 py-3 bg-creator-card sm:px-6">
         <Button
           variant="ghost"
           onClick={goBack}

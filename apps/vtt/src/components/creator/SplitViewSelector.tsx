@@ -43,9 +43,9 @@ export function SplitViewSelector<T>({
   }
 
   return (
-    <div className="flex h-full gap-4">
-      {/* Card Grid - Left Side */}
-      <div className={cn("w-1/2 min-w-0", listClassName)}>
+    <div className="flex h-full flex-col gap-4 md:flex-row">
+      {/* Card Grid - top on phones, left otherwise */}
+      <div className={cn("min-h-0 w-full min-w-0 flex-1 md:h-full md:w-1/2 md:flex-none", listClassName)}>
         <ScrollArea className="h-full">
           <div className={`grid ${GRID_COLS_CLASS[gridCols]} gap-3 p-1`}>
             {items.map((item, index) => {
@@ -66,8 +66,8 @@ export function SplitViewSelector<T>({
         </ScrollArea>
       </div>
 
-      {/* Detail Panel - Right Side */}
-      <div className={cn("w-1/2 min-w-0", detailClassName)}>
+      {/* Detail Panel - bottom on phones, right otherwise */}
+      <div className={cn("min-h-0 w-full min-w-0 flex-1 md:h-full md:w-1/2 md:flex-none", detailClassName)}>
         {previewedItem ? (
           renderDetail(previewedItem)
         ) : (

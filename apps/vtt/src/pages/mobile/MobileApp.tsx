@@ -13,11 +13,8 @@ import {
   Outlet,
   useLocation,
   useNavigate,
-  useParams,
 } from 'react-router-dom';
 import {
-  Archive,
-  BookOpen,
   Boxes,
   ChevronRight,
   Clapperboard,
@@ -54,7 +51,6 @@ import {
 import type { HeroSummary, Note, NoteScope } from '@anvil/types';
 import { api } from '../../lib/api.js';
 import { assetDataUrl, credentialedMediaCrossOrigin } from '../../lib/api-url.js';
-import { normalizeInventory } from '../../lib/inventory.js';
 import { uploadFile } from '../../stores/assetsStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import {
@@ -62,6 +58,19 @@ import {
   useNotesStore,
 } from '../../stores/notesStore.js';
 import type { CampaignData } from '../../components/sessions/types.js';
+import { MobileNpcPanel } from './MobileNpcs.js';
+import {
+  EmptyState,
+  LoadingPanel,
+  SectionHeader,
+  StatCard,
+  formatBytes,
+  formatDate,
+  mobileContainerClass,
+  titleCase,
+} from './shared.js';
+
+export { MobileHeroDetail } from './MobileHeroDetail.js';
 
 type UserRole = 'director' | 'player';
 type AssetKind = 'map' | 'token' | 'portrait' | 'handout' | 'audio' | 'other';
@@ -82,24 +91,6 @@ interface AssetItem {
 interface CampaignOption {
   id: string;
   name: string;
-}
-
-interface HeroRow {
-  id: string;
-  name: string;
-  ancestry: string | null;
-  culture: string | null;
-  career: string | null;
-  hero_class: string | null;
-  subclass: string | null;
-  level: number;
-  characteristics: string;
-  kit: string | null;
-  skills: string;
-  abilities: string;
-  portrait_asset_id: string | null;
-  portrait_url: string | null;
-  data: string;
 }
 
 interface DashboardState {
@@ -141,52 +132,6 @@ const ASSET_TYPES: Array<{ value: AssetKind; label: string }> = [
   { value: 'other', label: 'Other' },
 ];
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return 'No date';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'No date';
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatBytes(value: number | null | undefined): string {
-  if (!value || value <= 0) return 'Size unknown';
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function titleCase(value: string | null | undefined): string {
-  if (!value) return 'None';
-  return value
-    .replace(/[_-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function parseJson<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function parseList(value: string | null | undefined): string[] {
-  const parsed = parseJson<unknown>(value, null);
-  if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
-  if (typeof parsed === 'string') return parsed.split(',').map((item) => item.trim()).filter(Boolean);
-  return String(value ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function getNotePreview(note: Note): string {
   return note.content
     .replace(/[#>*_`-]/g, '')
@@ -211,76 +156,6 @@ function assetTypeForFile(file: File, fallback: AssetKind): AssetKind {
   if (file.type.startsWith('audio/')) return 'audio';
   if (file.type.startsWith('image/')) return 'handout';
   return 'other';
-}
-
-function mobileContainerClass(className?: string) {
-  return cn('mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-4', className);
-}
-
-function EmptyState({
-  icon: Icon,
-  title,
-  detail,
-  action,
-}: {
-  icon: typeof Home;
-  title: string;
-  detail?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/60 px-6 py-8 text-center">
-      <Icon className="mb-3 size-8 text-zinc-600" />
-      <p className="text-sm font-semibold text-zinc-200">{title}</p>
-      {detail && <p className="mt-1 max-w-xs text-xs text-zinc-500">{detail}</p>}
-      {action && <div className="mt-4">{action}</div>}
-    </div>
-  );
-}
-
-function LoadingPanel() {
-  return (
-    <div className="flex min-h-64 items-center justify-center">
-      <Loader2 className="size-6 animate-spin text-zinc-500" />
-    </div>
-  );
-}
-
-function SectionHeader({
-  label,
-  action,
-}: {
-  label: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-        {label}
-      </h2>
-      {action}
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  Icon,
-}: {
-  label: string;
-  value: string | number;
-  Icon: typeof Home;
-}) {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-zinc-500">{label}</span>
-        <Icon className="size-4 text-zinc-500" />
-      </div>
-      <p className="mt-2 text-2xl font-semibold text-zinc-100">{value}</p>
-    </div>
-  );
 }
 
 function RoleToggle({
@@ -813,191 +688,6 @@ export function MobileCharacters() {
   );
 }
 
-export function MobileHeroDetail() {
-  const { id } = useParams<{ id: string }>();
-  const [hero, setHero] = useState<HeroRow | null>(null);
-  const [summary, setSummary] = useState<HeroSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    setError(null);
-    Promise.all([
-      api.get<HeroRow>(`/api/heroes/${id}`),
-      api.get<HeroSummary[]>('/api/heroes').catch(() => []),
-    ])
-      .then(([row, summaries]) => {
-        if (cancelled) return;
-        setHero(row);
-        setSummary(summaries.find((item) => item.id === row.id) ?? null);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
-
-  const details = useMemo(() => {
-    if (!hero) return null;
-    const data = parseJson<Record<string, unknown>>(hero.data, {});
-    const characteristics = parseJson<Record<string, number>>(hero.characteristics, {});
-    const skills = parseList(hero.skills);
-    const abilities = parseList(hero.abilities);
-    const inventory = normalizeInventory(data['inventory']);
-    return { data, characteristics, skills, abilities, inventory };
-  }, [hero]);
-
-  if (error) {
-    return (
-      <div className={mobileContainerClass()}>
-        <EmptyState icon={User} title="Character unavailable" detail={error} />
-      </div>
-    );
-  }
-  if (!hero || !details) return <LoadingPanel />;
-
-  const portraitUrl =
-    hero.portrait_asset_id ? `/api/assets/${hero.portrait_asset_id}/data` : hero.portrait_url;
-  const staminaMax = summary?.staminaMax ?? null;
-  const staminaCurrent = summary?.staminaCurrent ?? staminaMax;
-  const recoveriesMax = summary?.recoveriesMax ?? null;
-  const recoveriesCurrent = summary?.recoveriesCurrent ?? recoveriesMax;
-
-  return (
-    <div className={mobileContainerClass()}>
-      <Link to="/app/mobile/heroes" className="text-sm text-zinc-400">
-        Characters
-      </Link>
-
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-        <div className="flex items-center gap-4">
-          <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-800 text-3xl font-semibold text-zinc-500">
-            {portraitUrl ? (
-              <img src={portraitUrl} alt="" className="size-full object-cover" />
-            ) : (
-              hero.name.slice(0, 1).toUpperCase()
-            )}
-          </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold text-zinc-100">{hero.name}</h1>
-            <p className="mt-1 text-sm text-zinc-400">
-              {titleCase(hero.hero_class)} / Level {hero.level}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              {titleCase(hero.subclass)} / {titleCase(hero.ancestry)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          label="Stamina"
-          value={
-            staminaMax !== null
-              ? `${staminaCurrent ?? staminaMax}/${staminaMax}`
-              : 'Unknown'
-          }
-          Icon={Shield}
-        />
-        <StatCard
-          label="Recoveries"
-          value={
-            recoveriesMax !== null
-              ? `${recoveriesCurrent ?? recoveriesMax}/${recoveriesMax}`
-              : 'Unknown'
-          }
-          Icon={RefreshCw}
-        />
-        <StatCard label="Victories" value={summary?.victories ?? 0} Icon={Archive} />
-        <StatCard label="XP" value={summary?.xp ?? 0} Icon={BookOpen} />
-      </div>
-
-      <section className="flex flex-col gap-2">
-        <SectionHeader label="Characteristics" />
-        <div className="grid grid-cols-2 gap-2">
-          {Object.entries(details.characteristics).map(([key, value]) => (
-            <div key={key} className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-              <p className="text-xs capitalize text-zinc-500">{key}</p>
-              <p className="mt-1 text-xl font-semibold text-zinc-100">{value}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <SectionHeader label="Skills" />
-        {details.skills.length === 0 ? (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-sm text-zinc-500">
-            None listed
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {details.skills.map((skill) => (
-              <Badge key={skill} variant="secondary">
-                {skill}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <SectionHeader label="Abilities" />
-        {details.abilities.length === 0 ? (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-sm text-zinc-500">
-            None listed
-          </p>
-        ) : (
-          <div className="grid gap-2">
-            {details.abilities.map((ability) => (
-              <div
-                key={ability}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-sm text-zinc-200"
-              >
-                {titleCase(ability)}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <SectionHeader label="Inventory" />
-        {details.inventory.length === 0 ? (
-          <p className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-sm text-zinc-500">
-            Empty
-          </p>
-        ) : (
-          <div className="grid gap-2">
-            {details.inventory.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-sm font-semibold text-zinc-100">
-                    {item.name}
-                  </p>
-                  <Badge variant="secondary">x{item.quantity}</Badge>
-                </div>
-                {item.description && (
-                  <p className="mt-1 line-clamp-2 text-xs text-zinc-500">
-                    {item.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
 export function MobileNotes() {
   const location = useLocation();
   const role = useAuthStore((state) => state.user?.role ?? 'director');
@@ -1305,6 +995,7 @@ function AudioAssetCard({
 
 export function MobileAssets() {
   const role = useAuthStore((state) => state.user?.role ?? 'director');
+  const [tab, setTab] = useState<'files' | 'npcs'>('files');
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -1356,20 +1047,47 @@ export function MobileAssets() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-100">Assets</h1>
-          <p className="mt-1 text-xs text-zinc-500">{uploadedAssets.length} uploaded</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {tab === 'files' ? `${uploadedAssets.length} uploaded` : 'Campaign NPCs'}
+          </p>
         </div>
-        <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md bg-zinc-100 px-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200">
-          {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-          Upload
-          <input
-            type="file"
-            className="sr-only"
-            disabled={uploading}
-            onChange={(event) => void handleUpload(event)}
-          />
-        </label>
+        {tab === 'files' && (
+          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md bg-zinc-100 px-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200">
+            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            Upload
+            <input
+              type="file"
+              className="sr-only"
+              disabled={uploading}
+              onChange={(event) => void handleUpload(event)}
+            />
+          </label>
+        )}
       </div>
 
+      <div className="grid grid-cols-2 rounded-lg border border-zinc-800 bg-zinc-950 p-1">
+        {(['files', 'npcs'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={tab === option}
+            onClick={() => setTab(option)}
+            className={cn(
+              'h-8 rounded-md px-3 text-xs font-semibold transition',
+              tab === option
+                ? 'bg-zinc-100 text-zinc-950'
+                : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100',
+            )}
+          >
+            {option === 'files' ? 'Files' : 'NPCs'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'npcs' ? (
+        <MobileNpcPanel />
+      ) : (
+        <>
       <select
         value={assetType}
         onChange={(event) => setAssetType(event.currentTarget.value as AssetKind)}
@@ -1416,6 +1134,8 @@ export function MobileAssets() {
             </section>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );
