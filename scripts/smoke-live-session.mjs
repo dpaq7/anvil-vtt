@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -369,24 +368,38 @@ async function main() {
         ancestry: 'human',
         heroClass: 'beastheart',
         subclass: 'guardian',
+        career: 'criminal',
         level: 1,
-        characteristics: { might: 2, agility: 0, reason: 0, intuition: 2, presence: 0 },
-        abilities: ['stormrage', 'come-on'],
+        characteristics: { might: 2, agility: 2, reason: -1, intuition: 2, presence: -1 },
+        kit: 'panther',
         data: {
-          staminaCurrent: 21,
+          culture: { environment: 'wilderness', organization: 'communal', upbringing: 'creative', language: 'kalliak' },
+          cultureSkills: { environment: 'track', organization: 'handle-animals', upbringing: 'music' },
+          careerSkillChoices: ['criminal-underworld', 'alertness', 'sneak'],
+          classSkillChoices: ['climb', 'ride'],
+          ancestryTraits: ['determination', 'staying-power'],
+          careerPerk: 'criminal-contacts',
+          selectedLanguages: ['kalliak'],
+          abilityChoices: {
+            'class:beastheart:level-1:signature-1': 'stormrage',
+            'class:beastheart:level-1:cost-3': 'hungry-like-the-wolf',
+            'class:beastheart:level-1:cost-5': 'rain-of-fire',
+          },
+          staminaCurrent: 27,
           recoveriesCurrent: 12,
           companion: 'wolf',
-          companionStaminaCurrent: 21,
+          companionStaminaCurrent: 27,
           companionRampage: 0,
         },
       },
     });
 
-    const roomCode = randomRoomCode();
-    await director.request(`/api/sessions/${sessionId}/go-live`, {
+    const goLive = await director.request(`/api/sessions/${sessionId}/go-live`, {
       method: 'PUT',
-      body: { roomCode, sceneId: scenes.battle.id },
+      body: { sceneId: scenes.battle.id },
     });
+    const roomCode = goLive.roomCode;
+    assert(typeof roomCode === 'string' && roomCode.length > 0, 'go-live did not return a room code');
 
     const lookup = await player.request(`/api/sessions/by-code/${roomCode}`);
     assert(lookup.session.id === sessionId, 'player could not resolve the smoke room code');
@@ -1070,12 +1083,6 @@ function findExecutable(name) {
 
 function findExisting(paths) {
   return paths.find((path) => existsSync(path)) ?? null;
-}
-
-function randomRoomCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = randomBytes(6);
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
 }
 
 function getSetCookies(headers) {
