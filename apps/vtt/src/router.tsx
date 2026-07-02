@@ -103,7 +103,7 @@ const MobileAssets = lazyWithChunkReload(() =>
   })),
 );
 const MobileCampaigns = lazyWithChunkReload(() =>
-  import('./pages/mobile/MobileApp.js').then((module) => ({
+  import('./pages/mobile/MobileCampaigns.js').then((module) => ({
     default: module.MobileCampaigns,
   })),
 );
