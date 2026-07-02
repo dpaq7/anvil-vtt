@@ -20,9 +20,17 @@ export class ViewportSystem {
   private config: ViewportConfig;
   private leftClickPanEnabled = false;
   private activePointerId: number | null = null;
+  /** Active touch pointers, used to detect two-finger pinch/pan gestures. */
+  private touchPoints = new Map<number, { x: number; y: number }>();
+  private pinchActive = false;
+  private pinchLastDist = 0;
+  private pinchLastMid = { x: 0, y: 0 };
 
   /** Optional callback invoked whenever zoom changes (for React state sync). */
   onZoomChange: ((zoom: number) => void) | null = null;
+
+  /** Invoked when a two-finger gesture begins so other systems can cancel in-progress interactions. */
+  onPinchStart: (() => void) | null = null;
 
   constructor(
     private world: Container,
@@ -97,7 +105,58 @@ export class ViewportSystem {
     this.onZoomChange?.(this.zoom);
   };
 
+  /** Whether a two-finger pinch/pan gesture is currently in progress. */
+  isPinching(): boolean {
+    return this.pinchActive;
+  }
+
+  private beginPinch(): void {
+    const points = [...this.touchPoints.values()];
+    const [a, b] = points;
+    if (!a || !b) return;
+    this.pinchActive = true;
+    this.pinchLastDist = Math.hypot(b.x - a.x, b.y - a.y);
+    this.pinchLastMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    // A pinch supersedes any single-pointer pan in progress.
+    this.isPanning = false;
+    this.releasePointerCapture();
+    this.onPinchStart?.();
+  }
+
+  private updatePinch(): void {
+    const points = [...this.touchPoints.values()];
+    const [a, b] = points;
+    if (!a || !b) return;
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+    const scale = this.pinchLastDist > 0 ? dist / this.pinchLastDist : 1;
+    const newZoom = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, this.zoom * scale));
+
+    // Pin the world point that was under the previous midpoint to the new
+    // midpoint — this covers both zooming about the pinch and two-finger panning.
+    const rect = this.canvas.getBoundingClientRect();
+    const worldX = (this.pinchLastMid.x - rect.left - this.panX) / this.zoom;
+    const worldY = (this.pinchLastMid.y - rect.top - this.panY) / this.zoom;
+    this.zoom = newZoom;
+    this.panX = mid.x - rect.left - worldX * this.zoom;
+    this.panY = mid.y - rect.top - worldY * this.zoom;
+
+    this.pinchLastDist = dist;
+    this.pinchLastMid = mid;
+    this.apply();
+    this.onZoomChange?.(this.zoom);
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') {
+      this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touchPoints.size === 2) {
+        this.beginPinch();
+        e.preventDefault();
+        return;
+      }
+    }
     if (this.activePointerId !== null) return;
     // Middle mouse or right mouse for panning
     if (e.button === 1 || e.button === 2) {
@@ -118,6 +177,16 @@ export class ViewportSystem {
   };
 
   private onPointerMove = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch' && this.touchPoints.has(e.pointerId)) {
+      this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.pinchActive) {
+        if (this.touchPoints.size >= 2) {
+          e.preventDefault();
+          this.updatePinch();
+        }
+        return;
+      }
+    }
     if (!this.isPanning) return;
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     e.preventDefault();
@@ -131,16 +200,26 @@ export class ViewportSystem {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    this.dropTouchPoint(e);
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     this.isPanning = false;
     this.releasePointerCapture();
   };
 
   private onPointerCancel = (e: PointerEvent): void => {
+    this.dropTouchPoint(e);
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     this.isPanning = false;
     this.releasePointerCapture();
   };
+
+  private dropTouchPoint(e: PointerEvent): void {
+    if (e.pointerType !== 'touch') return;
+    this.touchPoints.delete(e.pointerId);
+    if (this.pinchActive && this.touchPoints.size < 2) {
+      this.pinchActive = false;
+    }
+  }
 
   private apply(): void {
     this.world.scale.set(this.zoom);

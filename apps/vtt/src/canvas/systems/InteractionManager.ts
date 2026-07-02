@@ -97,6 +97,17 @@ export class InteractionManager {
   // Hover state
   private hoveredId: string | null = null;
 
+  // Touch state: single-finger map panning (select tool on empty ground)
+  private touchPanning = false;
+  private touchPanLast: { x: number; y: number } | null = null;
+
+  // Touch state: long-press opens the token context menu (no right-click on touch)
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressOrigin: { x: number; y: number } | null = null;
+
+  private static readonly LONG_PRESS_MS = 500;
+  private static readonly LONG_PRESS_MOVE_TOLERANCE_PX = 8;
+
   // Optional layers (only present in builder mode)
   private drawingLayer: DrawingLayer | null = null;
   private terrainLayer: TerrainLayer | null = null;
@@ -176,8 +187,16 @@ export class InteractionManager {
     this.selectedId = [...ids][0] ?? null;
   }
 
-  private cancelCurrentInteraction(): void {
+  /**
+   * Cancel any in-progress pointer interaction (drag, marquee, draw, etc.).
+   * Also invoked externally when a viewport gesture (e.g. two-finger pinch)
+   * takes over the pointer stream mid-interaction.
+   */
+  cancelCurrentInteraction(): void {
     this.releaseActivePointer();
+    this.clearLongPress();
+    this.touchPanning = false;
+    this.touchPanLast = null;
     this.dragging = false;
     this.dragEntityId = null;
     this.dragOriginGrid = null;
@@ -295,9 +314,32 @@ export class InteractionManager {
     return { worldX, worldY };
   }
 
+  private clearLongPress(): void {
+    if (this.longPressTimer !== null) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+    this.longPressOrigin = null;
+  }
+
+  /** Schedule the touch long-press that opens the token context menu. */
+  private scheduleLongPress(entityId: string, gridX: number, gridY: number, clientX: number, clientY: number): void {
+    this.clearLongPress();
+    this.longPressOrigin = { x: clientX, y: clientY };
+    this.longPressTimer = setTimeout(() => {
+      this.longPressTimer = null;
+      // Abort the in-progress press/drag so lifting the finger doesn't move the token.
+      this.cancelCurrentInteraction();
+      // Match onContextMenu placement: the token's right edge.
+      const { screenX, screenY } = this.viewport.gridToScreen(gridX + 1, gridY, this.cellSize);
+      this.callbacks.onTokenRightClick?.(entityId, screenX, screenY);
+    }, InteractionManager.LONG_PRESS_MS);
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return; // Left click only
     if (this._activeTool === 'pan') return; // Let ViewportSystem handle
+    if (this.viewport.isPinching()) return; // Two-finger gesture owns the pointer stream
     if (this.activePointerId !== null) return;
     this.capturePointer(e.pointerId);
     e.preventDefault();
@@ -385,6 +427,11 @@ export class InteractionManager {
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
     const additiveSelection = e.ctrlKey || e.metaKey || e.shiftKey;
 
+    if (entityId && e.pointerType === 'touch') {
+      // No right-click on touch — a still long-press opens the context menu.
+      this.scheduleLongPress(entityId, gridX, gridY, e.clientX, e.clientY);
+    }
+
     if (entityId) {
       if (additiveSelection) {
         const nextIds = new Set(this.selectedIds);
@@ -451,9 +498,16 @@ export class InteractionManager {
       }
 
       // Clicked on empty space
-      const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
-      this.marqueeActive = true;
-      this.marqueeStartWorld = { x: worldX, y: worldY };
+      if (e.pointerType === 'touch') {
+        // One-finger drag on empty ground pans the map on touch devices
+        // (marquee selection stays a mouse/trackpad affordance).
+        this.touchPanning = true;
+        this.touchPanLast = { x: e.clientX, y: e.clientY };
+      } else {
+        const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+        this.marqueeActive = true;
+        this.marqueeStartWorld = { x: worldX, y: worldY };
+      }
 
       // Clear selection
       this.selectedId = null;
@@ -464,6 +518,25 @@ export class InteractionManager {
   }
 
   private handleSelectMove(e: PointerEvent): void {
+    // A pending long-press only survives a still finger.
+    if (this.longPressTimer !== null && this.longPressOrigin) {
+      const moved = Math.hypot(e.clientX - this.longPressOrigin.x, e.clientY - this.longPressOrigin.y);
+      if (moved > InteractionManager.LONG_PRESS_MOVE_TOLERANCE_PX) {
+        this.clearLongPress();
+      }
+    }
+
+    // One-finger touch pan (started on empty ground)
+    if (this.touchPanning && this.touchPanLast) {
+      const pan = this.viewport.getPan();
+      this.viewport.setPan(
+        pan.x + (e.clientX - this.touchPanLast.x),
+        pan.y + (e.clientY - this.touchPanLast.y),
+      );
+      this.touchPanLast = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
     if (this.terrainDragging) {
       const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       const dx = gridX - this.terrainDragging.startGrid.gridX;
@@ -539,7 +612,9 @@ export class InteractionManager {
       return;
     }
 
-    // Hover detection — check for token under cursor
+    // Hover detection — check for token under cursor. Touch has no hover;
+    // tooltips there would stick under the finger and never dismiss.
+    if (e.pointerType === 'touch') return;
     const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
     const entityId = this.tokenLayer.getTokenAt(gridX, gridY);
     if (entityId !== this.hoveredId) {
@@ -552,6 +627,14 @@ export class InteractionManager {
   }
 
   private handleSelectUp(e: PointerEvent): void {
+    this.clearLongPress();
+
+    if (this.touchPanning) {
+      this.touchPanning = false;
+      this.touchPanLast = null;
+      return;
+    }
+
     if (this.terrainDragging) {
       const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       const dx = gridX - this.terrainDragging.startGrid.gridX;

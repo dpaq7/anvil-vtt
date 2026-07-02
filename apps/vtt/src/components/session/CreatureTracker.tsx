@@ -259,8 +259,9 @@ function SquadDamageRow({ onDamage, onHeal }: { onDamage: (n: number) => void; o
 
   return (
     <div className="flex items-center gap-1 px-3 py-1.5">
-      <Button variant="ghost" size="icon" className="size-5" onClick={() => onDamage(1)} title="1 damage">
-        <Minus className="size-3 text-red-400" />
+      {/* size-9 keeps these frequent combat controls tappable on tablets */}
+      <Button variant="ghost" size="icon" className="size-9" onClick={() => onDamage(1)} title="1 damage">
+        <Minus className="size-3.5 text-red-400" />
       </Button>
       <input
         type="number"
@@ -268,10 +269,10 @@ function SquadDamageRow({ onDamage, onHeal }: { onDamage: (n: number) => void; o
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
         placeholder="+/-"
-        className="h-5 w-12 rounded border border-zinc-700 bg-zinc-800 px-1 text-center text-[10px] text-zinc-200 placeholder:text-zinc-600"
+        className="h-9 w-12 rounded border border-zinc-700 bg-zinc-800 px-1 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
       />
-      <Button variant="ghost" size="icon" className="size-5" onClick={() => onHeal(1)} title="1 heal">
-        <Plus className="size-3 text-emerald-400" />
+      <Button variant="ghost" size="icon" className="size-9" onClick={() => onHeal(1)} title="1 heal">
+        <Plus className="size-3.5 text-emerald-400" />
       </Button>
     </div>
   );

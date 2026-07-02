@@ -85,7 +85,7 @@ export function Lobby() {
 
   return (
     <div className="flex h-full items-center justify-center">
-      <Card className="w-[480px]">
+      <Card className="mx-4 w-full max-w-[480px]">
         <CardHeader>
           <CardTitle>{session.name}</CardTitle>
         </CardHeader>

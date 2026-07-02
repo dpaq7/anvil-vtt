@@ -9,11 +9,7 @@ import { LoadingSkeleton } from '../../components/LoadingSkeleton.js';
 import { DirectorView } from './DirectorView.js';
 import { PlayerView } from './PlayerView.js';
 import { PhoneSessionPage } from './PhoneSessionPage.js';
-
-function isPhoneCompanionViewport() {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia('(max-width: 767px) and (pointer: coarse)').matches;
-}
+import { isPhoneCompanionViewport } from '../../lib/device.js';
 
 export function SessionPage() {
   const [usePhoneCompanion] = useState(isPhoneCompanionViewport);

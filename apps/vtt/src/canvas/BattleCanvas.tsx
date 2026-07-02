@@ -604,6 +604,10 @@ export function BattleCanvas({
           isDirector,
         );
 
+        // A two-finger pinch takes over the pointer stream — abort any
+        // in-progress token drag/marquee so tokens don't jump mid-gesture.
+        viewport.onPinchStart = () => interaction.cancelCurrentInteraction();
+
         // Wire editable overlay layers for hit-testing and previews.
         if (builderMode || isDirector) {
           interaction.setBuilderLayers(drawingLayer, terrainLayer, fog);

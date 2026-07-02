@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@anvil/ui';
 import { api } from '../lib/api.js';
+import { isPhoneCompanionViewport } from '../lib/device.js';
 import { useAuthStore } from '../stores/authStore.js';
 import { CampaignCard } from '../components/sessions/CampaignCard.js';
 import { SessionLauncher } from '../components/sessions/SessionLauncher.js';
@@ -13,6 +14,14 @@ export function LivePage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const isDirector = user?.role === 'director';
+
+  // Phones don't get the live launch surface — running a session needs a
+  // tablet or desktop. The mobile home links straight into the phone companion.
+  useEffect(() => {
+    if (isPhoneCompanionViewport()) {
+      navigate('/app/mobile', { replace: true });
+    }
+  }, [navigate]);
 
   const [campaigns, setCampaigns] = useState<CampaignData[]>([]);
   const [loading, setLoading] = useState(true);
