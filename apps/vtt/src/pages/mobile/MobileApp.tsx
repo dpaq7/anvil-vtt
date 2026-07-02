@@ -26,6 +26,7 @@ import {
   LogOut,
   Music,
   NotebookText,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
@@ -59,6 +60,7 @@ import {
 } from '../../stores/notesStore.js';
 import type { CampaignData } from '../../components/sessions/types.js';
 import { MobileNpcPanel } from './MobileNpcs.js';
+import { MobileAssetDetails } from './MobileAssetDetails.js';
 import {
   EmptyState,
   LoadingPanel,
@@ -928,11 +930,21 @@ export function MobileNotes() {
   );
 }
 
-function AssetThumb({ asset }: { asset: AssetItem }) {
-  if (isAudioAsset(asset)) return <AudioAssetCard asset={asset} className="col-span-2" />;
+function AssetThumb({ asset, onEdit }: { asset: AssetItem; onEdit?: () => void }) {
+  if (isAudioAsset(asset)) return <AudioAssetCard asset={asset} className="col-span-2" onEdit={onEdit} />;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">
+    <div className="relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">
+      {onEdit && (
+        <button
+          type="button"
+          aria-label={`Edit ${asset.name}`}
+          onClick={onEdit}
+          className="absolute right-1.5 top-1.5 z-10 flex size-9 items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-950/80 text-zinc-300 shadow-sm shadow-black/30 active:bg-zinc-800"
+        >
+          <Pencil className="size-4" />
+        </button>
+      )}
       <div className="flex aspect-video items-center justify-center bg-zinc-800">
         {isImageAsset(asset) ? (
           <img
@@ -958,9 +970,11 @@ function AssetThumb({ asset }: { asset: AssetItem }) {
 function AudioAssetCard({
   asset,
   className,
+  onEdit,
 }: {
   asset: AssetItem;
   className?: string;
+  onEdit?: () => void;
 }) {
   const src = assetDataUrl(asset.id);
   const crossOrigin = credentialedMediaCrossOrigin(src);
@@ -978,6 +992,16 @@ function AudioAssetCard({
             <span>{formatBytes(asset.file_size)}</span>
           </div>
         </div>
+        {onEdit && (
+          <button
+            type="button"
+            aria-label={`Edit ${asset.name}`}
+            onClick={onEdit}
+            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-950/60 text-zinc-300 active:bg-zinc-800"
+          >
+            <Pencil className="size-4" />
+          </button>
+        )}
       </div>
       <div className="border-t border-zinc-800 bg-zinc-950/55 p-3">
         <audio
@@ -1000,6 +1024,7 @@ export function MobileAssets() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [assetType, setAssetType] = useState<AssetKind>('handout');
+  const [editingAsset, setEditingAsset] = useState<AssetItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -1117,7 +1142,7 @@ export function MobileAssets() {
               <SectionHeader label="Audio" />
               <div className="grid gap-3 sm:grid-cols-2">
                 {audioAssets.map((asset) => (
-                  <AudioAssetCard key={asset.id} asset={asset} />
+                  <AudioAssetCard key={asset.id} asset={asset} onEdit={() => setEditingAsset(asset)} />
                 ))}
               </div>
             </section>
@@ -1128,7 +1153,7 @@ export function MobileAssets() {
               <SectionHeader label="Files" />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {otherAssets.map((asset) => (
-                  <AssetThumb key={asset.id} asset={asset} />
+                  <AssetThumb key={asset.id} asset={asset} onEdit={() => setEditingAsset(asset)} />
                 ))}
               </div>
             </section>
@@ -1137,6 +1162,12 @@ export function MobileAssets() {
       )}
         </>
       )}
+
+      <MobileAssetDetails
+        asset={editingAsset}
+        onClose={() => setEditingAsset(null)}
+        onChanged={() => void load()}
+      />
     </div>
   );
 }
