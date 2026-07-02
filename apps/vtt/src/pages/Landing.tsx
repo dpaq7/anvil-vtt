@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 const HERO_IMAGE = '/landing/anvil-hero.png';
+const LANDING_TITLE_IMAGE = '/landing/anvil-landing-title.png?v=3';
 const LOGO_IMAGE = '/landing/anvil-vtt-logo.png';
 
 function GoogleIcon() {
@@ -68,7 +69,7 @@ export function Landing() {
   );
 
   return (
-    <main className="min-h-screen bg-[#242b2f] text-zinc-100">
+    <main data-theme="dark" className="min-h-screen bg-[#242b2f] text-zinc-100">
       <section className="relative isolate flex min-h-[100svh] overflow-hidden bg-[#242b2f] md:min-h-[88svh]">
         <div
           aria-hidden="true"
@@ -95,15 +96,13 @@ export function Landing() {
 
         <div className="relative z-10 flex w-full items-end px-6 pb-24 pt-[38svh] sm:px-10 sm:pb-12 sm:pt-[42svh] md:items-center md:px-12 md:py-16 lg:px-16 xl:px-24">
           <div className="max-w-xl pt-12 md:pt-0">
-            <div className="flex items-center gap-4 sm:gap-5">
+            <div className="relative -ml-2 aspect-[2.08/1] w-[60%] max-w-[27rem] overflow-hidden sm:-ml-4">
+              <h1 className="sr-only">Anvil</h1>
               <img
-                src={LOGO_IMAGE}
-                alt="Anvil VTT logo"
-                className="h-16 w-16 shrink-0 object-contain drop-shadow-[0_8px_28px_rgba(0,0,0,0.75)] sm:h-20 sm:w-20 lg:h-24 lg:w-24"
+                src={LANDING_TITLE_IMAGE}
+                alt="Anvil"
+                className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 -translate-y-1/2 object-cover drop-shadow-[0_8px_30px_rgba(0,0,0,0.8)]"
               />
-              <h1 className="text-5xl font-bold leading-none text-white [text-shadow:0_3px_28px_rgba(0,0,0,0.82)] sm:text-6xl lg:text-7xl">
-                Anvil
-              </h1>
             </div>
             <p className="mt-5 max-w-lg text-balance text-lg leading-8 text-zinc-100 [text-shadow:0_2px_22px_rgba(0,0,0,0.78)] sm:text-xl">
               A lightweight, easy-to-use, fully web-based vtt for Draw Steel by MCDM.
@@ -194,9 +193,11 @@ export function Landing() {
           <div>
             <h2 className="font-semibold uppercase tracking-[0.16em] text-zinc-100">Contact</h2>
             <p className="mt-3 leading-6">
-              Questions, feedback, and playtest notes can be shared with the Anvil team during
-              testing.
+              Bug reports, feature suggestions, and contribution notes each have a dedicated inbox.
             </p>
+            <a href="/contact" className="mt-3 inline-block font-medium text-zinc-100 transition hover:text-white">
+              Contact Anvil
+            </a>
           </div>
 
           <div>
@@ -205,6 +206,9 @@ export function Landing() {
               <Link to="/about" className="text-zinc-300 transition hover:text-white">
                 About Anvil
               </Link>
+              <a href="/contact" className="text-zinc-300 transition hover:text-white">
+                Contact
+              </a>
               <a
                 href="https://www.mcdmproductions.com/"
                 className="text-zinc-300 transition hover:text-white"

@@ -103,7 +103,7 @@ export interface CompendiumAbility extends CompendiumItemBase {
  * Hero class resource names (lowercase)
  */
 export const CLASS_RESOURCES: Record<string, string> = {
-  beastheart: 'rage',
+  beastheart: 'ferocity',
   censor: 'wrath',
   conduit: 'piety',
   elementalist: 'essence',

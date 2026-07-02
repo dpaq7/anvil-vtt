@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   CircleUserRound,
   Download,
+  LogOut,
+  Moon,
   Settings,
+  Sun,
   Swords,
   Image,
   StickyNote,
@@ -32,6 +35,9 @@ import {
   cn,
 } from '@anvil/ui';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore } from '../../stores/themeStore';
+import { addBreadcrumb } from '../../lib/bug-reporting';
+import { IssueReportButton } from './IssueReportButton.js';
 
 type UserRole = 'director' | 'player';
 
@@ -58,7 +64,11 @@ const ROLE_OPTIONS = [
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 
 // Collect all labels from both nav configs for width calculation
-const ALL_LABELS = ['Account', ...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
+const ALL_LABELS = ['Account', 'Report issue', ...new Set([...DIRECTOR_NAV, ...PLAYER_NAV].map((item) => item.label))];
+
+function onboardingId(label: string) {
+  return `menu-${label.toLowerCase()}`;
+}
 
 function isRoleExclusiveRoute(role: UserRole, pathname: string) {
   const exclusivePaths = role === 'director' ? ['/app/heroes'] : ['/app/campaigns', '/app/assets'];
@@ -78,6 +88,7 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
     <div
       role="group"
       aria-label="Role"
+      data-onboarding="menu-role-toggle"
       className="mx-1 mt-2 flex flex-col gap-1 rounded-lg border border-black/10 bg-white/20 p-1 shadow-inner shadow-black/10"
     >
       {ROLE_OPTIONS.map(({ role, label, icon: Icon }) => {
@@ -95,8 +106,8 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
               'flex h-9 w-full items-center gap-2 rounded-md px-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60',
               collapsed ? 'justify-center px-0' : 'justify-start',
               active
-                ? 'bg-zinc-950 text-zinc-50 shadow-sm shadow-black/20'
-                : 'text-zinc-800 hover:bg-black/10 hover:text-zinc-950',
+                ? 'bg-anvil-ink text-anvil-paper shadow-sm shadow-black/20'
+                : 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
             )}
           >
             <Icon size={15} className="shrink-0" />
@@ -117,10 +128,67 @@ function SidebarRoleToggle({ value, pendingRole, onValueChange }: SidebarRoleTog
   );
 }
 
+function ThemeToggle() {
+  const { collapsed } = useSidebar();
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const isLight = theme === 'light';
+  const Icon = isLight ? Sun : Moon;
+  const displayLabel = isLight ? 'Light' : 'Dark';
+  const actionLabel = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+
+  const button = (
+    <button
+      type="button"
+      aria-label={actionLabel}
+      aria-pressed={isLight}
+      data-onboarding="menu-theme"
+      onClick={toggleTheme}
+      className={cn(
+        'mx-1 mb-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold text-anvil-ink/80 transition-colors hover:bg-black/10 hover:text-anvil-ink',
+        collapsed ? 'w-10 justify-center px-0' : 'w-[calc(100%-0.5rem)] justify-start',
+      )}
+    >
+      <Icon size={16} className="shrink-0" />
+      {!collapsed && (
+        <>
+          <span className="truncate">{displayLabel}</span>
+          <span
+            aria-hidden="true"
+            className={cn(
+              'ml-auto flex h-5 w-9 shrink-0 items-center rounded-full border border-black/10 p-0.5 shadow-inner shadow-black/10 transition-colors',
+              isLight ? 'bg-anvil-ink/25' : 'bg-black/15',
+            )}
+          >
+            <span
+              className={cn(
+                'size-4 rounded-full bg-anvil-ink shadow-sm transition-transform',
+                isLight && 'translate-x-4',
+              )}
+            />
+          </span>
+        </>
+      )}
+    </button>
+  );
+
+  if (!collapsed) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="right">{actionLabel}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function AccountMenu() {
   const { collapsed } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const [loggingOut, setLoggingOut] = useState(false);
   const active = location.pathname === '/app/account';
   const initials = (user?.username ?? 'Account')
     .split(/\s+/)
@@ -128,6 +196,17 @@ function AccountMenu() {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/', { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -137,12 +216,13 @@ function AccountMenu() {
             <button
               type="button"
               aria-label="Account"
+              data-onboarding="menu-account"
               className={cn(
                 'mx-1 mt-2 flex h-10 items-center gap-2 rounded-lg px-2 text-xs font-semibold transition-colors',
                 collapsed ? 'w-10 justify-center px-0' : 'w-[calc(100%-0.5rem)] justify-start',
                 active
-                  ? 'bg-zinc-950 text-zinc-50 shadow-sm shadow-black/20'
-                  : 'text-zinc-800 hover:bg-black/10 hover:text-zinc-950',
+                  ? 'bg-anvil-ink text-anvil-paper shadow-sm shadow-black/20'
+                  : 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
               )}
             >
               <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/15">
@@ -184,6 +264,18 @@ function AccountMenu() {
             Data
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={loggingOut}
+          onSelect={(event) => {
+            event.preventDefault();
+            void handleLogout();
+          }}
+          className="gap-2 text-red-300 focus:text-red-200"
+        >
+          <LogOut className="size-4" />
+          {loggingOut ? 'Logging out...' : 'Logout'}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -198,6 +290,19 @@ export function AppLayout() {
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
   const isPlayer = user?.role === 'player';
   const navItems = isPlayer ? PLAYER_NAV : DIRECTOR_NAV;
+
+  useEffect(() => {
+    addBreadcrumb({
+      category: 'navigation',
+      message: 'Route changed',
+      data: {
+        path: location.pathname,
+        search: location.search ? '[redacted]' : '',
+        hash: location.hash ? '[redacted]' : '',
+        role: user?.role ?? null,
+      },
+    });
+  }, [location.hash, location.pathname, location.search, user?.role]);
 
   const isActive = (to: string, exact: boolean) => {
     return exact ? location.pathname === to : location.pathname === to || location.pathname.startsWith(`${to}/`);
@@ -244,7 +349,11 @@ export function AppLayout() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider labels={ALL_LABELS}>
         <div className="flex h-screen overflow-hidden">
-          <Sidebar className="relative z-30 shrink-0" variant={isPlayer ? 'player' : 'director'}>
+          <Sidebar
+            className="relative z-30 shrink-0"
+            variant={isPlayer ? 'player' : 'director'}
+            data-onboarding="menu-bar"
+          >
             <AccountMenu />
             <SidebarRoleToggle
               value={user?.role ?? 'director'}
@@ -263,13 +372,18 @@ export function AppLayout() {
                     icon={<Icon size={18} />}
                     label={label}
                     active={isActive(to, exact)}
+                    data-onboarding={onboardingId(label)}
                   />
                 );
               })}
             </SidebarNav>
-            <SidebarToggle />
+            <IssueReportButton />
+            <ThemeToggle />
+            <div data-onboarding="menu-sidebar-toggle">
+              <SidebarToggle />
+            </div>
           </Sidebar>
-          <main className="relative z-0 flex-1 overflow-y-auto">
+          <main className="relative flex-1 overflow-y-auto">
             <Outlet key={`${user?.id ?? 'anonymous'}:${user?.role ?? 'unknown'}:${location.pathname}`} />
           </main>
         </div>

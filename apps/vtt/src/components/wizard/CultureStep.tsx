@@ -28,14 +28,71 @@ const CULTURE_DESCRIPTIONS = {
   noble: 'Born to privilege, you learned etiquette, diplomacy, and the art of influence.',
 };
 
+const PRESET_GROUPS = [
+  { type: 'professional', label: 'Professional Cultures' },
+  { type: 'bespoke', label: 'Bespoke Cultures' },
+] as const;
+
+type CulturePreset = ReturnType<typeof GameData.getPrebuiltCultures>[number];
+
 export function CultureStep({ character, onChange }: Props) {
   const environments = GameData.getCulturesByType('environment');
   const organizations = GameData.getCulturesByType('organization');
   const upbringings = GameData.getCulturesByType('upbringing');
+  const selectedPreset = character.culture.preset
+    ? GameData.getPrebuiltCulture(character.culture.preset)
+    : null;
+  const visibleSelectedPreset =
+    selectedPreset?.type === 'professional' || selectedPreset?.type === 'bespoke'
+      ? selectedPreset
+      : null;
+  const hasBespokeSelections = Boolean(
+    character.culture.environment ||
+      character.culture.organization ||
+      character.culture.upbringing
+  );
+  const showBespokeBuilder =
+    character.culture.preset === 'bespoke-culture' ||
+    selectedPreset?.type === 'ancestral' ||
+    (!character.culture.preset && hasBespokeSelections);
 
   const updateCulture = (field: 'environment' | 'organization' | 'upbringing', value: string) => {
+    const cultureSkills = { ...character.cultureSkills };
+    delete cultureSkills[field];
+
     onChange({
-      culture: { ...character.culture, [field]: value },
+      culture: {
+        ...character.culture,
+        [field]: value,
+        preset: character.culture.preset === 'bespoke-culture' ? 'bespoke-culture' : null,
+        language: null,
+      },
+      cultureSkills,
+    });
+  };
+
+  const selectPreset = (preset: CulturePreset) => {
+    if (preset.type === 'bespoke' || !preset.environment || !preset.organization || !preset.upbringing) {
+      onChange({
+        culture: {
+          ...character.culture,
+          preset: preset.id,
+          language: null,
+        },
+        cultureSkills: {},
+      });
+      return;
+    }
+
+    onChange({
+      culture: {
+        environment: preset.environment.type,
+        organization: preset.organization.type,
+        upbringing: preset.upbringing.type,
+        preset: preset.id,
+        language: getLanguageId(preset.language),
+      },
+      cultureSkills: {},
     });
   };
 
@@ -44,33 +101,119 @@ export function CultureStep({ character, onChange }: Props) {
       <div>
         <h2 className="mb-1 text-lg font-semibold">Choose Your Culture</h2>
         <p className="text-sm text-zinc-400">
-          Your culture determines the skill groups you can choose from. Select an environment,
-          organization, and upbringing - each grants access to different skill groups.
+          Your culture determines the skill groups you can choose from.
         </p>
       </div>
 
-      <CultureGroup
-        label="Environment"
-        description="Where did you grow up?"
-        items={environments}
-        selected={character.culture.environment}
-        onSelect={(type) => updateCulture('environment', type)}
-      />
-      <CultureGroup
-        label="Organization"
-        description="How was your community structured?"
-        items={organizations}
-        selected={character.culture.organization}
-        onSelect={(type) => updateCulture('organization', type)}
-      />
-      <CultureGroup
-        label="Upbringing"
-        description="What kind of education or training did you receive?"
-        items={upbringings}
-        selected={character.culture.upbringing}
-        onSelect={(type) => updateCulture('upbringing', type)}
-      />
+      <div className="flex flex-col gap-7">
+        {PRESET_GROUPS.map((group) => (
+          <CulturePresetGroup
+            key={group.type}
+            label={group.label}
+            items={GameData.getPrebuiltCulturesByType(group.type)}
+            selectedId={visibleSelectedPreset?.id ?? null}
+            onSelect={selectPreset}
+          />
+        ))}
+      </div>
+
+      {showBespokeBuilder && (
+        <div className="flex flex-col gap-6 border-t border-creator-border pt-6">
+          <CultureGroup
+            label="Environment"
+            description="Where did you grow up?"
+            items={environments}
+            selected={character.culture.environment}
+            onSelect={(type) => updateCulture('environment', type)}
+          />
+          <CultureGroup
+            label="Organization"
+            description="How was your community structured?"
+            items={organizations}
+            selected={character.culture.organization}
+            onSelect={(type) => updateCulture('organization', type)}
+          />
+          <CultureGroup
+            label="Upbringing"
+            description="What kind of education or training did you receive?"
+            items={upbringings}
+            selected={character.culture.upbringing}
+            onSelect={(type) => updateCulture('upbringing', type)}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+function CulturePresetGroup({ label, items, selectedId, onSelect }: {
+  label: string;
+  items: CulturePreset[];
+  selectedId: string | null;
+  onSelect: (preset: CulturePreset) => void;
+}) {
+  return (
+    <section>
+      <h3 className="mb-3 border-b border-creator-border pb-2 text-sm font-semibold uppercase tracking-wider text-creator-text">
+        {label}
+      </h3>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <CulturePresetCard
+            key={item.id}
+            item={item}
+            selected={selectedId === item.id}
+            onSelect={() => onSelect(item)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CulturePresetCard({ item, selected, onSelect }: {
+  item: CulturePreset;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'min-h-32 rounded-md border bg-creator-card p-4 text-left transition-all',
+        selected
+          ? 'border-creator-highlight bg-creator-highlight/15 ring-1 ring-creator-highlight/50'
+          : 'border-creator-border hover:border-creator-highlight/60 hover:bg-creator-card-hover'
+      )}
+      onClick={onSelect}
+    >
+      <div className="flex h-full flex-col gap-3">
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="min-w-0 text-base font-semibold uppercase tracking-wider text-creator-text">
+            {item.name}
+          </h4>
+          {selected && <Check className="h-5 w-5 shrink-0 text-creator-highlight" />}
+        </div>
+        <div className="h-0.5 w-full rounded bg-creator-border" />
+        <p className="text-sm leading-relaxed text-creator-text-muted">
+          {item.description}
+        </p>
+        {item.language && (
+          <span className="mt-auto inline-flex w-fit rounded bg-creator-border px-2 py-0.5 text-xs text-creator-text-muted">
+            {item.language}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function getLanguageId(language: string | undefined): string | null {
+  if (!language) return null;
+  return (
+    GameData.getLanguageByName(language)?.id ??
+    GameData.getLanguage(language)?.id ??
+    language.toLowerCase().replace(/\s+/g, '-')
   );
 }
 

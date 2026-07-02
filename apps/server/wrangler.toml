@@ -2,12 +2,28 @@ name = "anvil-server"
 main = "src/index.ts"
 compatibility_date = "2026-05-10"
 preview_urls = false
+workers_dev = false
+
+[[routes]]
+pattern = "api.anvilvtt.ca"
+custom_domain = true
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.05
 
 [vars]
 ENVIRONMENT = "production"
-FRONTEND_URL = "https://anvil-vtt.pages.dev"
-DISCORD_REDIRECT_URI = "https://anvil-server.paquin-dan.workers.dev/api/auth/callback"
-GOOGLE_REDIRECT_URI = "https://anvil-server.paquin-dan.workers.dev/api/auth/google/callback"
+FRONTEND_URL = "https://anvilvtt.ca"
+DISCORD_REDIRECT_URI = "https://api.anvilvtt.ca/api/auth/callback"
+GOOGLE_REDIRECT_URI = "https://api.anvilvtt.ca/api/auth/google/callback"
 
 # D1 Database
 [[d1_databases]]

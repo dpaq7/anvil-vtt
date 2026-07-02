@@ -28,7 +28,20 @@ export function ClassStep({ character, onChange }: Props) {
                   ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20'
                   : 'border-creator-border hover:border-creator-text-muted hover:bg-creator-card-hover'
               )}
-              onClick={() => onChange({ heroClass: cls.id as CharacterInProgress['heroClass'], subclass: null })}
+              onClick={() =>
+                onChange({
+                  heroClass: cls.id as CharacterInProgress['heroClass'],
+                  subclass: null,
+                  companion: null,
+                  characteristics: null,
+                  secondaryKit: null,
+                  classSkillChoices: [],
+                  abilityChoices: {},
+                  summonerMinionChoices: {},
+                  selectedAbilities: [],
+                  selectedPerks: [],
+                })
+              }
             >
               <CardHeader className="py-3">
                 <div className="flex items-center justify-between">

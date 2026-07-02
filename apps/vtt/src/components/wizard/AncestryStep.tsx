@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GameData } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
 import type { Ancestry } from '@anvil/types';
@@ -17,6 +17,8 @@ type AncestryWithLore = Ancestry & { lore?: string };
 export function AncestryStep({ character, onChange }: Props) {
   // Get ancestries from GameData and cast to the Ancestry type from @anvil/types
   const ancestries = GameData.getAllAncestries() as unknown as AncestryWithLore[];
+  const traitsSectionRef = useRef<HTMLDivElement | null>(null);
+  const [pendingTraitScrollId, setPendingTraitScrollId] = useState<string | null>(null);
   const [previewedAncestry, setPreviewedAncestry] = useState<AncestryWithLore | null>(
     () => {
       if (character.ancestry) {
@@ -26,7 +28,43 @@ export function AncestryStep({ character, onChange }: Props) {
     }
   );
 
+  useEffect(() => {
+    if (
+      !pendingTraitScrollId ||
+      character.ancestry !== pendingTraitScrollId ||
+      previewedAncestry?.id !== pendingTraitScrollId
+    ) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const traitsSection = traitsSectionRef.current;
+      const viewport = traitsSection?.closest('[data-radix-scroll-area-viewport]');
+
+      if (traitsSection && viewport instanceof HTMLElement) {
+        viewport.scrollTo({
+          top:
+            viewport.scrollTop +
+            traitsSection.getBoundingClientRect().top -
+            viewport.getBoundingClientRect().top,
+          behavior: 'smooth',
+        });
+      } else {
+        traitsSection?.scrollIntoView({
+          block: 'start',
+          behavior: 'smooth',
+        });
+      }
+      setPendingTraitScrollId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [character.ancestry, pendingTraitScrollId, previewedAncestry?.id]);
+
   const handleSelect = (ancestry: AncestryWithLore) => {
+    if (ancestry.purchasedTraits?.length) {
+      setPendingTraitScrollId(ancestry.id);
+    }
     onChange({ ancestry: ancestry.id, ancestryTraits: [] });
   };
 
@@ -84,14 +122,16 @@ export function AncestryStep({ character, onChange }: Props) {
 
       {/* Purchasable Traits */}
       {ancestry.purchasedTraits && ancestry.purchasedTraits.length > 0 && (
-        <TraitSelector
-          ancestry={ancestry}
-          selectedTraitIds={
-            character.ancestry === ancestry.id ? character.ancestryTraits : []
-          }
-          onChange={(traitIds) => onChange({ ancestryTraits: traitIds })}
-          disabled={character.ancestry !== ancestry.id}
-        />
+        <div ref={traitsSectionRef}>
+          <TraitSelector
+            ancestry={ancestry}
+            selectedTraitIds={
+              character.ancestry === ancestry.id ? character.ancestryTraits : []
+            }
+            onChange={(traitIds) => onChange({ ancestryTraits: traitIds })}
+            disabled={character.ancestry !== ancestry.id}
+          />
+        </div>
       )}
     </DetailPanel>
   );

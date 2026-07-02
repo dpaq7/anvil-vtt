@@ -1,0 +1,691 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anvil-vtt.local/schemas/anvil-scene-import.schema.json",
+  "title": "Anvil Scene Import Document",
+  "description": "Structured output schema for AI-generated Draw Steel content imports into Anvil.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "campaign", "modules", "sessions"],
+  "properties": {
+    "format": {
+      "const": "anvil.scene-import"
+    },
+    "version": {
+      "const": 1
+    },
+    "campaign": {
+      "$ref": "#/$defs/campaign"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/module"
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "description": "Top-level sessions not attached to a module. Use an empty array when all sessions belong to modules.",
+      "items": {
+        "$ref": "#/$defs/session"
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "properties": {
+        "modules": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "sessions": {
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "campaign": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "orderIndex", "sessions"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "orderIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/session"
+          }
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "orderIndex", "scenes"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "orderIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/scene"
+          }
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "type", "orderIndex", "data"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": ["story", "battle", "montage", "negotiation", "respite"]
+        },
+        "orderIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "data": {
+          "$ref": "#/$defs/sceneData"
+        }
+      }
+    },
+    "sceneData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "readAloud": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "roundLimit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "heroCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successesNeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failureLimit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalSuccess": {
+          "type": "string"
+        },
+        "partialSuccess": {
+          "type": "string"
+        },
+        "totalFailure": {
+          "type": "string"
+        },
+        "challenges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/challenge"
+          }
+        },
+        "template": {
+          "$ref": "#/$defs/negotiationTemplate"
+        },
+        "npcName": {
+          "type": "string"
+        },
+        "npcAttitude": {
+          "type": "string"
+        },
+        "interest": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "patience": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxPatience": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["active", "success", "failure"]
+        },
+        "motivations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/motivation"
+          }
+        },
+        "pitfalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/motivation"
+          }
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "location": {
+          "type": "string"
+        },
+        "activities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/respiteActivity"
+          }
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/project"
+          }
+        },
+        "gridCols": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gridRows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gridCellSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gridOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "gridColor": {
+          "type": "string"
+        },
+        "mapUrl": {
+          "type": "string"
+        },
+        "heroStart": {
+          "$ref": "#/$defs/rect"
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/token"
+          }
+        },
+        "terrain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/terrain"
+          }
+        },
+        "fog": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fog"
+          }
+        },
+        "drawings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/drawing"
+          }
+        },
+        "hazards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namedNote"
+          }
+        },
+        "objectives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namedNote"
+          }
+        },
+        "victory": {
+          "type": "string"
+        },
+        "reinforcements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namedNote"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "suggestedSkills", "suggestedCharacteristics", "completed"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "suggestedSkills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggestedCharacteristics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["Might", "Agility", "Reason", "Intuition", "Presence"]
+          }
+        },
+        "completed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "negotiationTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["npc", "startingAttitude", "startingInterest", "startingPatience", "motivations", "pitfalls", "responses"],
+      "properties": {
+        "npc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "description", "portraitUrl"],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "portraitUrl": {
+              "type": "string"
+            }
+          }
+        },
+        "startingAttitude": {
+          "type": "string"
+        },
+        "startingInterest": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "startingPatience": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "motivations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/motivation"
+          }
+        },
+        "pitfalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/motivation"
+          }
+        },
+        "responses": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "interest0": {
+              "$ref": "#/$defs/response"
+            },
+            "interest1": {
+              "$ref": "#/$defs/response"
+            },
+            "interest2": {
+              "$ref": "#/$defs/response"
+            },
+            "interest3": {
+              "$ref": "#/$defs/response"
+            },
+            "interest4": {
+              "$ref": "#/$defs/response"
+            },
+            "interest5": {
+              "$ref": "#/$defs/response"
+            }
+          }
+        }
+      }
+    },
+    "motivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "description", "revealed"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "type": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "revealed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "text"],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "respiteActivity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heroName", "activityType", "completed"],
+      "properties": {
+        "heroName": {
+          "type": "string"
+        },
+        "activityType": {
+          "type": "string"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "currentPoints", "goalPoints"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "currentPoints": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goalPoints": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "token": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "type", "x", "y", "size"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": ["monster", "npc"]
+        },
+        "monsterName": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "size": {
+          "type": "number",
+          "minimum": 0.25
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "maxStamina": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currentStamina": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recoveriesCurrent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "freeStrike": {
+          "type": ["integer", "string"]
+        },
+        "squadId": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "squadSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "portraitUrl": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "terrain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "terrainId", "name", "x", "y", "w", "h"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "terrainId": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number"
+        },
+        "h": {
+          "type": "number"
+        }
+      }
+    },
+    "fog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "x", "y", "w", "h"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number"
+        },
+        "h": {
+          "type": "number"
+        }
+      }
+    },
+    "drawing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "points", "color", "width"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["freehand", "line", "rect", "circle"]
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "color": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "namedNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number"
+        },
+        "h": {
+          "type": "number"
+        }
+      }
+    },
+    "kebabId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    }
+  }
+}

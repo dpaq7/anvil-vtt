@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { TooltipProvider } from '@anvil/ui';
 import { useSessionSocket } from '../../hooks/useSessionSocket.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { ErrorBoundary } from '../../components/ErrorBoundary.js';
@@ -6,10 +8,22 @@ import { ReconnectOverlay } from '../../components/ReconnectOverlay.js';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton.js';
 import { DirectorView } from './DirectorView.js';
 import { PlayerView } from './PlayerView.js';
+import { PhoneSessionPage } from './PhoneSessionPage.js';
+
+function isPhoneCompanionViewport() {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(max-width: 767px) and (pointer: coarse)').matches;
+}
 
 export function SessionPage() {
+  const [usePhoneCompanion] = useState(isPhoneCompanionViewport);
+  return usePhoneCompanion ? <PhoneSessionPage /> : <DesktopSessionPage />;
+}
+
+function DesktopSessionPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
+
   const { state, status, error, send, combatLog } = useSessionSocket(id ?? null);
 
   if (error && !state) {
@@ -37,16 +51,18 @@ export function SessionPage() {
   const isDirector = me?.role === 'director';
 
   return (
-    <ErrorBoundary label="session">
-      {/* Reconnect overlay shown over the active session */}
-      {status !== 'connected' && (
-        <ReconnectOverlay status={status} error={error} />
-      )}
-      {isDirector ? (
-        <DirectorView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
-      ) : (
-        <PlayerView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
-      )}
-    </ErrorBoundary>
+    <TooltipProvider delayDuration={0}>
+      <ErrorBoundary label="session">
+        {/* Reconnect overlay shown over the active session */}
+        {status !== 'connected' && (
+          <ReconnectOverlay status={status} error={error} />
+        )}
+        {isDirector ? (
+          <DirectorView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
+        ) : (
+          <PlayerView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
+        )}
+      </ErrorBoundary>
+    </TooltipProvider>
   );
 }

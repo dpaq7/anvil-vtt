@@ -1,11 +1,14 @@
 import type { CharacterInProgress, DerivedStats } from '@anvil/data';
-import { GameData, WizardLogic } from '@anvil/data';
+import { GameData, PERKS, WizardLogic } from '@anvil/data';
 
 interface Props {
   character: CharacterInProgress;
 }
 
 function getCultureDisplay(character: CharacterInProgress): string | null {
+  const preset = character.culture.preset
+    ? GameData.getPrebuiltCulture(character.culture.preset)
+    : null;
   const environment = character.culture.environment
     ? GameData.getCulturesByType('environment').find((item) => item.id === character.culture.environment)?.name
     : null;
@@ -17,6 +20,10 @@ function getCultureDisplay(character: CharacterInProgress): string | null {
     : null;
 
   const parts = [environment, organization, upbringing].filter(Boolean);
+  if (preset?.type === 'bespoke') {
+    return parts.length > 0 ? `${preset.name}: ${parts.join(' / ')}` : preset.name;
+  }
+  if (preset?.type === 'professional') return preset.name;
   return parts.length > 0 ? parts.join(' / ') : null;
 }
 
@@ -46,12 +53,28 @@ export function WizardPreview({ character }: Props) {
   const kitName = character.kit
     ? GameData.getKit(character.kit)?.name ?? character.kit
     : null;
+  const secondaryKitName = character.secondaryKit
+    ? GameData.getKit(character.secondaryKit)?.name ?? character.secondaryKit
+    : null;
   const selectedSkills = WizardLogic.getSelectedSkillNames(character);
-  const selectedAbilities = character.selectedAbilities.map((abilityId) => {
+  const selectedAbilities = WizardLogic.getSelectedAbilityIds(character).map((abilityId) => {
     const slug = abilityId.includes(':') ? abilityId.split(':').pop() ?? abilityId : abilityId;
     const ability = GameData.getByScc(abilityId) ?? GameData.getAbility(abilityId) ?? GameData.getAbility(slug);
     return ability?.name ?? slug;
   });
+  const selectedPerks = WizardLogic.getSelectedPerkIds(character).map((perkId) => {
+    return PERKS.find((perk) => perk.id === perkId)?.name ?? perkId;
+  });
+  const selectedMinions = WizardLogic.getSelectedSummonerMinionIds(character).map((minionId) => {
+    for (const slot of WizardLogic.getAbilityChoiceSlots(character)) {
+      const minion = WizardLogic.getSummonerMinionOptionsForSlot(character, slot).find((option) => option.id === minionId);
+      if (minion) return minion.name;
+    }
+    return minionId;
+  });
+  const companionName = character.companion
+    ? WizardLogic.getCompanionOptions().find((option) => option.id === character.companion)?.name ?? character.companion
+    : null;
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -71,7 +94,8 @@ export function WizardPreview({ character }: Props) {
       )}
       {careerName && <Field label="Career" value={careerName} />}
       {complicationName && <Field label="Complication" value={complicationName} />}
-      {kitName && <Field label="Kit" value={kitName} />}
+      {kitName && <Field label={secondaryKitName ? "Kits" : "Kit"} value={[kitName, secondaryKitName].filter(Boolean).join(', ')} />}
+      {companionName && <Field label="Companion" value={companionName} />}
 
       {character.characteristics && (
         <div>
@@ -108,6 +132,20 @@ export function WizardPreview({ character }: Props) {
         <div>
           <span className="text-zinc-500">Abilities</span>
           <p className="text-zinc-300">{selectedAbilities.join(', ')}</p>
+        </div>
+      )}
+
+      {selectedMinions.length > 0 && (
+        <div>
+          <span className="text-zinc-500">Minions</span>
+          <p className="text-zinc-300">{selectedMinions.join(', ')}</p>
+        </div>
+      )}
+
+      {selectedPerks.length > 0 && (
+        <div>
+          <span className="text-zinc-500">Perks</span>
+          <p className="text-zinc-300">{selectedPerks.join(', ')}</p>
         </div>
       )}
     </div>

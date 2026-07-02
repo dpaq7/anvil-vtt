@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@anvil/ui';
-import { AlertTriangle, CircleUserRound, Database, Download, Settings, ShieldCheck, Trash2, Upload, UserRound } from 'lucide-react';
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Progress, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@anvil/ui';
+import { AlertTriangle, CircleUserRound, Database, Download, HardDrive, Settings, ShieldCheck, Trash2, Upload, UserRound } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore.js';
 import { csrfHeaders } from '../lib/csrf.js';
 
@@ -9,6 +9,16 @@ type AccountSection = 'profile' | 'settings' | 'data';
 type UserRole = 'director' | 'player';
 
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
+
+interface StorageUsage {
+  usedBytes: number;
+  limitBytes: number;
+  usedPercent: number;
+  assetCount: number;
+  assetLimit: number;
+  uploadedAssetCount: number;
+  pendingAssetCount: number;
+}
 
 const SECTIONS: Array<{ id: AccountSection; label: string; icon: typeof CircleUserRound }> = [
   { id: 'profile', label: 'Profile', icon: CircleUserRound },
@@ -19,6 +29,24 @@ const SECTIONS: Array<{ id: AccountSection; label: string; icon: typeof CircleUs
 function getSection(value: string | null): AccountSection {
   if (value === 'export') return 'data';
   return SECTIONS.some((section) => section.id === value) ? (value as AccountSection) : 'profile';
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const maximumFractionDigits = unitIndex === 0 || value >= 10 ? 0 : 1;
+  return `${value.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return '0%';
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: value >= 10 ? 0 : 1 })}%`;
 }
 
 export function Account() {
@@ -33,8 +61,12 @@ export function Account() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteStatus, setDeleteStatus] = useState<string | null>(null);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
+  const [storageStatus, setStorageStatus] = useState<string | null>(null);
+  const [loadingStorage, setLoadingStorage] = useState(false);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const section = getSection(searchParams.get('section'));
+  const userId = user?.id ?? null;
   const deleteConfirmationMatches = Boolean(user && deleteConfirmation === user.username);
 
   const initials = (user?.username ?? 'Account')
@@ -47,6 +79,35 @@ export function Account() {
   const handleSectionChange = (value: string) => {
     setSearchParams({ section: getSection(value) });
   };
+
+  const loadStorageUsage = useCallback(async () => {
+    if (!userId) {
+      setStorageUsage(null);
+      setStorageStatus(null);
+      return;
+    }
+
+    setLoadingStorage(true);
+    setStorageStatus(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/account/storage`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await res.json().catch(() => ({ error: res.statusText })) as StorageUsage & { error?: string };
+      if (!res.ok) throw new Error(body.error ?? 'Storage usage unavailable');
+      setStorageUsage(body);
+    } catch (error) {
+      setStorageStatus(error instanceof Error ? error.message : 'Storage usage unavailable');
+      setStorageUsage(null);
+    } finally {
+      setLoadingStorage(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    void loadStorageUsage();
+  }, [loadStorageUsage]);
 
   const handleRoleChange = async (role: UserRole) => {
     if (!user || user.role === role || pendingRole) return;
@@ -115,6 +176,7 @@ export function Account() {
     }
 
     await checkAuth();
+    await loadStorageUsage();
     const restored = body.counts
       ? [
           `${body.counts['campaigns'] ?? 0} campaigns`,
@@ -198,12 +260,11 @@ export function Account() {
                     <p className="mt-1 text-zinc-100">{user?.username ?? 'Unknown'}</p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">User ID</p>
-                    <p className="mt-1 break-all font-mono text-xs text-zinc-300">{user?.id ?? 'Unavailable'}</p>
-                  </div>
-                  <div>
                     <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Avatar</p>
                     <p className="mt-1 text-zinc-300">{user?.avatarUrl ? 'Connected' : 'Using initials'}</p>
+                  </div>
+                  <div className="rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-400">
+                    Internal account identifiers are hidden from this view.
                   </div>
                 </CardContent>
               </Card>
@@ -269,6 +330,60 @@ export function Account() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-medium text-zinc-100">Storage usage</p>
+                      <p className="mt-1 text-sm leading-6 text-zinc-500">
+                        Uploaded assets count toward the account storage quota.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+                      <HardDrive className="size-4 text-cyan-300" />
+                      {storageUsage ? formatPercent(storageUsage.usedPercent) : loadingStorage ? 'Loading' : 'Unavailable'}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <Progress
+                      value={storageUsage?.usedPercent ?? 0}
+                      className="h-2 bg-zinc-800"
+                      aria-label="Account storage used"
+                    />
+                    {storageUsage ? (
+                      <div className="mt-2 flex items-center justify-between gap-3 text-xs text-zinc-500">
+                        <span>{formatBytes(storageUsage.usedBytes)} used</span>
+                        <span>{formatBytes(storageUsage.limitBytes)} cap</span>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        {loadingStorage ? 'Calculating storage usage...' : 'Storage usage is not available.'}
+                      </p>
+                    )}
+                  </div>
+
+                  {storageUsage ? (
+                    <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+                      <div className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2">
+                        <p className="text-xs uppercase tracking-[0.14em] text-zinc-600">Assets</p>
+                        <p className="mt-1 text-zinc-200">
+                          {storageUsage.assetCount.toLocaleString()} / {storageUsage.assetLimit.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2">
+                        <p className="text-xs uppercase tracking-[0.14em] text-zinc-600">Uploaded</p>
+                        <p className="mt-1 text-zinc-200">{storageUsage.uploadedAssetCount.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2">
+                        <p className="text-xs uppercase tracking-[0.14em] text-zinc-600">Pending</p>
+                        <p className="mt-1 text-zinc-200">{storageUsage.pendingAssetCount.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {storageStatus ? <p className="mt-3 text-sm text-zinc-400">{storageStatus}</p> : null}
+                </div>
+
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
                   <p className="font-medium text-zinc-100">Backup archive</p>
                   <p className="mt-1 text-sm leading-6 text-zinc-500">

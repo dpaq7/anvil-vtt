@@ -2,6 +2,13 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware, clearSessionCookie } from '../middleware/auth.js';
+import {
+  extensionForContentType,
+  isAllowedAssetContentType,
+  isAllowedAssetType,
+  MAX_ASSET_FILE_SIZE,
+} from '../lib/assets.js';
+import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES } from '../lib/quotas.js';
 
 export const accountRoutes = new Hono<AppEnv>();
 
@@ -14,9 +21,19 @@ const MAX_BACKUP_SIZE = 100 * 1024 * 1024;
 type DbValue = string | number | null;
 type DbRow = Record<string, DbValue>;
 
+interface AccountStorageUsage {
+  usedBytes: number;
+  limitBytes: number;
+  usedPercent: number;
+  assetCount: number;
+  assetLimit: number;
+  uploadedAssetCount: number;
+  pendingAssetCount: number;
+}
+
 const TABLE_COLUMNS = {
   assets: ['id', 'user_id', 'name', 'type', 'storage_key', 'thumbnail_key', 'width', 'height', 'tags', 'created_at', 'content_type', 'file_size', 'uploaded_at'],
-  heroes: ['id', 'user_id', 'name', 'ancestry', 'culture', 'career', 'hero_class', 'subclass', 'level', 'characteristics', 'kit', 'skills', 'abilities', 'portrait_url', 'data', 'version', 'created_at', 'updated_at', 'deleted_at'],
+  heroes: ['id', 'user_id', 'name', 'ancestry', 'culture', 'career', 'hero_class', 'subclass', 'level', 'characteristics', 'kit', 'skills', 'abilities', 'portrait_asset_id', 'portrait_url', 'data', 'version', 'created_at', 'updated_at', 'deleted_at'],
   campaigns: ['id', 'director_id', 'name', 'description', 'cover_image_url', 'settings', 'created_at', 'updated_at', 'deleted_at'],
   modules: ['id', 'campaign_id', 'name', 'description', 'order_index'],
   game_sessions: ['id', 'campaign_id', 'module_id', 'name', 'description', 'status', 'order_index', 'room_code', 'started_at', 'ended_at', 'active_scene_id'],
@@ -38,6 +55,8 @@ const TABLE_COLUMNS = {
   monster_portraits: ['id', 'campaign_id', 'monster_name', 'asset_id', 'created_at', 'updated_at'],
   note_folders: ['id', 'campaign_id', 'user_id', 'parent_folder_id', 'name', 'is_auto_generated', 'sort_order', 'created_at', 'updated_at'],
   notes: ['id', 'campaign_id', 'user_id', 'folder_id', 'title', 'content', 'sort_order', 'created_at', 'updated_at'],
+  personal_note_folders: ['id', 'user_id', 'parent_folder_id', 'name', 'is_auto_generated', 'sort_order', 'created_at', 'updated_at'],
+  personal_notes: ['id', 'user_id', 'folder_id', 'title', 'content', 'sort_order', 'created_at', 'updated_at'],
 } as const;
 
 type BackupTableName = keyof typeof TABLE_COLUMNS;
@@ -66,6 +85,8 @@ interface AccountBackupArchive {
   counts: Record<string, number>;
 }
 
+class RestoreValidationError extends Error {}
+
 const RESTORE_ORDER: BackupTableName[] = [
   'assets',
   'heroes',
@@ -90,6 +111,8 @@ const RESTORE_ORDER: BackupTableName[] = [
   'monster_portraits',
   'note_folders',
   'notes',
+  'personal_note_folders',
+  'personal_notes',
 ];
 
 function safeFileName(value: string) {
@@ -144,34 +167,45 @@ function base64ToArrayBuffer(value: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function extensionForAsset(row: DbRow): string {
-  const fromKey = typeof row['storage_key'] === 'string' ? row['storage_key'].split('.').pop() : null;
-  if (fromKey && /^[a-z0-9]+$/i.test(fromKey)) return fromKey;
-  const contentType = typeof row['content_type'] === 'string' ? row['content_type'].split(';')[0]?.toLowerCase() : '';
-  const known: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'audio/mpeg': 'mp3',
-    'audio/mp3': 'mp3',
-    'audio/wav': 'wav',
-    'audio/ogg': 'ogg',
-    'audio/webm': 'webm',
-    'application/pdf': 'pdf',
-  };
-  return known[contentType ?? ''] ?? 'bin';
-}
-
-function storageKeyFor(userId: string, row: DbRow) {
-  const id = typeof row['id'] === 'string' ? row['id'] : crypto.randomUUID();
-  return `${userId}/${id}.${extensionForAsset(row)}`;
+function storageKeyFor(userId: string, assetId: string, contentType: string) {
+  return `${userId}/${assetId}.${extensionForContentType(contentType)}`;
 }
 
 function tableCounts(tables: BackupTables) {
   return Object.fromEntries(
     (Object.keys(TABLE_COLUMNS) as BackupTableName[]).map((table) => [table, tables[table]?.length ?? 0]),
   );
+}
+
+async function getAccountStorageUsage(db: D1Database, userId: string): Promise<AccountStorageUsage> {
+  const row = await db.prepare(
+    `SELECT
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN file_size ELSE 0 END), 0) AS used_bytes,
+       COUNT(*) AS asset_count,
+       COALESCE(SUM(CASE WHEN uploaded_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS uploaded_asset_count,
+       COALESCE(SUM(CASE WHEN uploaded_at IS NULL THEN 1 ELSE 0 END), 0) AS pending_asset_count
+     FROM assets
+     WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{
+      used_bytes: number | null;
+      asset_count: number | null;
+      uploaded_asset_count: number | null;
+      pending_asset_count: number | null;
+    }>();
+
+  const usedBytes = row?.used_bytes ?? 0;
+  const usedPercent = MAX_USER_STORAGE_BYTES > 0 ? (usedBytes / MAX_USER_STORAGE_BYTES) * 100 : 0;
+  return {
+    usedBytes,
+    limitBytes: MAX_USER_STORAGE_BYTES,
+    usedPercent: Math.min(100, Math.max(0, usedPercent)),
+    assetCount: row?.asset_count ?? 0,
+    assetLimit: MAX_USER_ASSETS,
+    uploadedAssetCount: row?.uploaded_asset_count ?? 0,
+    pendingAssetCount: row?.pending_asset_count ?? 0,
+  };
 }
 
 async function buildArchive(c: Context<AppEnv>, user: AuthUser): Promise<AccountBackupArchive> {
@@ -197,6 +231,16 @@ async function buildArchive(c: Context<AppEnv>, user: AuthUser): Promise<Account
     .filter((row) => row['user_id'] === user.id);
   tables.notes = (await rowsWhereIn(db, 'notes', 'campaign_id', campaignIds))
     .filter((row) => row['user_id'] === user.id);
+  tables.personal_note_folders = await allRows(
+    db,
+    'SELECT * FROM personal_note_folders WHERE user_id = ? ORDER BY sort_order',
+    [user.id],
+  );
+  tables.personal_notes = await allRows(
+    db,
+    'SELECT * FROM personal_notes WHERE user_id = ? ORDER BY sort_order',
+    [user.id],
+  );
 
   const sessionIds = stringIds(tables.game_sessions, 'id');
   tables.scenes = await rowsWhereIn(db, 'scenes', 'game_session_id', sessionIds);
@@ -263,7 +307,7 @@ function normalizeRow(value: unknown): DbRow | null {
 }
 
 function parseArchive(raw: unknown): AccountBackupArchive | null {
-  if (!isRecord(raw) || raw['format'] !== BACKUP_FORMAT || typeof raw['version'] !== 'number') return null;
+  if (!isRecord(raw) || raw['format'] !== BACKUP_FORMAT || raw['version'] !== BACKUP_VERSION) return null;
   if (!isRecord(raw['account']) || !isRecord(raw['tables']) || !Array.isArray(raw['files'])) return null;
 
   const account = raw['account'];
@@ -313,67 +357,203 @@ function pickRow(table: BackupTableName, row: DbRow, overrides: DbRow = {}): DbR
   return picked;
 }
 
-async function insertOrReplaceRows(db: D1Database, table: BackupTableName, rows: DbRow[]) {
+function sourceId(row: DbRow): string | null {
+  return typeof row['id'] === 'string' && row['id'].length > 0 ? row['id'] : null;
+}
+
+function rowsWithSourceIds(rows: DbRow[]): DbRow[] {
+  const seen = new Set<string>();
+  const unique: DbRow[] = [];
+  for (const row of rows) {
+    const id = sourceId(row);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(row);
+  }
+  return unique;
+}
+
+function createIdMap(rows: DbRow[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    const id = sourceId(row);
+    if (id) map.set(id, crypto.randomUUID());
+  }
+  return map;
+}
+
+function mappedId(map: Map<string, string>, value: DbValue | undefined): string | null {
+  return typeof value === 'string' ? map.get(value) ?? null : null;
+}
+
+function prepareInsertRows(db: D1Database, table: BackupTableName, rows: DbRow[]): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
   for (const row of rows) {
     const columns = TABLE_COLUMNS[table].filter((column) => row[column] !== undefined);
     if (columns.length === 0) continue;
     const placeholders = columns.map(() => '?').join(', ');
-    await db.prepare(`INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`)
-      .bind(...columns.map((column) => row[column] ?? null))
-      .run();
+    statements.push(
+      db.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`)
+        .bind(...columns.map((column) => row[column] ?? null)),
+    );
   }
+  return statements;
 }
 
 async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive, user: AuthUser) {
   const sourceUserId = archive.account.id;
   const rawTables = archive.tables;
 
-  const assets = (rawTables.assets ?? []).map((row) => pickRow('assets', row, {
-    user_id: user.id,
-    storage_key: storageKeyFor(user.id, row),
+  const sourceFiles = new Map<string, BackupFile>();
+  for (const file of archive.files) {
+    if (!sourceFiles.has(file.assetId)) sourceFiles.set(file.assetId, file);
+  }
+
+  const sourceAssets = rowsWithSourceIds(rawTables.assets ?? []);
+  const sourceHeroes = rowsWithSourceIds(rawTables.heroes ?? []);
+  const sourceCampaigns = rowsWithSourceIds(rawTables.campaigns ?? []);
+  const sourceModules = rowsWithSourceIds(rawTables.modules ?? []);
+  const sourceGameSessions = rowsWithSourceIds(rawTables.game_sessions ?? []);
+  const sourceScenes = rowsWithSourceIds(rawTables.scenes ?? []);
+  const sourceMaps = rowsWithSourceIds(rawTables.maps ?? []);
+  const sourceNpcs = rowsWithSourceIds(rawTables.npcs ?? []);
+  const sourceSceneMonsters = rowsWithSourceIds(rawTables.scene_monsters ?? []);
+  const sourceCustomTerrain = rowsWithSourceIds(rawTables.custom_terrain ?? []);
+  const sourceAudioAssets = rowsWithSourceIds(rawTables.audio_assets ?? []);
+  const sourceActivityCards = rowsWithSourceIds(rawTables.activity_cards ?? []);
+  const sourceMontageTests = rowsWithSourceIds(rawTables.montage_tests ?? []);
+  const sourceMonsterPortraits = rowsWithSourceIds(rawTables.monster_portraits ?? []);
+  const sourceNoteFolders = rowsWithSourceIds(rawTables.note_folders ?? []);
+  const sourceNotes = rowsWithSourceIds(rawTables.notes ?? []);
+  const sourcePersonalNoteFolders = rowsWithSourceIds(rawTables.personal_note_folders ?? []);
+  const sourcePersonalNotes = rowsWithSourceIds(rawTables.personal_notes ?? []);
+
+  const assetIdMap = createIdMap(sourceAssets);
+  const heroIdMap = createIdMap(sourceHeroes);
+  const campaignIdMap = createIdMap(sourceCampaigns);
+  const moduleIdMap = createIdMap(sourceModules);
+  const sessionIdMap = createIdMap(sourceGameSessions);
+  const sceneIdMap = createIdMap(sourceScenes);
+  const mapIdMap = createIdMap(sourceMaps);
+  const npcIdMap = createIdMap(sourceNpcs);
+  const sceneMonsterIdMap = createIdMap(sourceSceneMonsters);
+  const customTerrainIdMap = createIdMap(sourceCustomTerrain);
+  const audioAssetIdMap = createIdMap(sourceAudioAssets);
+  const activityCardIdMap = createIdMap(sourceActivityCards);
+  const montageTestIdMap = createIdMap(sourceMontageTests);
+  const monsterPortraitIdMap = createIdMap(sourceMonsterPortraits);
+  const noteFolderIdMap = createIdMap(sourceNoteFolders);
+  const noteIdMap = createIdMap(sourceNotes);
+  const personalNoteFolderIdMap = createIdMap(sourcePersonalNoteFolders);
+  const personalNoteIdMap = createIdMap(sourcePersonalNotes);
+
+  const assetContentTypes = new Map<string, string>();
+  const assets = sourceAssets.map((row) => {
+    const oldId = sourceId(row)!;
+    const newId = mappedId(assetIdMap, oldId)!;
+    const assetType = typeof row['type'] === 'string' ? row['type'] : '';
+    if (!isAllowedAssetType(assetType)) {
+      throw new RestoreValidationError('Backup contains an invalid asset type');
+    }
+
+    const backupFile = sourceFiles.get(oldId);
+    const contentType = typeof row['content_type'] === 'string' && row['content_type'].trim()
+      ? row['content_type']
+      : backupFile?.contentType ?? '';
+    if (!isAllowedAssetContentType(assetType, contentType)) {
+      throw new RestoreValidationError('Backup contains an asset with a disallowed content type');
+    }
+    assetContentTypes.set(oldId, contentType);
+
+    const backupSize = typeof backupFile?.size === 'number' && Number.isFinite(backupFile.size)
+      ? backupFile.size
+      : null;
+    const rowSize = typeof row['file_size'] === 'number' && Number.isFinite(row['file_size'])
+      ? row['file_size']
+      : null;
+
+    return pickRow('assets', row, {
+      id: newId,
+      user_id: user.id,
+      type: assetType,
+      storage_key: storageKeyFor(user.id, newId, contentType),
+      thumbnail_key: null,
+      content_type: contentType,
+      file_size: backupSize ?? rowSize,
+    });
+  });
+
+  const heroes = sourceHeroes.map((row) => {
+    const portraitAssetId = mappedId(assetIdMap, row['portrait_asset_id']);
+    return pickRow('heroes', row, {
+      id: mappedId(heroIdMap, row['id'])!,
+      user_id: user.id,
+      portrait_asset_id: portraitAssetId,
+      portrait_url: portraitAssetId ? `/api/assets/${portraitAssetId}/data` : row['portrait_url'] ?? null,
+    });
+  });
+
+  const campaigns = sourceCampaigns.map((row) => pickRow('campaigns', row, {
+    id: mappedId(campaignIdMap, row['id'])!,
+    director_id: user.id,
   }));
-  const assetIds = new Set(stringIds(assets, 'id'));
 
-  const heroes = (rawTables.heroes ?? []).map((row) => pickRow('heroes', row, { user_id: user.id }));
-  const campaigns = (rawTables.campaigns ?? []).map((row) => pickRow('campaigns', row, { director_id: user.id }));
-  const campaignIds = new Set(stringIds(campaigns, 'id'));
+  const modules = sourceModules
+    .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
+    .map((row) => pickRow('modules', row, {
+      id: mappedId(moduleIdMap, row['id'])!,
+      campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+    }));
 
-  const modules = (rawTables.modules ?? [])
-    .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
-    .map((row) => pickRow('modules', row));
-  const moduleIds = new Set(stringIds(modules, 'id'));
-
-  const gameSessions = (rawTables.game_sessions ?? [])
-    .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
+  const gameSessions = sourceGameSessions
+    .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
     .map((row) => pickRow('game_sessions', row, {
-      module_id: typeof row['module_id'] === 'string' && moduleIds.has(row['module_id']) ? row['module_id'] : null,
+      id: mappedId(sessionIdMap, row['id'])!,
+      campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+      module_id: mappedId(moduleIdMap, row['module_id']),
+      active_scene_id: mappedId(sceneIdMap, row['active_scene_id']),
     }));
-  const sessionIds = new Set(stringIds(gameSessions, 'id'));
 
-  const scenes = (rawTables.scenes ?? [])
-    .filter((row) => typeof row['game_session_id'] === 'string' && sessionIds.has(row['game_session_id']))
-    .map((row) => pickRow('scenes', row));
-  const sceneIds = new Set(stringIds(scenes, 'id'));
+  const scenes = sourceScenes
+    .filter((row) => mappedId(sessionIdMap, row['game_session_id']))
+    .map((row) => pickRow('scenes', row, {
+      id: mappedId(sceneIdMap, row['id'])!,
+      game_session_id: mappedId(sessionIdMap, row['game_session_id']),
+    }));
 
-  const maps = (rawTables.maps ?? [])
-    .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
+  const maps = sourceMaps
+    .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
     .map((row) => pickRow('maps', row, {
-      asset_id: typeof row['asset_id'] === 'string' && assetIds.has(row['asset_id']) ? row['asset_id'] : null,
+      id: mappedId(mapIdMap, row['id'])!,
+      campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+      asset_id: mappedId(assetIdMap, row['asset_id']),
     }));
-  const mapIds = new Set(stringIds(maps, 'id'));
 
-  const audioAssets = (rawTables.audio_assets ?? [])
-    .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
+  const audioAssets = sourceAudioAssets
+    .filter((row) => mappedId(campaignIdMap, row['campaign_id']) && mappedId(assetIdMap, row['asset_id']))
     .map((row) => pickRow('audio_assets', row, {
-      asset_id: typeof row['asset_id'] === 'string' && assetIds.has(row['asset_id']) ? row['asset_id'] : null,
-    }))
-    .filter((row) => typeof row['asset_id'] === 'string');
-  const audioIds = new Set(stringIds(audioAssets, 'id'));
+      id: mappedId(audioAssetIdMap, row['id'])!,
+      campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+      asset_id: mappedId(assetIdMap, row['asset_id']),
+    }));
 
-  const noteFolders = (rawTables.note_folders ?? [])
-    .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
-    .map((row) => pickRow('note_folders', row, { user_id: user.id }));
+  const noteFolders = sourceNoteFolders
+    .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
+    .map((row) => pickRow('note_folders', row, {
+      id: mappedId(noteFolderIdMap, row['id'])!,
+      campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+      user_id: user.id,
+      parent_folder_id: mappedId(noteFolderIdMap, row['parent_folder_id']),
+    }));
   const noteFolderIds = new Set(stringIds(noteFolders, 'id'));
+
+  const personalNoteFolders = sourcePersonalNoteFolders
+    .map((row) => pickRow('personal_note_folders', row, {
+      id: mappedId(personalNoteFolderIdMap, row['id'])!,
+      user_id: user.id,
+      parent_folder_id: mappedId(personalNoteFolderIdMap, row['parent_folder_id']),
+    }));
+  const personalNoteFolderIds = new Set(stringIds(personalNoteFolders, 'id'));
 
   const restoredTables: BackupTables = {
     assets,
@@ -383,95 +563,190 @@ async function restoreArchive(c: Context<AppEnv>, archive: AccountBackupArchive,
     game_sessions: gameSessions,
     scenes,
     campaign_members: (rawTables.campaign_members ?? [])
-      .filter((row) => row['user_id'] === sourceUserId && typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
-      .map((row) => pickRow('campaign_members', row, { user_id: user.id })),
+      .filter((row) => row['user_id'] === sourceUserId && mappedId(campaignIdMap, row['campaign_id']))
+      .map((row) => pickRow('campaign_members', row, {
+        campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+        user_id: user.id,
+        hero_id: mappedId(heroIdMap, row['hero_id']),
+        role: 'director',
+      })),
     session_participants: (rawTables.session_participants ?? [])
-      .filter((row) => row['user_id'] === sourceUserId && typeof row['game_session_id'] === 'string' && sessionIds.has(row['game_session_id']))
-      .map((row) => pickRow('session_participants', row, { user_id: user.id })),
+      .filter((row) => row['user_id'] === sourceUserId && mappedId(sessionIdMap, row['game_session_id']))
+      .map((row) => pickRow('session_participants', row, {
+        game_session_id: mappedId(sessionIdMap, row['game_session_id']),
+        user_id: user.id,
+        hero_id: mappedId(heroIdMap, row['hero_id']),
+      })),
     maps,
     map_terrains: (rawTables.map_terrains ?? [])
-      .filter((row) => typeof row['map_id'] === 'string' && mapIds.has(row['map_id']))
-      .map((row) => pickRow('map_terrains', row)),
+      .filter((row) => mappedId(mapIdMap, row['map_id']))
+      .map((row) => pickRow('map_terrains', row, { map_id: mappedId(mapIdMap, row['map_id']) })),
     map_biomes: (rawTables.map_biomes ?? [])
-      .filter((row) => typeof row['map_id'] === 'string' && mapIds.has(row['map_id']))
-      .map((row) => pickRow('map_biomes', row)),
+      .filter((row) => mappedId(mapIdMap, row['map_id']))
+      .map((row) => pickRow('map_biomes', row, { map_id: mappedId(mapIdMap, row['map_id']) })),
     map_tags: (rawTables.map_tags ?? [])
-      .filter((row) => typeof row['map_id'] === 'string' && mapIds.has(row['map_id']))
-      .map((row) => pickRow('map_tags', row)),
-    npcs: (rawTables.npcs ?? [])
-      .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
+      .filter((row) => mappedId(mapIdMap, row['map_id']))
+      .map((row) => pickRow('map_tags', row, { map_id: mappedId(mapIdMap, row['map_id']) })),
+    npcs: sourceNpcs
+      .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
       .map((row) => pickRow('npcs', row, {
-        portrait_asset_id: typeof row['portrait_asset_id'] === 'string' && assetIds.has(row['portrait_asset_id']) ? row['portrait_asset_id'] : null,
+        id: mappedId(npcIdMap, row['id'])!,
+        campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+        portrait_asset_id: mappedId(assetIdMap, row['portrait_asset_id']),
       })),
-    scene_monsters: (rawTables.scene_monsters ?? [])
-      .filter((row) => typeof row['scene_id'] === 'string' && sceneIds.has(row['scene_id']))
-      .map((row) => pickRow('scene_monsters', row)),
-    custom_terrain: (rawTables.custom_terrain ?? [])
-      .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
+    scene_monsters: sourceSceneMonsters
+      .filter((row) => mappedId(sceneIdMap, row['scene_id']))
+      .map((row) => pickRow('scene_monsters', row, {
+        id: mappedId(sceneMonsterIdMap, row['id'])!,
+        scene_id: mappedId(sceneIdMap, row['scene_id']),
+      })),
+    custom_terrain: sourceCustomTerrain
+      .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
       .map((row) => pickRow('custom_terrain', row, {
-        asset_id: typeof row['asset_id'] === 'string' && assetIds.has(row['asset_id']) ? row['asset_id'] : null,
+        id: mappedId(customTerrainIdMap, row['id'])!,
+        campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+        asset_id: mappedId(assetIdMap, row['asset_id']),
       })),
     audio_assets: audioAssets,
     audio_scene_types: (rawTables.audio_scene_types ?? [])
-      .filter((row) => typeof row['audio_id'] === 'string' && audioIds.has(row['audio_id']))
-      .map((row) => pickRow('audio_scene_types', row)),
+      .filter((row) => mappedId(audioAssetIdMap, row['audio_id']))
+      .map((row) => pickRow('audio_scene_types', row, { audio_id: mappedId(audioAssetIdMap, row['audio_id']) })),
     audio_tags: (rawTables.audio_tags ?? [])
-      .filter((row) => typeof row['audio_id'] === 'string' && audioIds.has(row['audio_id']))
-      .map((row) => pickRow('audio_tags', row)),
-    activity_cards: (rawTables.activity_cards ?? [])
-      .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
-      .map((row) => pickRow('activity_cards', row)),
-    montage_tests: (rawTables.montage_tests ?? [])
-      .filter((row) => typeof row['scene_id'] === 'string' && sceneIds.has(row['scene_id']))
-      .map((row) => pickRow('montage_tests', row)),
-    monster_portraits: (rawTables.monster_portraits ?? [])
-      .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
+      .filter((row) => mappedId(audioAssetIdMap, row['audio_id']))
+      .map((row) => pickRow('audio_tags', row, { audio_id: mappedId(audioAssetIdMap, row['audio_id']) })),
+    activity_cards: sourceActivityCards
+      .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
+      .map((row) => pickRow('activity_cards', row, {
+        id: mappedId(activityCardIdMap, row['id'])!,
+        campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+      })),
+    montage_tests: sourceMontageTests
+      .filter((row) => mappedId(sceneIdMap, row['scene_id']))
+      .map((row) => pickRow('montage_tests', row, {
+        id: mappedId(montageTestIdMap, row['id'])!,
+        scene_id: mappedId(sceneIdMap, row['scene_id']),
+      })),
+    monster_portraits: sourceMonsterPortraits
+      .filter((row) => mappedId(campaignIdMap, row['campaign_id']) && mappedId(assetIdMap, row['asset_id']))
       .map((row) => pickRow('monster_portraits', row, {
-        asset_id: typeof row['asset_id'] === 'string' && assetIds.has(row['asset_id']) ? row['asset_id'] : null,
+        id: mappedId(monsterPortraitIdMap, row['id'])!,
+        campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+        asset_id: mappedId(assetIdMap, row['asset_id']),
       })),
     note_folders: noteFolders,
-    notes: (rawTables.notes ?? [])
-      .filter((row) => typeof row['campaign_id'] === 'string' && campaignIds.has(row['campaign_id']))
-      .filter((row) => typeof row['folder_id'] === 'string' && noteFolderIds.has(row['folder_id']))
-      .map((row) => pickRow('notes', row, { user_id: user.id })),
+    notes: sourceNotes
+      .filter((row) => mappedId(campaignIdMap, row['campaign_id']))
+      .filter((row) => mappedId(noteFolderIdMap, row['folder_id']) && noteFolderIds.has(mappedId(noteFolderIdMap, row['folder_id'])!))
+      .map((row) => pickRow('notes', row, {
+        id: mappedId(noteIdMap, row['id'])!,
+        campaign_id: mappedId(campaignIdMap, row['campaign_id']),
+        user_id: user.id,
+        folder_id: mappedId(noteFolderIdMap, row['folder_id']),
+      })),
+    personal_note_folders: personalNoteFolders,
+    personal_notes: sourcePersonalNotes
+      .filter((row) => mappedId(personalNoteFolderIdMap, row['folder_id']) && personalNoteFolderIds.has(mappedId(personalNoteFolderIdMap, row['folder_id'])!))
+      .map((row) => pickRow('personal_notes', row, {
+        id: mappedId(personalNoteIdMap, row['id'])!,
+        user_id: user.id,
+        folder_id: mappedId(personalNoteFolderIdMap, row['folder_id']),
+      })),
   };
 
+  const assetStorageKeys = new Map<string, string>();
+  for (const sourceAsset of sourceAssets) {
+    const oldId = sourceId(sourceAsset);
+    const newId = oldId ? mappedId(assetIdMap, oldId) : null;
+    const asset = assets.find((candidate) => candidate['id'] === newId);
+    if (oldId && typeof asset?.['storage_key'] === 'string') {
+      assetStorageKeys.set(oldId, asset['storage_key']);
+    }
+  }
+
+  const restoredFileData: Array<{ storageKey: string; contentType: string; data: ArrayBuffer }> = [];
+  for (const file of archive.files) {
+    const storageKey = assetStorageKeys.get(file.assetId);
+    if (!storageKey) continue;
+    const contentType = assetContentTypes.get(file.assetId);
+    if (!contentType) continue;
+    let data: ArrayBuffer;
+    try {
+      data = base64ToArrayBuffer(file.dataBase64);
+    } catch {
+      throw new RestoreValidationError('Backup contains invalid file data');
+    }
+    if (data.byteLength === 0 || data.byteLength > MAX_ASSET_FILE_SIZE) {
+      throw new RestoreValidationError('Backup contains a file with an invalid size');
+    }
+    if (file.size > 0 && file.size !== data.byteLength) {
+      throw new RestoreValidationError('Backup file size does not match its content');
+    }
+    restoredFileData.push({ storageKey, contentType, data });
+  }
+
+  const existingAssetStats = await getAccountStorageUsage(c.env.DB, user.id);
+  const restoredBytes = restoredFileData.reduce((total, file) => total + file.data.byteLength, 0);
+  if (existingAssetStats.assetCount + assets.length > MAX_USER_ASSETS) {
+    throw new RestoreValidationError('Restoring this backup would exceed the account asset limit');
+  }
+  if (existingAssetStats.usedBytes + restoredBytes > MAX_USER_STORAGE_BYTES) {
+    throw new RestoreValidationError('Restoring this backup would exceed the account storage quota');
+  }
+
+  const statements: D1PreparedStatement[] = [];
   for (const table of RESTORE_ORDER) {
     if (table === 'note_folders') {
       const rows = restoredTables.note_folders ?? [];
-      await insertOrReplaceRows(c.env.DB, 'note_folders', rows.map((row) => ({ ...row, parent_folder_id: null })));
+      statements.push(...prepareInsertRows(c.env.DB, 'note_folders', rows.map((row) => ({ ...row, parent_folder_id: null }))));
       for (const row of rows) {
         if (typeof row['id'] !== 'string') continue;
         const parentId = typeof row['parent_folder_id'] === 'string' && noteFolderIds.has(row['parent_folder_id'])
           ? row['parent_folder_id']
           : null;
-        await c.env.DB.prepare('UPDATE note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
-          .bind(parentId, row['id'], user.id)
-          .run();
+        statements.push(
+          c.env.DB.prepare('UPDATE note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
+            .bind(parentId, row['id'], user.id),
+        );
       }
       continue;
     }
-    await insertOrReplaceRows(c.env.DB, table, restoredTables[table] ?? []);
-  }
-
-  const assetStorageKeys = new Map<string, string>();
-  for (const asset of assets) {
-    if (typeof asset['id'] === 'string' && typeof asset['storage_key'] === 'string') {
-      assetStorageKeys.set(asset['id'], asset['storage_key']);
+    if (table === 'personal_note_folders') {
+      const rows = restoredTables.personal_note_folders ?? [];
+      statements.push(...prepareInsertRows(c.env.DB, 'personal_note_folders', rows.map((row) => ({ ...row, parent_folder_id: null }))));
+      for (const row of rows) {
+        if (typeof row['id'] !== 'string') continue;
+        const parentId = typeof row['parent_folder_id'] === 'string' && personalNoteFolderIds.has(row['parent_folder_id'])
+          ? row['parent_folder_id']
+          : null;
+        statements.push(
+          c.env.DB.prepare('UPDATE personal_note_folders SET parent_folder_id = ? WHERE id = ? AND user_id = ?')
+            .bind(parentId, row['id'], user.id),
+        );
+      }
+      continue;
     }
+    statements.push(...prepareInsertRows(c.env.DB, table, restoredTables[table] ?? []));
   }
 
-  let restoredFiles = 0;
-  for (const file of archive.files) {
-    const storageKey = assetStorageKeys.get(file.assetId);
-    if (!storageKey) continue;
-    const data = base64ToArrayBuffer(file.dataBase64);
-    await c.env.ASSETS.put(storageKey, data, { httpMetadata: { contentType: file.contentType } });
-    restoredFiles += 1;
+  const uploadedKeys: string[] = [];
+  try {
+    for (const { storageKey, contentType, data } of restoredFileData) {
+      await c.env.ASSETS.put(storageKey, data, { httpMetadata: { contentType } });
+      uploadedKeys.push(storageKey);
+    }
+    if (statements.length > 0) await c.env.DB.batch(statements);
+  } catch (error) {
+    await Promise.all(uploadedKeys.map((key) => c.env.ASSETS.delete(key).catch(() => undefined)));
+    throw error;
   }
 
-  return { ...tableCounts(restoredTables), files: restoredFiles };
+  return { ...tableCounts(restoredTables), files: restoredFileData.length };
 }
+
+accountRoutes.get('/storage', async (c) => {
+  const user = c.get('user') as AuthUser;
+  return c.json(await getAccountStorageUsage(c.env.DB, user.id));
+});
 
 accountRoutes.get('/backup', async (c) => {
   const user = c.get('user') as AuthUser;
@@ -502,7 +777,15 @@ accountRoutes.post('/restore', async (c) => {
   }
   if (!archive) return c.json({ error: 'Invalid backup archive' }, 400);
 
-  const counts = await restoreArchive(c, archive, user);
+  let counts: Record<string, number>;
+  try {
+    counts = await restoreArchive(c, archive, user);
+  } catch (error) {
+    if (error instanceof RestoreValidationError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
   return c.json({ ok: true, counts });
 });
 
@@ -547,6 +830,8 @@ accountRoutes.delete('/', async (c) => {
   await deleteWhereIn(db, 'notes', 'campaign_id', campaignIds);
   await db.prepare('DELETE FROM note_folders WHERE user_id = ?').bind(user.id).run();
   await deleteWhereIn(db, 'note_folders', 'campaign_id', campaignIds);
+  await db.prepare('DELETE FROM personal_notes WHERE user_id = ?').bind(user.id).run();
+  await db.prepare('DELETE FROM personal_note_folders WHERE user_id = ?').bind(user.id).run();
 
   await deleteWhereIn(db, 'monster_portraits', 'campaign_id', campaignIds);
   await deleteWhereIn(db, 'activity_cards', 'campaign_id', campaignIds);

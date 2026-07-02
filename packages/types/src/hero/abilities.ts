@@ -28,7 +28,7 @@ export type HeroicResourceName =
   | 'Wrath'      // Censor
   | 'Piety'      // Conduit
   | 'Essence'    // Elementalist, Summoner
-  | 'Ferocity'   // Fury
+  | 'Ferocity'   // Beastheart, Fury
   | 'Discipline' // Null
   | 'Insight'    // Shadow
   | 'Focus'      // Tactician

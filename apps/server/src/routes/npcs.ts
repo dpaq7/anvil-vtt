@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { requireCampaignDirector, requireCampaignMember } from '../lib/access.js';
+import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
+import { assetDataUrl, validateOwnedPortraitAsset } from '../security/assets.js';
 import type { CreateNpcInput, Npc, UpdateNpcInput } from '@anvil/types';
 
 export const npcRoutes = new Hono<AppEnv>();
@@ -28,30 +28,12 @@ function rowToNpc(row: NpcRow): Npc {
     campaignId: row.campaign_id,
     name: row.name,
     portraitAssetId: row.portrait_asset_id,
-    portraitUrl: row.portrait_asset_id ? `/api/assets/${row.portrait_asset_id}/data` : undefined,
+    portraitUrl: row.portrait_asset_id ? assetDataUrl(row.portrait_asset_id) : undefined,
     location: row.location,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-async function validateOwnedPortraitAsset(
-  c: Context<AppEnv>,
-  assetId: string | null | undefined,
-  user: AuthUser,
-): Promise<Response | null> {
-  if (assetId == null) return null;
-
-  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
-    .bind(assetId, user.id)
-    .first<{ type: string; content_type: string | null }>();
-  if (!asset) return c.json({ error: 'Asset not found' }, 404);
-  if (asset.type !== 'portrait') return c.json({ error: 'Asset must be a portrait' }, 400);
-  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('image/')) {
-    return c.json({ error: 'Asset must be an image' }, 400);
-  }
-  return null;
 }
 
 // ── Routes ──

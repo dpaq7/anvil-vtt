@@ -156,14 +156,13 @@ export function victoriesToXP(victories: number): number {
 
 /**
  * Calculate XP needed for next level.
- * Draw Steel uses a flat 10 XP per level.
+ * Draw Steel uses 16 XP bands: L2 at 16 XP, L3 at 32 XP, and so on.
  *
  * @param currentLevel - Current hero level
  * @returns XP needed for next level
  */
 export function getXPForNextLevel(_currentLevel: number): number {
-  // Draw Steel: 10 XP per level
-  return 10;
+  return 16;
 }
 
 /**

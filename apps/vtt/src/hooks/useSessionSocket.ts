@@ -2,14 +2,21 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import type { ClientMessage, ServerMessage } from '../types/protocol.js';
 import { csrfHeaders } from '../lib/csrf.js';
+import { addBreadcrumb } from '../lib/bug-reporting.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+export type SessionClientKind = 'desktop' | 'phone';
 
 const MAX_RETRIES = 5;
 const BASE_DELAY = 1000;
 
-export function useSessionSocket(sessionId: string | null) {
+interface UseSessionSocketOptions {
+  clientKind?: SessionClientKind;
+}
+
+export function useSessionSocket(sessionId: string | null, options: UseSessionSocketOptions = {}) {
+  const clientKind = options.clientKind ?? 'desktop';
   const state = useSessionStore((s) => s.sessionState);
   const combatLog = useSessionStore((s) => s.combatLog);
   const sessionStarted = useSessionStore((s) => s.sessionStarted);
@@ -17,6 +24,10 @@ export function useSessionSocket(sessionId: string | null) {
   const resetSessionRuntime = useSessionStore((s) => s.resetSessionRuntime);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [phoneAnchorConnected, setPhoneAnchorConnected] = useState<boolean | null>(
+    clientKind === 'phone' ? null : true,
+  );
+  const phoneAnchorConnectedRef = useRef<boolean | null>(clientKind === 'phone' ? null : true);
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -25,10 +36,35 @@ export function useSessionSocket(sessionId: string | null) {
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
+      case 'state':
+        if (clientKind === 'phone') {
+          phoneAnchorConnectedRef.current = true;
+          setPhoneAnchorConnected(true);
+        }
+        break;
+      case 'phone_anchor_status': {
+        const wasAnchored = phoneAnchorConnectedRef.current;
+        phoneAnchorConnectedRef.current = msg.anchored;
+        setPhoneAnchorConnected(msg.anchored);
+        if (!msg.anchored) {
+          setError('Open this session on desktop first to sync the phone companion.');
+        } else if (wasAnchored !== true) {
+          setError(null);
+          wsRef.current?.send(JSON.stringify({ type: 'request_state' } satisfies ClientMessage));
+        }
+        break;
+      }
+      case 'scene_changed':
+        addBreadcrumb({ category: 'session', message: 'Scene changed' });
+        break;
       case 'scene_reverted':
         toast.info('Scene reverted to prepared state.');
         break;
+      case 'session_started':
+        addBreadcrumb({ category: 'session', message: 'Session started' });
+        break;
       case 'session_ended':
+        addBreadcrumb({ category: 'session', message: 'Session ended' });
         setError('Session has ended.');
         toast.info('The session has ended.');
         break;
@@ -38,12 +74,17 @@ export function useSessionSocket(sessionId: string | null) {
           // The next state update corrects the canvas, so avoid a noisy transient toast.
           break;
         }
+        addBreadcrumb({
+          category: 'session',
+          message: 'Server sent session error',
+          data: { code: msg.code ?? null, message: msg.message ?? null },
+        });
         setError(msg.message);
         toast.error(msg.message ?? 'Server error');
         break;
     }
     applyServerMessage(msg);
-  }, [applyServerMessage]);
+  }, [applyServerMessage, clientKind]);
 
   const connect = useCallback(async () => {
     if (!sessionId || !mountedRef.current) return;
@@ -67,6 +108,7 @@ export function useSessionSocket(sessionId: string | null) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...csrfHeaders('POST') },
+        body: JSON.stringify({ clientKind }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -77,6 +119,11 @@ export function useSessionSocket(sessionId: string | null) {
     } catch (err) {
       if (!mountedRef.current) return;
       console.error('[WS] failed to get token:', err);
+      addBreadcrumb({
+        category: 'session',
+        message: 'WebSocket token request failed',
+        data: { message: err instanceof Error ? err.message : 'Failed to authenticate' },
+      });
       setError(err instanceof Error ? err.message : 'Failed to authenticate');
       setStatus('disconnected');
       return;
@@ -89,7 +136,7 @@ export function useSessionSocket(sessionId: string | null) {
       ? (apiUrl.protocol === 'https:' ? 'wss:' : 'ws:')
       : (window.location.protocol === 'https:' ? 'wss:' : 'ws:');
     const host = apiUrl?.host ?? window.location.host;
-    const wsUrl = `${protocol}//${host}/api/sessions/${sessionId}/ws?token=${token}`;
+    const wsUrl = `${protocol}//${host}/api/sessions/${sessionId}/ws?token=${token}&clientKind=${clientKind}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -99,6 +146,7 @@ export function useSessionSocket(sessionId: string | null) {
         ws.close();
         return;
       }
+      addBreadcrumb({ category: 'session', message: 'WebSocket connected' });
       setStatus('connected');
       retriesRef.current = 0;
       ws.send(JSON.stringify({ type: 'request_state' } satisfies ClientMessage));
@@ -113,16 +161,26 @@ export function useSessionSocket(sessionId: string | null) {
       }
     };
 
-    ws.onclose = (_event) => {
+    ws.onclose = (event) => {
       wsRef.current = null;
       if (!mountedRef.current) return;
       if (retriesRef.current < MAX_RETRIES) {
         const delay = BASE_DELAY * Math.pow(2, retriesRef.current);
         retriesRef.current++;
+        addBreadcrumb({
+          category: 'session',
+          message: 'WebSocket closed, reconnecting',
+          data: { code: event.code, retry: retriesRef.current },
+        });
         setStatus('reconnecting');
         toast.warning('Connection lost. Reconnecting...');
         timerRef.current = setTimeout(() => { void connect(); }, delay);
       } else {
+        addBreadcrumb({
+          category: 'session',
+          message: 'WebSocket disconnected',
+          data: { code: event.code, retries: retriesRef.current },
+        });
         setStatus('disconnected');
         setError('Connection lost. Please refresh.');
         toast.error('Connection lost. Please refresh the page.');
@@ -130,15 +188,21 @@ export function useSessionSocket(sessionId: string | null) {
     };
 
     ws.onerror = () => {
+      addBreadcrumb({ category: 'session', message: 'WebSocket error' });
       ws.close();
     };
-  }, [sessionId, handleMessage]);
+  }, [sessionId, handleMessage, clientKind]);
 
   const send = useCallback((msg: ClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     } else {
       console.warn('[WS] message dropped (socket not open):', msg.type);
+      addBreadcrumb({
+        category: 'session',
+        message: 'WebSocket message dropped',
+        data: { type: msg.type },
+      });
       toast.warning('Not connected. Action could not be sent.');
     }
   }, []);
@@ -174,5 +238,5 @@ export function useSessionSocket(sessionId: string | null) {
     return () => clearInterval(interval);
   }, [status, send]);
 
-  return { state, status, error, send, combatLog, sessionStarted };
+  return { state, status, error, send, combatLog, sessionStarted, phoneAnchorConnected };
 }

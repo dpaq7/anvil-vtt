@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
+import { assetDataUrl, validateOwnedAudioAsset } from '../security/assets.js';
 import type { AudioAsset, CreateAudioInput, UpdateAudioInput } from '@anvil/types';
 
 export const audioRoutes = new Hono<AppEnv>();
@@ -19,33 +20,6 @@ interface AudioRow {
   created_at: string;
 }
 
-async function getCampaignRole(c: Context<AppEnv>, campaignId: string, userId: string): Promise<string | null> {
-  const row = await c.env.DB.prepare(
-    `SELECT cm.role FROM campaign_members cm
-     JOIN campaigns c ON c.id = cm.campaign_id
-     WHERE cm.campaign_id = ? AND cm.user_id = ? AND c.deleted_at IS NULL`,
-  ).bind(campaignId, userId).first<{ role: string }>();
-  return row?.role ?? null;
-}
-
-async function requireCampaignMember(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) ? null : c.json({ error: 'Forbidden' }, 403);
-}
-
-async function requireCampaignDirector(c: Context<AppEnv>, campaignId: string, user: AuthUser): Promise<Response | null> {
-  return (await getCampaignRole(c, campaignId, user.id)) === 'director' ? null : c.json({ error: 'Forbidden' }, 403);
-}
-
-async function validateOwnedAudioAsset(c: Context<AppEnv>, assetId: string, user: AuthUser): Promise<Response | null> {
-  const asset = await c.env.DB.prepare('SELECT type, content_type FROM assets WHERE id = ? AND user_id = ?')
-    .bind(assetId, user.id)
-    .first<{ type: string; content_type: string | null }>();
-  if (!asset) return c.json({ error: 'Asset not found' }, 404);
-  if (asset.type !== 'audio' && asset.type !== 'other') return c.json({ error: 'Asset must be audio' }, 400);
-  if (asset.content_type && !asset.content_type.toLowerCase().startsWith('audio/')) return c.json({ error: 'Asset must be audio' }, 400);
-  return null;
-}
-
 async function hydrateAudio(db: D1Database, row: AudioRow): Promise<AudioAsset> {
   const [sceneTypes, tags] = await Promise.all([
     db.prepare('SELECT scene_type FROM audio_scene_types WHERE audio_id = ?').bind(row.id).all<{ scene_type: string }>(),
@@ -57,7 +31,7 @@ async function hydrateAudio(db: D1Database, row: AudioRow): Promise<AudioAsset> 
     campaignId: row.campaign_id,
     name: row.name,
     assetId: row.asset_id,
-    audioUrl: `/api/assets/${row.asset_id}/data`,
+    audioUrl: assetDataUrl(row.asset_id),
     durationSeconds: row.duration_seconds,
     audioType: row.audio_type as AudioAsset['audioType'],
     mood: row.mood as AudioAsset['mood'],

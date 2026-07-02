@@ -1,9 +1,8 @@
 import { useMemo } from "react";
 import { WizardLogic } from "@anvil/data";
 import type { CharacterInProgress, Characteristics } from "@anvil/data";
-import type { HeroClass } from "@anvil/types";
 import { cn, Button } from "@anvil/ui";
-import { Sparkles, RotateCcw, Check } from "lucide-react";
+import { RotateCcw, Check, Lock } from "lucide-react";
 
 interface Props {
   character: CharacterInProgress;
@@ -12,337 +11,291 @@ interface Props {
 
 type CharacteristicName = keyof Characteristics;
 
-const CHARACTERISTIC_NAMES: CharacteristicName[] = [
-  "might",
-  "agility",
-  "reason",
-  "intuition",
-  "presence",
-];
+const CHARACTERISTIC_NAMES = WizardLogic.CHARACTERISTIC_ORDER;
 
-// The standard array values to assign
-const STANDARD_ARRAY = [2, 2, 1, 0, -1];
-
-// Available values for the point-buy interface
-const AVAILABLE_VALUES = [2, 2, 1, 0, -1];
-
-// Class potency characteristics (the characteristics each class cares about most)
-const CLASS_POTENCY: Record<HeroClass, CharacteristicName[]> = {
-  beastheart: ["might", "intuition"],
-  censor: ["might", "presence"],
-  conduit: ["intuition"],
-  elementalist: ["reason"],
-  fury: ["might", "agility"],
-  null: ["agility", "intuition"],
-  shadow: ["agility"],
-  summoner: ["reason"],
-  tactician: ["might", "reason"],
-  talent: ["reason", "presence"],
-  troubadour: ["agility", "presence"],
-};
-
-// Recommended arrays per class (puts highest values in potency characteristics)
-function getRecommendedArray(heroClass: HeroClass): Characteristics {
-  const potency = CLASS_POTENCY[heroClass] || [];
-
-  // Start with a default assignment
-  const result: Characteristics = {
-    might: 0,
-    agility: 0,
-    reason: 0,
-    intuition: 0,
-    presence: 0,
-  };
-
-  const available = [...AVAILABLE_VALUES];
-
-  // Assign highest values to potency characteristics
-  for (const char of potency) {
-    const maxIdx = available.indexOf(Math.max(...available));
-    if (maxIdx !== -1) {
-      result[char] = available[maxIdx]!;
-      available.splice(maxIdx, 1);
-    }
-  }
-
-  // Assign remaining values to other characteristics
-  const remaining = CHARACTERISTIC_NAMES.filter((c) => !potency.includes(c));
-  for (const char of remaining) {
-    if (available.length > 0) {
-      // Sort remaining to get somewhat reasonable distribution
-      available.sort((a, b) => b - a);
-      result[char] = available.shift()!;
-    }
-  }
-
-  return result;
+function formatCharacteristicName(name: CharacteristicName): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-// Calculate what values are still available to assign
-function getAvailableValues(chars: Characteristics): number[] {
-  const used = CHARACTERISTIC_NAMES.map((n) => chars[n]);
-  const available = [...AVAILABLE_VALUES];
+function formatModifier(value: number): string {
+  return value >= 0 ? `+${value}` : String(value);
+}
 
-  for (const val of used) {
-    const idx = available.indexOf(val);
-    if (idx !== -1) {
-      available.splice(idx, 1);
+function formatArray(values: number[]): string {
+  return values.join(", ");
+}
+
+function arrayKey(values: number[]): string {
+  return values.join(".");
+}
+
+function sameNumberMultiset(values: number[], target: number[]): boolean {
+  if (values.length !== target.length) return false;
+
+  const sortedValues = [...values].sort((a, b) => b - a);
+  const sortedTarget = [...target].sort((a, b) => b - a);
+
+  return sortedValues.every((value, index) => value === sortedTarget[index]);
+}
+
+function buildCharacteristics(
+  fixed: Partial<Characteristics>,
+  remainingNames: CharacteristicName[],
+  values: number[],
+): Characteristics {
+  const characteristics = WizardLogic.createDefaultCharacteristics();
+
+  for (const name of CHARACTERISTIC_NAMES) {
+    const fixedValue = fixed[name];
+    if (typeof fixedValue === "number") {
+      characteristics[name] = fixedValue;
     }
   }
 
-  return available.sort((a, b) => b - a);
+  remainingNames.forEach((name, index) => {
+    characteristics[name] = values[index] ?? 0;
+  });
+
+  return characteristics;
 }
 
-// Check if current assignment is valid (uses exactly the standard array)
-function isValidAssignment(chars: Characteristics): boolean {
-  const values = CHARACTERISTIC_NAMES.map((n) => chars[n]).sort(
-    (a, b) => b - a,
-  );
-  const target = [...STANDARD_ARRAY].sort((a, b) => b - a);
-  return values.every((v, i) => v === target[i]);
+function countValues(values: number[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  return counts;
 }
 
 export function CharacteristicsStep({ character, onChange }: Props) {
-  const heroClass = character.heroClass as HeroClass | null;
-  const chars =
-    character.characteristics ?? WizardLogic.createDefaultCharacteristics();
+  const rules = useMemo(
+    () => WizardLogic.getCharacteristicAssignmentRules(character.heroClass),
+    [character.heroClass],
+  );
 
-  // Get potency characteristics for current class
-  const potencyChars = useMemo(() => {
-    if (!heroClass) return [];
-    return CLASS_POTENCY[heroClass] || [];
-  }, [heroClass]);
+  const selectedArray = useMemo(() => {
+    if (!rules || !character.characteristics) return null;
 
-  // Get recommended array for current class
-  const recommended = useMemo(() => {
-    if (!heroClass) return null;
-    return getRecommendedArray(heroClass);
-  }, [heroClass]);
+    const remainingValues = rules.remainingNames.map(
+      (name) => character.characteristics?.[name] ?? 0,
+    );
 
-  // Calculate what's available to assign
-  const availableValues = useMemo(() => getAvailableValues(chars), [chars]);
+    return rules.arrays.find((array) => sameNumberMultiset(remainingValues, array)) ?? null;
+  }, [character.characteristics, rules]);
 
-  // Check if assignment is complete and valid
-  const isComplete = isValidAssignment(chars);
-  const total = CHARACTERISTIC_NAMES.reduce((sum, n) => sum + chars[n], 0);
+  const selectedArrayValues = useMemo(
+    () => Array.from(new Set(selectedArray ?? [])).sort((a, b) => b - a),
+    [selectedArray],
+  );
 
-  // Handle clicking a value button to assign it
-  const assignValue = (characteristic: CharacteristicName, value: number) => {
-    // If clicking the same value that's already assigned, unassign it
-    if (chars[characteristic] === value) {
-      onChange({ characteristics: { ...chars, [characteristic]: 0 } });
-      return;
-    }
+  const isComplete = WizardLogic.isValidStartingCharacteristics(
+    character.characteristics,
+    character.heroClass,
+  );
 
-    // Check if this value is available (or is the current value for this stat)
-    const available = getAvailableValues(chars);
-    const currentValue = chars[characteristic];
-
-    // Add back the current value to available pool for comparison
-    if (currentValue !== 0 || AVAILABLE_VALUES.includes(0)) {
-      available.push(currentValue);
-    }
-
-    if (!available.includes(value)) {
-      return; // Value not available
-    }
-
-    onChange({ characteristics: { ...chars, [characteristic]: value } });
-  };
-
-  // Apply recommended array
-  const applyRecommended = () => {
-    if (recommended) {
-      onChange({ characteristics: recommended });
-    }
-  };
-
-  // Reset to all zeros
-  const resetArray = () => {
+  const chooseArray = (array: number[]) => {
+    if (!rules) return;
     onChange({
-      characteristics: {
-        might: 0,
-        agility: 0,
-        reason: 0,
-        intuition: 0,
-        presence: 0,
-      },
+      characteristics: buildCharacteristics(rules.fixed, rules.remainingNames, array),
     });
   };
 
-  // Check if a value button should be enabled
-  const isValueAvailable = (
-    characteristic: CharacteristicName,
-    value: number,
-  ): boolean => {
-    // Always allow selecting current value (to toggle off)
-    if (chars[characteristic] === value) return true;
+  const assignValue = (name: CharacteristicName, value: number) => {
+    if (!rules || !selectedArray || !character.characteristics) return;
 
-    // Check if this value is in the available pool
-    const available = getAvailableValues(chars);
-    // Add back current value since we're considering swapping
-    if (chars[characteristic] !== 0 || AVAILABLE_VALUES.includes(0)) {
-      const curr = chars[characteristic];
-      if (!available.includes(curr)) {
-        available.push(curr);
+    const currentValue = character.characteristics[name];
+    if (currentValue === value) return;
+
+    const next = { ...character.characteristics };
+    const allowedCounts = countValues(selectedArray);
+    const usedElsewhere = rules.remainingNames
+      .filter((candidate) => candidate !== name)
+      .reduce((counts, candidate) => {
+        const candidateValue = next[candidate];
+        counts.set(candidateValue, (counts.get(candidateValue) ?? 0) + 1);
+        return counts;
+      }, new Map<number, number>());
+
+    if ((usedElsewhere.get(value) ?? 0) >= (allowedCounts.get(value) ?? 0)) {
+      const swapTarget = rules.remainingNames.find(
+        (candidate) => candidate !== name && next[candidate] === value,
+      );
+      if (swapTarget) {
+        next[swapTarget] = currentValue;
       }
     }
 
-    return available.includes(value);
+    next[name] = value;
+    onChange({ characteristics: next });
   };
+
+  const resetArray = () => {
+    onChange({ characteristics: null });
+  };
+
+  if (!rules) {
+    return (
+      <div className="h-[500px] flex items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/30 p-6 text-center">
+        <div>
+          <h2 className="mb-2 text-lg font-semibold">Assign Characteristics</h2>
+          <p className="text-sm text-zinc-400">
+            Choose a class before assigning characteristics.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[500px] flex flex-col">
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Assign Characteristics</h2>
         <p className="mb-4 text-sm text-zinc-400">
-          Click to assign values from the standard array:{" "}
-          <strong>+2, +2, +1, 0, -1</strong>
-          {potencyChars.length > 0 && (
-            <>
-              {" "}
-              — Your class benefits most from{" "}
-              <span className="text-creator-highlight">
-                {potencyChars
-                  .map((c) => c.charAt(0).toUpperCase() + c.slice(1))
-                  .join(" & ")}
-              </span>
-            </>
-          )}
+          You start with{" "}
+          <span className="text-creator-highlight">
+            {rules.fixedNames
+              .map((name) => `${formatModifier(rules.fixed[name] ?? 0)} in ${formatCharacteristicName(name)}`)
+              .join(" and ")}
+          </span>
+          . Choose a set of values for the other characteristics.
         </p>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2 mb-6">
-          {heroClass && recommended && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={applyRecommended}
-              className="flex items-center gap-1.5"
-            >
-              <Sparkles className="h-4 w-4" />
-              Apply Recommended
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={resetArray}
-            className="flex items-center gap-1.5"
-          >
-            <RotateCcw className="h-4 w-4" />
-            Reset
-          </Button>
+        <div className="grid grid-cols-5 gap-2 mb-4">
+          {CHARACTERISTIC_NAMES.map((name) => {
+            const fixedValue = rules.fixed[name];
+            const currentValue = character.characteristics?.[name];
+            const isFixed = typeof fixedValue === "number";
+            const value = isFixed ? fixedValue : currentValue;
+
+            return (
+              <div
+                key={name}
+                className={cn(
+                  "rounded-lg border px-2 py-2 text-center",
+                  isFixed
+                    ? "border-creator-highlight/50 bg-creator-highlight/10"
+                    : "border-zinc-700 bg-zinc-900/30",
+                )}
+              >
+                <div className="flex items-center justify-center gap-1 text-[11px] uppercase tracking-wide text-zinc-500">
+                  {isFixed && <Lock className="h-3 w-3 text-creator-highlight" />}
+                  {formatCharacteristicName(name)}
+                </div>
+                <div
+                  className={cn(
+                    "mt-1 text-lg font-bold",
+                    value === undefined
+                      ? "text-zinc-600"
+                      : value > 0
+                        ? "text-green-400"
+                        : value < 0
+                          ? "text-red-400"
+                          : "text-zinc-400",
+                  )}
+                >
+                  {value === undefined ? "--" : formatModifier(value)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Characteristics Grid */}
-      <div className="flex-1 space-y-4">
-        {CHARACTERISTIC_NAMES.map((name) => {
-          const isPotency = potencyChars.includes(name);
-          const currentValue = chars[name];
-
-          return (
-            <div
-              key={name}
-              className={cn(
-                "flex items-center gap-4 p-3 rounded-lg border transition",
-                isPotency
-                  ? "border-creator-highlight/50 bg-creator-highlight/10"
-                  : "border-zinc-700 bg-zinc-900/30",
-              )}
+      <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Remaining Array
+            </h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetArray}
+              className="h-8 px-2 text-xs flex items-center gap-1.5"
             >
-              {/* Characteristic Name */}
-              <div className="w-28 flex items-center gap-2">
-                <span
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {rules.arrays.map((array) => {
+              const selected = selectedArray ? sameNumberMultiset(selectedArray, array) : false;
+
+              return (
+                <button
+                  key={arrayKey(array)}
+                  type="button"
+                  onClick={() => chooseArray(array)}
                   className={cn(
-                    "text-sm font-medium capitalize",
-                    isPotency ? "text-creator-highlight" : "text-zinc-300",
+                    "flex h-12 w-full items-center justify-center rounded-lg border text-base font-semibold transition",
+                    selected
+                      ? "border-creator-highlight bg-creator-highlight/15 text-creator-highlight"
+                      : "border-zinc-700 bg-zinc-900/40 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800/60",
                   )}
                 >
-                  {name}
-                </span>
-                {isPotency && (
-                  <Sparkles className="h-3.5 w-3.5 text-creator-highlight" />
-                )}
-              </div>
+                  {formatArray(array)}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-              {/* Value Buttons */}
-              <div className="flex gap-2">
-                {[-1, 0, 1, 2].map((value) => {
-                  const isSelected = currentValue === value;
-                  const isAvailable = isValueAvailable(name, value);
+        {selectedArray && character.characteristics && (
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Assign Values
+            </h3>
 
-                  return (
-                    <button
-                      key={value}
-                      onClick={() => assignValue(name, value)}
-                      disabled={!isAvailable && !isSelected}
-                      className={cn(
-                        "w-12 h-10 rounded-lg border text-sm font-bold transition",
-                        isSelected
-                          ? "border-blue-500 bg-blue-500/20 text-blue-400"
-                          : isAvailable
-                            ? "border-zinc-600 bg-zinc-800/50 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-700/50"
-                            : "border-zinc-800 bg-zinc-900/50 text-zinc-600 cursor-not-allowed",
-                      )}
-                    >
-                      {value >= 0 ? `+${value}` : value}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Current Value Display */}
-              <div className="ml-auto flex items-center gap-2">
-                <span
-                  className={cn(
-                    "w-10 text-center text-lg font-bold",
-                    currentValue > 0
-                      ? "text-green-400"
-                      : currentValue < 0
-                        ? "text-red-400"
-                        : "text-zinc-500",
-                  )}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {rules.remainingNames.map((name) => (
+                <div
+                  key={name}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-900/30 px-3 py-2"
                 >
-                  {currentValue >= 0 ? `+${currentValue}` : currentValue}
-                </span>
-              </div>
+                  <span className="text-sm font-medium text-zinc-300">
+                    {formatCharacteristicName(name)}
+                  </span>
+                  <div className="flex gap-1">
+                    {selectedArrayValues.map((value) => {
+                      const selected = character.characteristics?.[name] === value;
+
+                      return (
+                        <button
+                          key={`${name}-${value}`}
+                          type="button"
+                          onClick={() => assignValue(name, value)}
+                          className={cn(
+                            "h-8 min-w-9 rounded-md border px-2 text-sm font-semibold transition",
+                            selected
+                              ? "border-creator-highlight bg-creator-highlight/20 text-creator-highlight"
+                              : "border-zinc-700 bg-zinc-900/50 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800",
+                          )}
+                        >
+                          {formatModifier(value)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          );
-        })}
+          </section>
+        )}
       </div>
 
-      {/* Footer */}
       <div className="flex-shrink-0 mt-4 pt-3 border-t border-zinc-800">
         <div className="flex items-center justify-between">
           <div className="text-xs text-zinc-500">
-            Available values:{" "}
-            {availableValues.length > 0 ? (
-              availableValues.map((v, i) => (
-                <span key={i} className="font-mono">
-                  {v >= 0 ? `+${v}` : v}
-                  {i < availableValues.length - 1 ? ", " : ""}
-                </span>
-              ))
-            ) : (
-              <span className="text-green-400">All assigned</span>
-            )}
+            Remaining stats:{" "}
+            {rules.remainingNames.map(formatCharacteristicName).join(", ")}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500">
-              Total:{" "}
-              <span className="font-mono">
-                {total >= 0 ? `+${total}` : total}
-              </span>
+          {isComplete ? (
+            <span className="flex items-center gap-1 text-xs text-green-400">
+              <Check className="h-3.5 w-3.5" />
+              Valid
             </span>
-            {isComplete && (
-              <span className="flex items-center gap-1 text-xs text-green-400">
-                <Check className="h-3.5 w-3.5" />
-                Valid
-              </span>
-            )}
-          </div>
+          ) : (
+            <span className="text-xs text-zinc-500">Choose an array</span>
+          )}
         </div>
       </div>
     </div>

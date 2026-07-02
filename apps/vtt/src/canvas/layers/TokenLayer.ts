@@ -1,6 +1,10 @@
 import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Quadtree } from '../systems/Quadtree.js';
 import type { EntityData } from '../../types/protocol.js';
+import {
+  mediaElementCrossOrigin,
+  resolveApiBackedMediaUrl,
+} from '../../lib/api-url.js';
 
 /** Condition ID → emoji for badge display */
 const CONDITION_EMOJI: Record<string, string> = {
@@ -117,12 +121,19 @@ export class TokenLayer extends Container {
     }
 
     // Name label below token
+    const nameFontSize = Math.max(8, size * 0.18);
+    const nameWrapWidth = Math.max(72, size * 1.6);
     const nameLabel = new Text({
-      text: entity.name.length > 10 ? entity.name.slice(0, 9) + '\u2026' : entity.name,
+      text: entity.name,
       style: {
         fontFamily: 'system-ui, sans-serif',
-        fontSize: Math.max(8, size * 0.18),
+        fontSize: nameFontSize,
         fill: 0xcccccc,
+        align: 'center',
+        breakWords: true,
+        lineHeight: Math.ceil(nameFontSize * 1.08),
+        wordWrap: true,
+        wordWrapWidth: nameWrapWidth,
       },
     });
     nameLabel.anchor.set(0.5, 0);
@@ -225,8 +236,10 @@ export class TokenLayer extends Container {
     cy: number,
     radius: number,
   ): void {
+    const resolvedUrl = resolveApiBackedMediaUrl(url);
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    const crossOrigin = mediaElementCrossOrigin(resolvedUrl);
+    if (crossOrigin) img.crossOrigin = crossOrigin;
     img.onload = () => {
       // Guard: container may have been destroyed while loading
       if (container.destroyed) return;
@@ -253,7 +266,7 @@ export class TokenLayer extends Container {
       // Insert after rings (index 2) so it's below name/conditions but above rings
       container.addChildAt(sprite, 2);
     };
-    img.src = url;
+    img.src = resolvedUrl;
   }
 
   /**
