@@ -118,11 +118,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
             <span role="status" className="sr-only">
               Part {subStepIndex + 1} of {subStepCount}
             </span>
-            <div
-              role="img"
-              aria-label={`Part ${subStepIndex + 1} of ${subStepCount}`}
-              className="flex items-center gap-1.5 px-2"
-            >
+            <div aria-hidden="true" className="flex items-center gap-1.5 px-2">
               {Array.from({ length: subStepCount }, (_, i) => (
                 <span
                   key={i}
@@ -130,7 +126,6 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
                     'size-1.5 rounded-full',
                     i <= subStepIndex ? 'bg-creator-highlight' : 'bg-creator-border',
                   )}
-                  aria-hidden
                 />
               ))}
             </div>
