@@ -36,7 +36,7 @@ export function PhoneStepHeader({
           onClick={onBack}
           disabled={!canGoBack}
           aria-label="Back"
-          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-creator-text disabled:opacity-40"
+          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-creator-text disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-creator-highlight"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -44,7 +44,7 @@ export function PhoneStepHeader({
           type="button"
           onClick={() => setSheetOpen(true)}
           aria-label={`Step ${stepNumber} of ${steps.length}: ${label} — open step list`}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-creator-highlight"
         >
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-medium uppercase tracking-wider text-creator-text-muted">

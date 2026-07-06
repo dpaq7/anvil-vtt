@@ -34,15 +34,16 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
 
   const isLastStep = currentIndex === steps.length - 1;
   const isLastSubStep = subStepIndex === subStepCount - 1;
+  const isFinalScreen = isLastStep && isLastSubStep;
   const currentStep = steps[currentIndex];
 
-  // For the last step, check if character is complete
-  const canProceed = isLastStep
+  // Only the final screen (last step, last sub-step) requires a complete character
+  const canProceed = isFinalScreen
     ? WizardLogic.isCharacterComplete(character)
     : true;
 
   const handleNext = () => {
-    if (isLastStep && isLastSubStep && onSave) {
+    if (isFinalScreen && onSave) {
       onSave();
     } else {
       goNext();
@@ -113,22 +114,27 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
           Back
         </Button>
         {isPhone && subStepCount > 1 ? (
-          <div
-            role="img"
-            aria-label={`Part ${subStepIndex + 1} of ${subStepCount}`}
-            className="flex items-center gap-1.5 px-2"
-          >
-            {Array.from({ length: subStepCount }, (_, i) => (
-              <span
-                key={i}
-                className={cn(
-                  'size-1.5 rounded-full',
-                  i <= subStepIndex ? 'bg-creator-highlight' : 'bg-creator-border',
-                )}
-                aria-hidden
-              />
-            ))}
-          </div>
+          <>
+            <span role="status" className="sr-only">
+              Part {subStepIndex + 1} of {subStepCount}
+            </span>
+            <div
+              role="img"
+              aria-label={`Part ${subStepIndex + 1} of ${subStepCount}`}
+              className="flex items-center gap-1.5 px-2"
+            >
+              {Array.from({ length: subStepCount }, (_, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    i <= subStepIndex ? 'bg-creator-highlight' : 'bg-creator-border',
+                  )}
+                  aria-hidden
+                />
+              ))}
+            </div>
+          </>
         ) : (
           <span className="text-sm text-creator-text-muted">
             Step {currentIndex + 1} of {steps.length}
@@ -136,13 +142,13 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
         )}
         <Button
           onClick={handleNext}
-          disabled={!canProceed || saving || (isLastStep && !onSave)}
+          disabled={!canProceed || saving || (isFinalScreen && !onSave)}
           className={cn(
             'bg-creator-highlight text-creator-bg hover:bg-creator-highlight/90',
             isPhone && 'h-12 flex-1 max-w-40',
           )}
         >
-          {saving ? 'Saving...' : isLastStep ? 'Create Hero' : isPhone ? 'Continue' : 'Next'}
+          {saving ? 'Saving...' : isFinalScreen ? 'Create Hero' : isPhone ? 'Continue' : 'Next'}
         </Button>
       </div>
     </div>

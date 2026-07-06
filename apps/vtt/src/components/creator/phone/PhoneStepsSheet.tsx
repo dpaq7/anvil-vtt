@@ -3,6 +3,12 @@ import { cn } from '@anvil/ui';
 import { Check } from 'lucide-react';
 import { BottomSheet } from './BottomSheet.js';
 
+const STATUS_COLORS: Record<StepStatus, string> = {
+  complete: 'text-creator-highlight',
+  incomplete: 'text-creator-highlight/80',
+  'not-begun': 'text-creator-text-muted',
+};
+
 interface PhoneStepsSheetProps {
   open: boolean;
   onClose: () => void;
@@ -25,7 +31,8 @@ export function PhoneStepsSheet({
       <ul className="flex flex-col">
         {steps.map((step) => {
           const isCurrent = step.id === currentStepId;
-          const complete = getStepStatus(step.id) === 'complete';
+          const status = getStepStatus(step.id);
+          const complete = status === 'complete';
 
           return (
             <li key={step.id}>
@@ -37,10 +44,9 @@ export function PhoneStepsSheet({
                 }}
                 aria-current={isCurrent ? 'step' : undefined}
                 className={cn(
-                  'flex min-h-11 w-full items-center gap-3 rounded-lg px-2 text-left text-sm',
-                  isCurrent
-                    ? 'font-semibold text-creator-highlight'
-                    : 'text-creator-text',
+                  'flex min-h-11 w-full items-center gap-3 rounded-lg px-2 text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-creator-highlight',
+                  STATUS_COLORS[status],
+                  isCurrent && 'font-semibold text-creator-highlight',
                 )}
               >
                 <span

@@ -48,7 +48,7 @@ rendering-only, gated by phone detection.
 |---|---|
 | `PhoneStepHeader` | Back arrow, "Step X of N — Label", slim progress bar; tap opens `PhoneStepsSheet` |
 | `PhoneStepsSheet` | Bottom sheet: all steps + status, tap to jump (`goToStep`) |
-| `DecisionScreen` | One decision: overline, question, helper (optional), single-column children, sticky footer (Continue / Skip) with sub-progress dots |
+| `DecisionScreen` | One decision: overline, question, helper (optional), single-column children, optional "Skip for now" button — no footer of its own |
 | `ChoiceRow` | Full-width row: name, one-line summary, selected state, info button |
 | `DetailPeekSheet` | Bottom sheet with full rules text + Select action |
 | `useIsPhoneViewport()` | Reactive hook wrapping the `device.ts` media query (matchMedia listener) |
@@ -60,9 +60,10 @@ rendering-only, gated by phone detection.
 - Each step component computes its decision screens from character state at render
   time (counts are dynamic, e.g. one per skill source).
 - On phone, the step renders its screens through a `PhoneDecisionFlow` wrapper that
-  owns the sticky footer: Continue advances `subStepIndex` until exhausted, then
-  calls `goNext()`; Back mirrors this. Desktop footer in `HeroCreatorLayout` is
-  hidden on phone (the flow owns it) and unchanged on desktop.
+  registers the screen count with the store and renders the active screen. The
+  single footer lives in `HeroCreatorLayout` on both form factors: its
+  Continue/Back call the sub-step-aware `goNext`/`goBack`, and on phone it shows
+  sub-progress dots when a step has multiple screens. Desktop footer unchanged.
 - `HeroCreatorLayout` branches its chrome only: `PhoneStepHeader` vs existing
   `BreadcrumbNav`; `CharacterSidebar` already hides below `md`.
 
