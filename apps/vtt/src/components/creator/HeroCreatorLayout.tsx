@@ -98,7 +98,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
       <div
         className={cn(
           'flex items-center justify-between border-t border-creator-border px-4 py-3 bg-creator-card sm:px-6',
-          isPhone && 'pb-[env(safe-area-inset-bottom)]',
+          isPhone && 'pb-[calc(env(safe-area-inset-bottom)+0.75rem)]',
         )}
       >
         <Button
@@ -123,7 +123,7 @@ export function HeroCreatorLayout({ children, onSave, saving = false }: Props) {
                 key={i}
                 className={cn(
                   'size-1.5 rounded-full',
-                  i <= subStepIndex ? 'bg-creator-highlight' : 'bg-creator-card',
+                  i <= subStepIndex ? 'bg-creator-highlight' : 'bg-creator-border',
                 )}
                 aria-hidden
               />
