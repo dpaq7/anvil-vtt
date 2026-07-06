@@ -11,3 +11,6 @@ export { DetailPanel } from './DetailPanel.js';
 // Step components
 export { LevelSelectStep } from './steps/LevelSelectStep.js';
 export { LevelUpStep } from './steps/LevelUpStep.js';
+
+// Phone primitives
+export * from './phone/index.js';
