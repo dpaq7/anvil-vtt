@@ -71,7 +71,7 @@ setSubStepIndex: (index: number) => void;
 registerSubStepCount: (count: number) => void;
 ```
 
-Initial values `0` / `1`. `goToStep`, `reset`, and `loadFromSaved` must all also set `subStepIndex: 0, subStepCount: 1` (re-entering a step always starts at its first screen; not persisted to IndexedDB by design). `registerSubStepCount` sets the count and clamps `subStepIndex` to `count - 1` (screens can disappear when selections change).
+Initial values `0` / `1`. `goToStep`, `reset`, and `loadFromSaved` must all also set `subStepIndex: 0, subStepCount: 1` (re-entering a step always starts at its first screen; not persisted to IndexedDB by design). `registerSubStepCount` sets the count and clamps `subStepIndex` to `count - 1` (screens can disappear when selections change). Important: `goToStep` must remain a no-op when `stepId` equals the current step id — otherwise re-clicking the active step (breadcrumb/steps sheet) resets `subStepCount` to 1 while `PhoneDecisionFlow`'s effect (deps: count) never re-registers, silently breaking sub-step navigation.
 
 **Step 2: Make navigation sub-step aware.** In `useWizardNavigation`, read `subStepIndex`/`subStepCount`/`setSubStepIndex` and change:
 

@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { Fragment, useEffect, type ReactNode } from 'react';
 import { useWizardStore } from '../../../stores/wizardStore.js';
 import { useIsPhoneViewport } from '../../../hooks/useIsPhoneViewport.js';
 
@@ -24,5 +24,8 @@ export function PhoneDecisionFlow({ screens, desktop }: PhoneDecisionFlowProps) 
 
   if (!isPhone) return <>{desktop}</>;
   const active = screens[Math.min(subStepIndex, screens.length - 1)];
-  return <>{active?.render()}</>;
+  if (!active) return null;
+  // Key by screen id so adjacent sub-steps never reconcile into each other
+  // (child state like peek sheets or inputs must not bleed between screens).
+  return <Fragment key={active.id}>{active.render()}</Fragment>;
 }

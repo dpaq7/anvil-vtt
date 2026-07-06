@@ -18,14 +18,17 @@ export function ChoiceRow({ title, summary, selected, disabled, onSelect, onInfo
         selected
           ? 'border-creator-highlight bg-creator-highlight/10'
           : 'border-creator-border bg-creator-card',
-        disabled && 'opacity-40',
       )}
     >
       <button
         type="button"
         onClick={onSelect}
         disabled={disabled}
-        className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+        aria-pressed={selected}
+        className={cn(
+          'flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left',
+          disabled && 'opacity-40',
+        )}
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-creator-text">{title}</span>

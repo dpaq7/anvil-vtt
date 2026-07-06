@@ -26,13 +26,15 @@ interface WizardStore {
 
 const initialSteps = WizardLogic.generateWizardSteps(1);
 
+/** Entering a step always starts at its first (and, until registered, only) screen. */
+const SUB_STEP_RESET = { subStepIndex: 0, subStepCount: 1 };
+
 export const useWizardStore = create<WizardStore>((set, get) => ({
   character: WizardLogic.createEmptyCharacter(),
   currentStepId: WizardLogic.WIZARD_STEP_IDS.LEVEL,
   sidebarVisible: false,
   steps: initialSteps,
-  subStepIndex: 0,
-  subStepCount: 1,
+  ...SUB_STEP_RESET,
 
   patch: (updates) =>
     set((state) => {
@@ -55,15 +57,26 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
     }),
 
   goToStep: (stepId) =>
-    set({ currentStepId: stepId, subStepIndex: 0, subStepCount: 1 }),
+    set((state) => {
+      // No-op on the current step: resetting subStepCount here would desync
+      // PhoneDecisionFlow, whose effect only re-registers when its count changes.
+      if (stepId === state.currentStepId) return state;
+      return { currentStepId: stepId, ...SUB_STEP_RESET };
+    }),
 
-  setSubStepIndex: (index) => set({ subStepIndex: index }),
+  setSubStepIndex: (index) =>
+    set((state) => ({
+      subStepIndex: Math.min(Math.max(index, 0), state.subStepCount - 1),
+    })),
 
   registerSubStepCount: (count) =>
-    set((state) => ({
-      subStepCount: count,
-      subStepIndex: Math.min(state.subStepIndex, count - 1),
-    })),
+    set((state) => {
+      const subStepCount = Math.max(count, 1);
+      return {
+        subStepCount,
+        subStepIndex: Math.min(state.subStepIndex, subStepCount - 1),
+      };
+    }),
 
   getStepStatus: (stepId) => {
     const { character } = get();
@@ -133,8 +146,7 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
       currentStepId: WizardLogic.WIZARD_STEP_IDS.LEVEL,
       sidebarVisible: false,
       steps: WizardLogic.generateWizardSteps(1),
-      subStepIndex: 0,
-      subStepCount: 1,
+      ...SUB_STEP_RESET,
     }),
 
   loadFromSaved: (character, stepId) =>
@@ -147,8 +159,7 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
         !!character.career ||
         !!character.kit,
       steps: WizardLogic.generateWizardSteps(character.level || 1),
-      subStepIndex: 0,
-      subStepCount: 1,
+      ...SUB_STEP_RESET,
     }),
 }));
 
