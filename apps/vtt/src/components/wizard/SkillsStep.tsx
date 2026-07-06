@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   GameData,
   WizardLogic,
@@ -14,6 +14,8 @@ import type {
 } from "@anvil/data";
 import { Card, CardContent, cn } from "@anvil/ui";
 import { Check, Lock } from "lucide-react";
+import { BottomSheet, PhoneDecisionFlow } from "../creator/phone/index.js";
+import { buildSkillsScreens } from "./phone/SkillsScreens.js";
 
 interface Props {
   character: CharacterInProgress;
@@ -77,6 +79,7 @@ function getAvailableSkillsForSource(
 }
 
 export function SkillsStep({ character, onChange }: Props) {
+  const [peekSkill, setPeekSkill] = useState<Skill | null>(null);
   const granted = WizardLogic.calculateGrantedItems(character);
   const grantedSkillNames = new Set(granted.skills?.map((s) => s.name) ?? []);
 
@@ -255,7 +258,17 @@ export function SkillsStep({ character, onChange }: Props) {
   ).length;
   const selectionsNeeded = selectableSources.length;
 
-  return (
+  // Phone: one decision screen per selectable source (granted skills need no decision).
+  const screens = buildSkillsScreens({
+    selectableSources,
+    allSources: skillSources,
+    grantedSkillNames,
+    getAvailableSkills: getAvailableSkillsForSource,
+    onSelectSkill: handleSelectSkill,
+    onPeekSkill: setPeekSkill,
+  });
+
+  const renderDesktop = () => (
     <div className="flex flex-col">
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Select Skills</h2>
@@ -379,5 +392,19 @@ export function SkillsStep({ character, onChange }: Props) {
         </p>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      <PhoneDecisionFlow screens={screens} desktop={renderDesktop()} />
+      {/* Renders null on desktop: nothing there ever sets peekSkill. */}
+      <BottomSheet
+        open={peekSkill !== null}
+        onClose={() => setPeekSkill(null)}
+        title={peekSkill?.name}
+      >
+        <p className="text-sm text-creator-text">{peekSkill?.description}</p>
+      </BottomSheet>
+    </>
   );
 }
