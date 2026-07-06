@@ -142,10 +142,14 @@ export function ComplicationStep({ character, onChange }: Props) {
   );
 
   // Phone: one optional screen — "Skip for now" advances to the next macro
-  // step without touching an existing selection (desktop's Clear button is
-  // the affordance that removes one).
+  // step without touching an existing selection; the remove row mirrors
+  // desktop's Clear Selection button.
   const screens = buildComplicationScreens({
     renderComplicationSelector,
+    searchValue: searchQuery,
+    onSearchChange: setSearchQuery,
+    hasSelection: !!character.complication,
+    onClear: handleClear,
     onSkip: goNext,
   });
 

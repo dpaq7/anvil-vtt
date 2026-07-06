@@ -413,7 +413,7 @@ Verbal simplification: the question is three words; provenance lives in the over
 - Builder extraction to `wizard/phone/<Step>Screens.tsx` is **unconditional**, not just when the step file exceeds 200 lines.
 - Builders are hook-free functions: props in, `DecisionScreenSpec[]` out. They always return ≥ 1 screen — guard/empty branches (nothing chosen yet, all granted, no slots) become single informational screens so the flow still registers a count.
 - Builders take a minimal structural interface plus the step's helpers/callbacks as closures — never import a step's internal types or functions (avoids circular imports).
-- Do **not** memoize screens or builder inputs — fresh closures on every render are what keep the screens staleness-proof against store updates.
+- Do **not** memoize screens or builder inputs — fresh closures on every render are what keep the screens staleness-proof against store updates. (This applies to *new* builder inputs; a step's pre-existing pure derivations with correct dependencies — e.g. a search-keyed filter `useMemo` — may keep their memos. Both patterns were reviewed and ruled correct.)
 - Peek state lives in the step component; the `BottomSheet` sits outside `PhoneDecisionFlow` (its backdrop covers the footer, so Continue can't fire while a sheet is open). Pass `desktop={renderDesktop}` — the prop is a lazy `() => ReactNode`, never an invoked element.
 - Use single quotes in `wizard/phone/` files (repo style for new files, matching `creator/phone/`).
 

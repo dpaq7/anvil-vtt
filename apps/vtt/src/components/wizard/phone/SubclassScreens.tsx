@@ -81,35 +81,45 @@ export function buildSubclassScreens({
 
   const subclassScreens: DecisionScreenSpec[] = Array.from(
     { length: selectCount },
-    (_, slotIndex) => ({
-      id: `subclass-slot-${slotIndex}`,
-      render: () => (
-        <DecisionScreen
-          overline={total > 1 ? `Subclass · ${slotIndex + 1} of ${total}` : 'Subclass'}
-          question={
-            selectCount > 1
-              ? `Choose your ${slotIndex === 0 ? 'first' : 'second'} ${lowerTypeName}`
-              : `Choose your ${lowerTypeName}`
-          }
-        >
-          {subclasses.map((sc) => {
-            const isSelected = selectedIds[slotIndex] === sc.id;
-            const isTakenElsewhere = !isSelected && selectedIds.includes(sc.id);
-            return (
-              <ChoiceRow
-                key={sc.id}
-                title={sc.name}
-                summary={sc.description}
-                selected={isSelected}
-                disabled={isTakenElsewhere}
-                onSelect={() => onSelectAt(slotIndex, sc.id)}
-                onInfo={() => onPeekSubclass(sc.id)}
-              />
-            );
-          })}
-        </DecisionScreen>
-      ),
-    }),
+    (_, slotIndex) => {
+      // A slot ahead of the picks made so far can't take a selection yet —
+      // writing to it would land in the earlier empty slot instead.
+      const blocked = slotIndex > selectedIds.length;
+      return {
+        id: `subclass-slot-${slotIndex}`,
+        render: () => (
+          <DecisionScreen
+            overline={total > 1 ? `Subclass · ${slotIndex + 1} of ${total}` : 'Subclass'}
+            question={
+              selectCount > 1
+                ? `Choose your ${slotIndex === 0 ? 'first' : 'second'} ${lowerTypeName}`
+                : `Choose your ${lowerTypeName}`
+            }
+            helper={
+              blocked
+                ? `Pick your first ${lowerTypeName} first — go Back to choose it.`
+                : undefined
+            }
+          >
+            {subclasses.map((sc) => {
+              const isSelected = selectedIds[slotIndex] === sc.id;
+              const isTakenElsewhere = !isSelected && selectedIds.includes(sc.id);
+              return (
+                <ChoiceRow
+                  key={sc.id}
+                  title={sc.name}
+                  summary={sc.description}
+                  selected={isSelected}
+                  disabled={isTakenElsewhere || blocked}
+                  onSelect={() => onSelectAt(slotIndex, sc.id)}
+                  onInfo={() => onPeekSubclass(sc.id)}
+                />
+              );
+            })}
+          </DecisionScreen>
+        ),
+      };
+    },
   );
 
   if (!companion) return subclassScreens;
