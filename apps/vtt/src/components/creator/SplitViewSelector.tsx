@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ScrollArea, cn } from '@anvil/ui';
+import { BottomSheet } from './phone/index.js';
+import { useIsPhoneViewport } from '../../hooks/useIsPhoneViewport.js';
 
 interface Props<T> {
   items: T[];
@@ -34,11 +36,46 @@ export function SplitViewSelector<T>({
   listClassName,
   detailClassName,
 }: Props<T>) {
+  const isPhone = useIsPhoneViewport();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Close the peek sheet once a selection lands (Select patches the
+  // character, which changes selectedId). Also closes on viewport flips.
+  useEffect(() => {
+    if (isPhone) setSheetOpen(false);
+  }, [selectedId, isPhone]);
+
   if (items.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center text-creator-text-muted">
         {emptyMessage}
       </div>
+    );
+  }
+
+  if (isPhone) {
+    return (
+      <>
+        <div className="flex flex-col gap-2 pb-2">
+          {items.map((item, index) => {
+            const itemId = (item as { id?: string }).id ?? String(index);
+            return (
+              <div
+                key={itemId}
+                onClick={() => {
+                  onPreview(item);
+                  setSheetOpen(true);
+                }}
+              >
+                {renderCard(item, itemId === selectedId, item === previewedItem)}
+              </div>
+            );
+          })}
+        </div>
+        <BottomSheet open={sheetOpen && previewedItem !== null} onClose={() => setSheetOpen(false)}>
+          {previewedItem && renderDetail(previewedItem)}
+        </BottomSheet>
+      </>
     );
   }
 
