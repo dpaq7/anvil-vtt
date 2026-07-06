@@ -4,7 +4,9 @@ import type { CharacterInProgress } from '@anvil/data';
 import type { Ancestry } from '@anvil/types';
 import { CardContent, cn } from '@anvil/ui';
 import { SplitViewSelector, SelectionCard, DetailPanel } from '../creator/index.js';
-import { TraitSelector } from './TraitSelector.js';
+import { PhoneDecisionFlow } from '../creator/phone/index.js';
+import { TraitSelector, getRemainingTraitPoints } from './TraitSelector.js';
+import { buildAncestryScreens } from './phone/AncestryScreens.js';
 import { Check } from 'lucide-react';
 
 interface Props {
@@ -136,25 +138,57 @@ export function AncestryStep({ character, onChange }: Props) {
     </DetailPanel>
   );
 
-  return (
+  const selectedAncestry = character.ancestry
+    ? (ancestries.find((a) => a.id === character.ancestry) ?? null)
+    : null;
+
+  // Shared by desktop's split view and the phone ancestry screen. The
+  // selector owns its phone peek sheet (detail + Select), so this step has
+  // no step-level BottomSheet.
+  const renderAncestrySelector = () => (
+    <SplitViewSelector
+      items={ancestries}
+      selectedId={character.ancestry}
+      onPreview={setPreviewedAncestry}
+      onSelect={handleSelect}
+      renderCard={renderCard}
+      renderDetail={renderDetail}
+      previewedItem={previewedAncestry}
+      emptyMessage="No ancestries available"
+      gridCols={2}
+    />
+  );
+
+  // Phone: ancestry pick first; the traits screen exists only while the
+  // chosen ancestry has purchasable traits (the condition desktop's detail
+  // panel uses to render TraitSelector inline).
+  const screens = buildAncestryScreens({
+    hasTraitChoices:
+      !!selectedAncestry?.purchasedTraits && selectedAncestry.purchasedTraits.length > 0,
+    remainingPoints: selectedAncestry
+      ? getRemainingTraitPoints(selectedAncestry, character.ancestryTraits)
+      : 0,
+    ancestryPoints: selectedAncestry?.ancestryPoints ?? 0,
+    renderAncestrySelector,
+    renderTraitSelector: () =>
+      selectedAncestry && (
+        <TraitSelector
+          ancestry={selectedAncestry}
+          selectedTraitIds={character.ancestryTraits}
+          onChange={(traitIds) => onChange({ ancestryTraits: traitIds })}
+        />
+      ),
+  });
+
+  const renderDesktop = () => (
     <div className="flex h-[70dvh] flex-col md:h-[500px]">
       <p className="mb-4 text-sm text-zinc-400">
         Your ancestry determines your size, speed, and unique traits. Click an ancestry to preview, then select it to continue.
       </p>
 
-      <div className="min-h-0 flex-1">
-        <SplitViewSelector
-          items={ancestries}
-          selectedId={character.ancestry}
-          onPreview={setPreviewedAncestry}
-          onSelect={handleSelect}
-          renderCard={renderCard}
-          renderDetail={renderDetail}
-          previewedItem={previewedAncestry}
-          emptyMessage="No ancestries available"
-          gridCols={2}
-        />
-      </div>
+      <div className="min-h-0 flex-1">{renderAncestrySelector()}</div>
     </div>
   );
+
+  return <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />;
 }
