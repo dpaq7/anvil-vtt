@@ -6,7 +6,10 @@
  * shell (`/app/mobile`). Tablets (≥768px, even with coarse pointers) and
  * desktops keep the full canvas experience.
  */
+export const PHONE_COMPANION_MEDIA_QUERY =
+  '(max-width: 767px) and (pointer: coarse)';
+
 export function isPhoneCompanionViewport(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.matchMedia('(max-width: 767px) and (pointer: coarse)').matches;
+  return window.matchMedia(PHONE_COMPANION_MEDIA_QUERY).matches;
 }
