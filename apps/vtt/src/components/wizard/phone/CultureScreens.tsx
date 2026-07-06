@@ -74,9 +74,9 @@ export function buildCultureScreens({
       >
         {presetGroups.map((group) => (
           <Fragment key={group.label}>
-            <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-creator-text-muted">
+            <h3 className="pt-1 text-xs font-semibold uppercase tracking-wider text-creator-text-muted">
               {group.label}
-            </p>
+            </h3>
             {group.presets.map((preset) => (
               <ChoiceRow
                 key={preset.id}
