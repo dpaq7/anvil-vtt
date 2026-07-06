@@ -8,10 +8,14 @@ interface WizardStore {
   currentStepId: string;
   sidebarVisible: boolean;
   steps: WizardStepDefinition[];
+  subStepIndex: number;
+  subStepCount: number;
 
   // Actions
   patch: (updates: Partial<CharacterInProgress>) => void;
   goToStep: (stepId: string) => void;
+  setSubStepIndex: (index: number) => void;
+  registerSubStepCount: (count: number) => void;
   getStepStatus: (stepId: string) => StepStatus;
   setLevel: (level: number) => void;
   setLevelUpChoice: (level: number, choice: LevelUpChoice) => void;
@@ -27,6 +31,8 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
   currentStepId: WizardLogic.WIZARD_STEP_IDS.LEVEL,
   sidebarVisible: false,
   steps: initialSteps,
+  subStepIndex: 0,
+  subStepCount: 1,
 
   patch: (updates) =>
     set((state) => {
@@ -48,7 +54,16 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
       return { character: newCharacter, sidebarVisible };
     }),
 
-  goToStep: (stepId) => set({ currentStepId: stepId }),
+  goToStep: (stepId) =>
+    set({ currentStepId: stepId, subStepIndex: 0, subStepCount: 1 }),
+
+  setSubStepIndex: (index) => set({ subStepIndex: index }),
+
+  registerSubStepCount: (count) =>
+    set((state) => ({
+      subStepCount: count,
+      subStepIndex: Math.min(state.subStepIndex, count - 1),
+    })),
 
   getStepStatus: (stepId) => {
     const { character } = get();
@@ -118,6 +133,8 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
       currentStepId: WizardLogic.WIZARD_STEP_IDS.LEVEL,
       sidebarVisible: false,
       steps: WizardLogic.generateWizardSteps(1),
+      subStepIndex: 0,
+      subStepCount: 1,
     }),
 
   loadFromSaved: (character, stepId) =>
@@ -130,6 +147,8 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
         !!character.career ||
         !!character.kit,
       steps: WizardLogic.generateWizardSteps(character.level || 1),
+      subStepIndex: 0,
+      subStepCount: 1,
     }),
 }));
 
@@ -165,13 +184,20 @@ export function useWizardNavigation() {
   const steps = useWizardStore((state) => state.steps);
   const currentStepId = useWizardStore((state) => state.currentStepId);
   const goToStep = useWizardStore((state) => state.goToStep);
+  const subStepIndex = useWizardStore((state) => state.subStepIndex);
+  const subStepCount = useWizardStore((state) => state.subStepCount);
+  const setSubStepIndex = useWizardStore((state) => state.setSubStepIndex);
 
   const currentIndex = steps.findIndex((s) => s.id === currentStepId);
-  const canGoBack = currentIndex > 0;
+  const canGoBack = currentIndex > 0 || subStepIndex > 0;
   const canGoNext = currentIndex < steps.length - 1;
 
   const goBack = () => {
-    if (canGoBack && currentIndex > 0) {
+    if (subStepIndex > 0) {
+      setSubStepIndex(subStepIndex - 1);
+      return;
+    }
+    if (currentIndex > 0) {
       const prevStep = steps[currentIndex - 1];
       if (prevStep) {
         goToStep(prevStep.id);
@@ -180,6 +206,10 @@ export function useWizardNavigation() {
   };
 
   const goNext = () => {
+    if (subStepIndex < subStepCount - 1) {
+      setSubStepIndex(subStepIndex + 1);
+      return;
+    }
     if (canGoNext && currentIndex < steps.length - 1) {
       const nextStep = steps[currentIndex + 1];
       if (nextStep) {
@@ -197,5 +227,7 @@ export function useWizardNavigation() {
     goBack,
     goNext,
     goToStep,
+    subStepIndex,
+    subStepCount,
   };
 }
