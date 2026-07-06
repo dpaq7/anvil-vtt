@@ -9,7 +9,8 @@ export interface DecisionScreenSpec {
 
 interface PhoneDecisionFlowProps {
   screens: DecisionScreenSpec[];
-  desktop: ReactNode; // today's rendering, untouched
+  /** Renders today's desktop JSX, untouched. Lazy so phone renders never pay for it. */
+  desktop: () => ReactNode;
 }
 
 export function PhoneDecisionFlow({ screens, desktop }: PhoneDecisionFlowProps) {
@@ -22,7 +23,7 @@ export function PhoneDecisionFlow({ screens, desktop }: PhoneDecisionFlowProps) 
     registerSubStepCount(count);
   }, [count, registerSubStepCount]);
 
-  if (!isPhone) return <>{desktop}</>;
+  if (!isPhone) return <>{desktop()}</>;
   const active = screens[Math.min(subStepIndex, screens.length - 1)];
   if (!active) return null;
   // Key by screen id so adjacent sub-steps never reconcile into each other

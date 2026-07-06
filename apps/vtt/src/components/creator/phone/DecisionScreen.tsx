@@ -5,7 +5,7 @@ interface DecisionScreenProps {
   question: string;    // "Pick a skill from your upbringing"
   helper?: string;     // one line max — no rules preamble
   onSkip?: () => void; // renders "Skip for now" for optional decisions
-  children: ReactNode;
+  children?: ReactNode; // omit for purely informational screens
 }
 
 export function DecisionScreen({ overline, question, helper, onSkip, children }: DecisionScreenProps) {
@@ -20,7 +20,7 @@ export function DecisionScreen({ overline, question, helper, onSkip, children }:
         <h2 className="mt-1 text-lg font-semibold text-creator-text">{question}</h2>
         {helper && <p className="mt-1 text-sm text-creator-text-muted">{helper}</p>}
       </div>
-      <div className="flex flex-col gap-2">{children}</div>
+      {children != null && <div className="flex flex-col gap-2">{children}</div>}
       {onSkip && (
         <button
           type="button"

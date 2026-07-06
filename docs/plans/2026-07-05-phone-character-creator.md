@@ -397,7 +397,7 @@ const screens: DecisionScreenSpec[] = selectableSources.map((source, i) => ({
 
 return (
   <>
-    <PhoneDecisionFlow screens={screens} desktop={renderDesktop()} />
+    <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />
     <BottomSheet open={peek !== null} onClose={() => setPeek(null)} title={peek?.name}>
       <p className="text-sm text-creator-text">{peek?.description}</p>
     </BottomSheet>
@@ -408,6 +408,14 @@ return (
 Verbal simplification: the question is three words; provenance lives in the overline; the desktop-only intro paragraph ("Your skills come from your culture, career, and class…") does not render on phone. If `screens.length === 0` pass a single informational screen ("Select your culture and career first").
 
 **Step 2:** If the file exceeds the 200-line component rule, extract the phone screens into `apps/vtt/src/components/wizard/phone/SkillsScreens.tsx` (create `wizard/phone/` on first need; same pattern available to Tasks 7–8).
+
+**Conversion contract (Tasks 7–16 copy this — established by the Task 6 exemplar):**
+- Builder extraction to `wizard/phone/<Step>Screens.tsx` is **unconditional**, not just when the step file exceeds 200 lines.
+- Builders are hook-free functions: props in, `DecisionScreenSpec[]` out. They always return ≥ 1 screen — guard/empty branches (nothing chosen yet, all granted, no slots) become single informational screens so the flow still registers a count.
+- Builders take a minimal structural interface plus the step's helpers/callbacks as closures — never import a step's internal types or functions (avoids circular imports).
+- Do **not** memoize screens or builder inputs — fresh closures on every render are what keep the screens staleness-proof against store updates.
+- Peek state lives in the step component; the `BottomSheet` sits outside `PhoneDecisionFlow` (its backdrop covers the footer, so Continue can't fire while a sheet is open). Pass `desktop={renderDesktop}` — the prop is a lazy `() => ReactNode`, never an invoked element.
+- Use single quotes in `wizard/phone/` files (repo style for new files, matching `creator/phone/`).
 
 **Step 3: Verify** — lint + build; emulator: Skills is now one source per screen with footer dots; desktop unchanged.
 

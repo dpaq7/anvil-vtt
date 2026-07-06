@@ -49,9 +49,7 @@ export function buildSkillsScreens({
                 ? 'All of your skills are granted automatically. Continue to move on.'
                 : 'Select your culture and career first to see available skills.'
             }
-          >
-            {null}
-          </DecisionScreen>
+          />
         ),
       },
     ];

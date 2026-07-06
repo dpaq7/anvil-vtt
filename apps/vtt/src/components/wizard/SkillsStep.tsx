@@ -396,7 +396,7 @@ export function SkillsStep({ character, onChange }: Props) {
 
   return (
     <>
-      <PhoneDecisionFlow screens={screens} desktop={renderDesktop()} />
+      <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />
       {/* Renders null on desktop: nothing there ever sets peekSkill. */}
       <BottomSheet
         open={peekSkill !== null}
