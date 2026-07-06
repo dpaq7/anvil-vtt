@@ -4,6 +4,9 @@ import type { CharacterInProgress } from '@anvil/data';
 import type { Complication } from '@anvil/types';
 import { CardContent, cn, Input } from '@anvil/ui';
 import { SplitViewSelector, SelectionCard, DetailPanel } from '../creator/index.js';
+import { PhoneDecisionFlow } from '../creator/phone/index.js';
+import { useWizardNavigation } from '../../stores/wizardStore.js';
+import { buildComplicationScreens } from './phone/ComplicationScreens.js';
 import { Check, X, Search } from 'lucide-react';
 
 interface Props {
@@ -21,6 +24,7 @@ export function ComplicationStep({ character, onChange }: Props) {
       return null;
     }
   );
+  const { goNext } = useWizardNavigation();
 
   // Filter complications based on search
   const filteredComplications = useMemo(() => {
@@ -120,7 +124,32 @@ export function ComplicationStep({ character, onChange }: Props) {
     </DetailPanel>
   );
 
-  return (
+  // Shared by desktop's split view and the phone screen. The selector owns
+  // its phone peek sheet (detail + Select), so this step has no step-level
+  // BottomSheet.
+  const renderComplicationSelector = () => (
+    <SplitViewSelector
+      items={filteredComplications}
+      selectedId={character.complication?.id ?? null}
+      onPreview={setPreviewedComplication}
+      onSelect={handleSelect}
+      renderCard={renderCard}
+      renderDetail={renderDetail}
+      previewedItem={previewedComplication}
+      emptyMessage={searchQuery ? 'No complications match your search' : 'No complications available'}
+      gridCols={1}
+    />
+  );
+
+  // Phone: one optional screen — "Skip for now" advances to the next macro
+  // step without touching an existing selection (desktop's Clear button is
+  // the affordance that removes one).
+  const screens = buildComplicationScreens({
+    renderComplicationSelector,
+    onSkip: goNext,
+  });
+
+  const renderDesktop = () => (
     <div className="flex h-[70dvh] flex-col md:h-[500px]">
       <div className="flex-shrink-0">
         <h2 className="mb-1 text-lg font-semibold">Complication</h2>
@@ -151,19 +180,9 @@ export function ComplicationStep({ character, onChange }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
-        <SplitViewSelector
-          items={filteredComplications}
-          selectedId={character.complication?.id ?? null}
-          onPreview={setPreviewedComplication}
-          onSelect={handleSelect}
-          renderCard={renderCard}
-          renderDetail={renderDetail}
-          previewedItem={previewedComplication}
-          emptyMessage={searchQuery ? 'No complications match your search' : 'No complications available'}
-          gridCols={1}
-        />
-      </div>
+      <div className="flex-1 min-h-0">{renderComplicationSelector()}</div>
     </div>
   );
+
+  return <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />;
 }
