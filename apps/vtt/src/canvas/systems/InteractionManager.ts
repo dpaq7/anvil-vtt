@@ -17,7 +17,13 @@ export interface TargetingModeContext {
   /** Squares within reach of the caster, tinted as a range ring. */
   rangeSquares: GridCell[];
   /** Candidate target footprints (with ids) for hit-testing a click. */
-  targets: Array<{ id: string; footprint: FootprintRect; inRange: boolean }>;
+  targets: Array<{
+    id: string;
+    footprint: FootprintRect;
+    inRange: boolean;
+    flanking?: boolean;
+    highGround?: boolean;
+  }>;
   /** For area abilities: affected squares for a cursor cell (redrawn on move). */
   computeAoE?: (cursor: GridCell) => GridCell[];
 }
@@ -189,7 +195,14 @@ export class InteractionManager {
     const layer = this.targetingLayer;
     if (!layer) return;
     layer.showRangeSquares(ctx.rangeSquares);
-    layer.highlightTargets(ctx.targets.map((t) => t.footprint));
+    layer.highlightTargets(
+      ctx.targets.map((t) => ({
+        footprint: t.footprint,
+        inRange: t.inRange,
+        flanking: t.flanking,
+        highGround: t.highGround,
+      })),
+    );
     if (ctx.computeAoE) {
       // Seed the template at the source until the pointer moves.
       const source = ctx.targets.find((t) => t.id === ctx.sourceId);

@@ -319,6 +319,8 @@ export interface BattleTargetingContext {
   parsedDistance: AbilityLogic.ParsedDistance;
   rangeSquares: GeometryLogic.GridPoint[];
   inRangeById: Record<string, boolean>;
+  flankingByTargetId: Record<string, boolean>;
+  highGroundByTargetId: Record<string, boolean>;
 }
 
 const AOE_TYPES: ReadonlySet<AbilityLogic.DistanceType> = new Set([
@@ -473,16 +475,17 @@ export function BattleStage({
     const source = entityMap.get(targetingContext.sourceId);
     if (!source) return null;
 
+    // Enemies only, matching the phone target picker. Source's own side is not
+    // highlighted (avoids a green "valid target" ring on allies).
+    const enemyType = source.type === 'hero' ? ['monster', 'npc'] : ['hero'];
     const targets = entities
-      .filter(
-        (entity) =>
-          entity.id !== source.id &&
-          (entity.type === 'hero' || entity.type === 'monster' || entity.type === 'npc'),
-      )
+      .filter((entity) => entity.id !== source.id && enemyType.includes(entity.type))
       .map((entity) => ({
         id: entity.id,
         footprint: { x: entity.x, y: entity.y, size: entitySizeOf(entity) },
         inRange: targetingContext.inRangeById[entity.id] ?? false,
+        flanking: targetingContext.flankingByTargetId[entity.id] ?? false,
+        highGround: targetingContext.highGroundByTargetId[entity.id] ?? false,
       }));
 
     const parsed = targetingContext.parsedDistance;
@@ -923,6 +926,16 @@ export function BattleStage({
               Click a target for{' '}
               <span className="font-semibold text-amber-300">
                 {targetingContext.abilityName}
+              </span>
+            </span>
+            <span className="flex items-center gap-2 border-l border-zinc-700 pl-3 text-[10px] text-zinc-400">
+              <span className="flex items-center gap-1">
+                <span className="size-2 rounded-full bg-emerald-400" />
+                flank
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="size-2 rounded-full bg-sky-400" />
+                high ground
               </span>
             </span>
             <button

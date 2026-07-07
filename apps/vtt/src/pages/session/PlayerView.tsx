@@ -244,6 +244,8 @@ export function PlayerView({
             parsedDistance: targeting.parsedDistance,
             rangeSquares: targeting.rangeSquares,
             inRangeById: targeting.inRangeById,
+            flankingByTargetId: targeting.flankingByTargetId,
+            highGroundByTargetId: targeting.highGroundByTargetId,
           }
         : null,
     [pendingAbility, heroEntity, targeting],

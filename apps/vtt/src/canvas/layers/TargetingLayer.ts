@@ -17,6 +17,18 @@ const AMBER = 0xfbbf24;
 const RED = 0xef4444;
 const EMERALD = 0x34d399;
 const SKY = 0x38bdf8;
+const SLATE = 0x94a3b8;
+
+/** A candidate target's footprint plus its advisory targeting state. */
+export interface TargetHighlight {
+  footprint: FootprintRect;
+  /** In reach of the caster. Out-of-range targets stay selectable (advisory). */
+  inRange: boolean;
+  /** Position-based flanking edge against this target. */
+  flanking?: boolean;
+  /** Attacker has high ground over this target. */
+  highGround?: boolean;
+}
 
 /**
  * Overlay layer for battle targeting affordances, drawn in world space (a grid
@@ -62,8 +74,8 @@ export class TargetingLayer extends Container {
     for (const cell of cells) {
       this.rangeG.rect(cell.x * cs, cell.y * cs, cs, cs);
     }
-    this.rangeG.fill({ color: SKY, alpha: 0.08 });
-    this.rangeG.stroke({ width: 1, color: SKY, alpha: 0.25 });
+    this.rangeG.fill({ color: SKY, alpha: 0.13 });
+    this.rangeG.stroke({ width: 1, color: SKY, alpha: 0.5 });
   }
 
   /** Tint the squares an AoE template covers (green when placeable, amber when not). */
@@ -78,14 +90,46 @@ export class TargetingLayer extends Container {
     this.aoeG.stroke({ width: 1.5, color, alpha: 0.7 });
   }
 
-  /** Outline the footprints of valid targets. */
-  highlightTargets(footprints: FootprintRect[]): void {
+  /**
+   * Outline candidate target footprints. In-range targets get a solid emerald
+   * outline; out-of-range targets a fainter slate outline (still selectable —
+   * advisory). Flanking and high-ground advantages are marked with corner pips
+   * (emerald = flanking, sky = high ground), sized relative to the footprint so
+   * they stay legible at any zoom.
+   */
+  highlightTargets(targets: TargetHighlight[]): void {
     this.highlightG.clear();
     const cs = this.cellSize;
-    for (const fp of footprints) {
+
+    // Outlines first, grouped by range state so each stroke color batches.
+    for (const t of targets.filter((t) => t.inRange)) {
+      const fp = t.footprint;
       this.highlightG.rect(fp.x * cs, fp.y * cs, fp.size * cs, fp.size * cs);
     }
     this.highlightG.stroke({ width: 2.5, color: EMERALD, alpha: 0.9 });
+
+    for (const t of targets.filter((t) => !t.inRange)) {
+      const fp = t.footprint;
+      this.highlightG.rect(fp.x * cs, fp.y * cs, fp.size * cs, fp.size * cs);
+    }
+    this.highlightG.stroke({ width: 1.5, color: SLATE, alpha: 0.55 });
+
+    // Advantage pips, drawn on top. Batch fills by color: flanking (emerald,
+    // top-left) then high ground (sky, top-right).
+    const pipR = Math.max(3, cs * 0.11);
+    const inset = pipR + 2;
+    for (const t of targets) {
+      if (!t.flanking) continue;
+      const fp = t.footprint;
+      this.highlightG.circle(fp.x * cs + inset, fp.y * cs + inset, pipR);
+    }
+    this.highlightG.fill({ color: EMERALD, alpha: 0.95 });
+    for (const t of targets) {
+      if (!t.highGround) continue;
+      const fp = t.footprint;
+      this.highlightG.circle((fp.x + fp.size) * cs - inset, fp.y * cs + inset, pipR);
+    }
+    this.highlightG.fill({ color: SKY, alpha: 0.95 });
   }
 
   clearTargeting(): void {
