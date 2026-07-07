@@ -26,7 +26,7 @@ export function ChoiceRow({ title, summary, selected, disabled, onSelect, onInfo
         disabled={disabled}
         aria-pressed={selected}
         className={cn(
-          'flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left',
+          'flex min-w-0 flex-1 self-stretch items-center gap-3 px-3 py-2.5 text-left',
           disabled && 'opacity-40',
         )}
       >
