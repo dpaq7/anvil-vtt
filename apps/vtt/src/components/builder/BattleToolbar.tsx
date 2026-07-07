@@ -7,6 +7,7 @@ export type BattleTool =
   | 'fog'
   | 'terrain'
   | 'eraser'
+  | 'measure'
   | 'pan';
 export type FogBrushMode = 'draw' | 'reveal';
 
@@ -36,6 +37,7 @@ const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
   { id: 'fog', label: 'Fog', shortcut: 'F' },
   { id: 'terrain', label: 'Terrain', shortcut: 'T' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
+  { id: 'measure', label: 'Measure', shortcut: 'M' },
 ];
 
 const PRESET_COLORS = [
