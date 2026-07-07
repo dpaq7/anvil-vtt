@@ -114,6 +114,8 @@ export type MovementMode = 'advance' | 'disengage';
 export interface ThreatSource {
   /** Entity ID of the threatening creature */
   entityId: string;
+  /** Display name of the threatening creature (for OA prompts) */
+  name?: string;
   /** Grid position X (top-left for multi-square) */
   gridX: number;
   /** Grid position Y (top-left for multi-square) */

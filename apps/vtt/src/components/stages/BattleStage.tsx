@@ -80,6 +80,26 @@ function isInitiativePending(combat: CombatState): boolean {
   );
 }
 
+/**
+ * Expand a straight drag from `a` to `b` into unit grid steps (Chebyshev line),
+ * so the server can cost each square and detect opportunity attacks along the way.
+ */
+function expandGridPath(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): Array<{ x: number; y: number }> {
+  const path = [{ x: a.x, y: a.y }];
+  let cx = a.x;
+  let cy = a.y;
+  let guard = 0;
+  while ((cx !== b.x || cy !== b.y) && guard++ < 500) {
+    cx += Math.sign(b.x - cx);
+    cy += Math.sign(b.y - cy);
+    path.push({ x: cx, y: cy });
+  }
+  return path;
+}
+
 function loadPanelPlacement(
   storageKey: string,
   fallback: StagePanelPlacement,
@@ -450,15 +470,31 @@ export function BattleStage({
 
   const handleMoveEntity = useCallback(
     (entityId: string, x: number, y: number) => {
-      if (!entityMap.has(entityId)) {
+      const entity = entityMap.get(entityId);
+      if (!entity) {
         onSelectEntity(null);
         if (onSelectEntities) onSelectEntities([]);
         else setLocalSelectedEntityIds([]);
         return;
       }
-      send({ type: 'move_token', entityId, x, y });
+      // During this token's combat turn, commit the move with its path so the
+      // server records movement cost and opportunity attacks (advisory). Outside
+      // combat (builder placement, off-turn repositioning) use a plain move.
+      const isActiveCombatant = combat?.activeEntityId === entityId;
+      const fromX = typeof entity.x === 'number' ? entity.x : null;
+      const fromY = typeof entity.y === 'number' ? entity.y : null;
+      if (isActiveCombatant && fromX !== null && fromY !== null && (fromX !== x || fromY !== y)) {
+        send({
+          type: 'commit_move',
+          entityId,
+          path: expandGridPath({ x: fromX, y: fromY }, { x, y }),
+          mode: 'advance',
+        });
+      } else {
+        send({ type: 'move_token', entityId, x, y });
+      }
     },
-    [entityMap, onSelectEntities, onSelectEntity, send],
+    [entityMap, combat, onSelectEntities, onSelectEntity, send],
   );
 
   const handleSelectEntity = useCallback(

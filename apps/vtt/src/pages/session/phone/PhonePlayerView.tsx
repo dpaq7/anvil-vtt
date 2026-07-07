@@ -5,6 +5,7 @@ import { AbilityPanel } from '../../../components/session/AbilityPanel.js';
 import { TargetSelector } from '../../../components/session/TargetSelector.js';
 import { TurnActionBar } from '../../../components/session/TurnActionBar.js';
 import { PlayerHeroSheetPanel } from '../../../components/session/PlayerHeroLiveSheet.js';
+import { useTargetingResolution } from '../../../hooks/useTargetingResolution.js';
 import type { CharacterInventoryItem } from '../../../lib/inventory.js';
 import type {
   ClientMessage,
@@ -60,6 +61,12 @@ export function PhonePlayerView({
     () => state.entities.filter((entity) => entity.type === 'monster' || entity.type === 'npc'),
     [state.entities],
   );
+
+  const targeting = useTargetingResolution({
+    sourceEntity: hero ?? null,
+    entities: state.entities,
+    distance: pendingAbility?.distance,
+  });
 
   const usedActionTypes = useMemo(() => {
     if (!turnActions) return [];
@@ -224,6 +231,9 @@ export function PhonePlayerView({
                 onConfirm={handleConfirmTarget}
                 onCancel={handleCancelTarget}
                 abilityName={pendingAbility.name}
+                inRangeById={targeting.inRangeById}
+                flankingByTargetId={targeting.flankingByTargetId}
+                highGroundByTargetId={targeting.highGroundByTargetId}
               />
             )}
             {heroAbilities.length > 0 ? (

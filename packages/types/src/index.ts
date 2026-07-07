@@ -11,6 +11,11 @@
 // This is the canonical source for all character-related types
 export * from './hero/index.js';
 
+// Core value helpers (size math for grid/footprint calculations).
+// Note: the `Size` type itself is already exported via ./hero (identical union),
+// so only the value helpers are re-exported here to avoid a duplicate export.
+export { sizeToSquares, sizeToEdgeLength, compareSize } from './core/size.js';
+
 // VTT types (Anvil-specific)
 export * from './entity.js';
 export * from './scene.js';

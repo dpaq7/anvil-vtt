@@ -295,6 +295,10 @@ export function applyServerMessageToRuntime(
     case 'draw_steel_roll_resolved':
     case 'token_action_resolved':
     case 'phone_anchor_status':
+    // Advisory movement messages — the position change arrives via entity_moved;
+    // these carry cost/OA/slam info consumed by UI listeners, not the store.
+    case 'move_committed':
+    case 'forced_movement_resolved':
     case 'error':
     case 'pong':
       return current;

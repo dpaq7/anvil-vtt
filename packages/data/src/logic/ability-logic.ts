@@ -34,7 +34,18 @@ export interface ParsedDistance {
   baseValue: number;
   reach?: number;
   qualifier?: string;
-  width?: number; // For line/wall (e.g., "Line 5x1")
+  width?: number; // For line/wall (e.g., "10 x 1 line")
+  /**
+   * Origin range for area templates: how far from the caster the template can be
+   * placed (the "within N" clause of "2 cube within 10", "10 x 1 line within 5").
+   * Distinct from baseValue, which is the template's own size/length.
+   */
+  origin?: number;
+  /**
+   * Alternate distances when an ability lists several (e.g. "Melee 1 or Ranged 5").
+   * The primary parse is returned at the top level; the remaining options here.
+   */
+  alternates?: ParsedDistance[];
 }
 
 /**
@@ -194,17 +205,46 @@ const CHARACTERISTIC_SHORTHAND: Record<CharacteristicName, CharacteristicShortha
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a distance string like "Melee 1", "Ranged 5", "5 burst", "Line 5x1".
+ * Parse a distance string into a {@link ParsedDistance}.
+ *
+ * Handles the real compendium grammar, including compound forms:
+ * - "Melee 1", "Melee 1 or Ranged 5" (alternates)
+ * - "Ranged 5", "Self"
+ * - "5 burst"
+ * - "2 cube within 10", "2 cube of unoccupied space within 10"
+ * - "10 x 1 line within 5"
+ * - "5 wall within 10"
+ * - "3 aura"
+ * - "Within 10" (standalone ally targeting)
  *
  * @param distanceString - The distance string to parse
- * @returns Parsed distance object
+ * @returns Parsed distance object (first option at top level, rest in `alternates`)
  */
 export function parseDistance(distanceString: string): ParsedDistance {
   if (!distanceString || typeof distanceString !== 'string') {
     return { type: 'special', baseValue: 0 };
   }
 
-  const normalized = distanceString.trim().toLowerCase();
+  // Compound "A or B" / "A, or B" — parse each option, keep the first as primary.
+  const options = distanceString.split(/\s*,?\s+or\s+/i).map((s) => s.trim());
+  if (options.length > 1) {
+    const parsed = options.map((opt) => parseSingleDistance(opt));
+    return { ...parsed[0]!, alternates: parsed.slice(1) };
+  }
+
+  return parseSingleDistance(distanceString);
+}
+
+/**
+ * Parse a single (non-compound) distance clause. Callers should use
+ * {@link parseDistance}, which also handles "A or B" alternates.
+ */
+function parseSingleDistance(distanceString: string): ParsedDistance {
+  const raw = distanceString.trim();
+  if (!raw) {
+    return { type: 'special', baseValue: 0 };
+  }
+  const normalized = raw.toLowerCase();
 
   // Self
   if (normalized === 'self' || normalized.startsWith('self')) {
@@ -230,44 +270,60 @@ export function parseDistance(distanceString: string): ParsedDistance {
     return { type: 'ranged', baseValue: parseInt(rangedMatch[1]!, 10) };
   }
 
-  // N burst
-  const burstMatch = normalized.match(/^(\d+)\s*burst$/);
-  if (burstMatch) {
-    return { type: 'burst', baseValue: parseInt(burstMatch[1]!, 10) };
+  // "L x W line [within N]" (e.g. "10 x 1 line within 5")
+  const lineMatch = normalized.match(/^(\d+)\s*x\s*(\d+)\s*line(?:\s+within\s*(\d+))?$/);
+  if (lineMatch) {
+    return {
+      type: 'line',
+      baseValue: parseInt(lineMatch[1]!, 10),
+      width: parseInt(lineMatch[2]!, 10),
+      origin: lineMatch[3] ? parseInt(lineMatch[3], 10) : undefined,
+    };
   }
 
-  // N cube (distinct from burst)
-  const cubeMatch = normalized.match(/^(\d+)\s*cube$/);
+  // "L wall [within N]" or "L x W wall [within N]"
+  const wallMatch = normalized.match(/^(\d+)\s*(?:x\s*(\d+)\s*)?wall(?:\s+within\s*(\d+))?$/);
+  if (wallMatch) {
+    return {
+      type: 'wall',
+      baseValue: parseInt(wallMatch[1]!, 10),
+      width: wallMatch[2] ? parseInt(wallMatch[2], 10) : 1,
+      origin: wallMatch[3] ? parseInt(wallMatch[3], 10) : undefined,
+    };
+  }
+
+  // "N cube [of ...] [within N]" (e.g. "2 cube within 10", "2 cube of unoccupied space within 10")
+  const cubeMatch = normalized.match(/^(\d+)\s*cube(\s+of\s+[^]*?)?(?:\s+within\s*(\d+))?$/);
   if (cubeMatch) {
-    return { type: 'cube', baseValue: parseInt(cubeMatch[1]!, 10) };
+    const qualifier = cubeMatch[2]?.trim();
+    return {
+      type: 'cube',
+      baseValue: parseInt(cubeMatch[1]!, 10),
+      origin: cubeMatch[3] ? parseInt(cubeMatch[3], 10) : undefined,
+      qualifier: qualifier || undefined,
+    };
   }
 
-  // Aura N / N aura
-  const auraMatch = normalized.match(/^(?:aura\s*)?(\d+)\s*(?:aura)?$/);
-  if (auraMatch && normalized.includes('aura')) {
-    return { type: 'aura', baseValue: parseInt(auraMatch[1]!, 10) };
+  // "N burst [within N]" (burst usually emanates from the caster; within is rare but tolerated)
+  const burstMatch = normalized.match(/^(\d+)\s*burst(?:\s+within\s*(\d+))?$/);
+  if (burstMatch) {
+    return {
+      type: 'burst',
+      baseValue: parseInt(burstMatch[1]!, 10),
+      origin: burstMatch[2] ? parseInt(burstMatch[2], 10) : undefined,
+    };
   }
 
-  // Within N
+  // "N aura" / "aura N"
+  const auraMatch = normalized.match(/^(?:aura\s*(\d+)|(\d+)\s*aura)$/);
+  if (auraMatch) {
+    return { type: 'aura', baseValue: parseInt((auraMatch[1] ?? auraMatch[2])!, 10) };
+  }
+
+  // Standalone "Within N" (ally targeting, no area shape)
   const withinMatch = normalized.match(/^within\s*(\d+)$/);
   if (withinMatch) {
     return { type: 'within', baseValue: parseInt(withinMatch[1]!, 10) };
-  }
-
-  // Line NxM (e.g., "Line 5x1")
-  const lineMatch = normalized.match(/^line\s*(\d+)(?:x(\d+))?$/);
-  if (lineMatch) {
-    const length = parseInt(lineMatch[1]!, 10);
-    const width = lineMatch[2] ? parseInt(lineMatch[2], 10) : 1;
-    return { type: 'line', baseValue: length, width };
-  }
-
-  // Wall NxM
-  const wallMatch = normalized.match(/^wall\s*(\d+)(?:x(\d+))?$/);
-  if (wallMatch) {
-    const length = parseInt(wallMatch[1]!, 10);
-    const width = wallMatch[2] ? parseInt(wallMatch[2], 10) : 1;
-    return { type: 'wall', baseValue: length, width };
   }
 
   // Just a number (assume ranged)
@@ -276,8 +332,29 @@ export function parseDistance(distanceString: string): ParsedDistance {
     return { type: 'ranged', baseValue: parseInt(numberMatch[1]!, 10) };
   }
 
-  // Special/unknown
-  return { type: 'special', baseValue: 0, qualifier: distanceString };
+  // Special/unknown — preserve original casing in the qualifier
+  return { type: 'special', baseValue: 0, qualifier: raw };
+}
+
+/**
+ * The maximum distance from the caster that matters for a simple reachability
+ * check. For placed-area templates (cube/line/wall) this is the "within N"
+ * origin range; for melee/ranged/burst/aura it is the base value.
+ *
+ * @param distance - Parsed distance
+ * @returns Reach in squares from the caster
+ */
+export function getReach(distance: ParsedDistance): number {
+  switch (distance.type) {
+    case 'self':
+      return 0;
+    case 'cube':
+    case 'line':
+    case 'wall':
+      return distance.origin ?? distance.baseValue;
+    default:
+      return distance.baseValue;
+  }
 }
 
 /**
@@ -342,9 +419,34 @@ export function isInRange(
   if (abilityDistance.type === 'self') {
     return targetDistance === 0;
   }
+  if (abilityDistance.type === 'special') {
+    return false;
+  }
 
-  const effectiveRange = getEffectiveDistance(abilityDistance.baseValue, distanceBonus);
+  const effectiveRange = getEffectiveDistance(getReach(abilityDistance), distanceBonus);
   return targetDistance <= effectiveRange;
+}
+
+/**
+ * Check if a target is in range for a distance that may list alternates
+ * (e.g. "Melee 1 or Ranged 5"): true if the primary OR any alternate reaches.
+ *
+ * @param abilityDistance - Parsed distance (possibly with `alternates`)
+ * @param targetDistance - Distance to the target in squares
+ * @param distanceBonus - Bonus from kit/features
+ * @returns True if any listed distance reaches the target
+ */
+export function isInRangeAny(
+  abilityDistance: ParsedDistance,
+  targetDistance: number,
+  distanceBonus = 0
+): boolean {
+  if (isInRange(abilityDistance, targetDistance, distanceBonus)) {
+    return true;
+  }
+  return (abilityDistance.alternates ?? []).some((alt) =>
+    isInRange(alt, targetDistance, distanceBonus)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -396,7 +498,7 @@ export function parseDamageFormula(formula: string): ParsedDamage {
 
   // Parse flat modifier
   let flatModifier = 0;
-  const flatMatch = remaining.match(/(?:^|[+\-])\s*(\d+)(?!\s*[×x*])/);
+  const flatMatch = remaining.match(/(?:^|[+-])\s*(\d+)(?!\s*[×x*])/);
   if (flatMatch) {
     const sign = remaining.includes('-') && remaining.indexOf('-') < remaining.indexOf(flatMatch[1]!) ? -1 : 1;
     flatModifier = sign * parseInt(flatMatch[1]!, 10);
