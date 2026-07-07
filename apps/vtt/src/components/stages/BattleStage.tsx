@@ -5,6 +5,8 @@ import type {
   ReactNode,
 } from 'react';
 import { Dices, GripVertical } from 'lucide-react';
+import { MovementLogic } from '@anvil/data';
+import type { ConditionName } from '@anvil/types';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import { BattleToolbar } from '../builder/BattleToolbar.js';
 import { ViewportControls } from '../builder/ViewportControls.js';
@@ -410,6 +412,22 @@ export function BattleStage({
     [entities],
   );
 
+  // Condition-adjusted movement remaining for the active combatant — drives the
+  // costed drag path on the canvas (red when over speed).
+  const activeMoverBudget = useMemo(() => {
+    const activeId = combat?.activeEntityId;
+    if (!activeId) return null;
+    const turnState = combat?.turnActions?.[activeId];
+    if (!turnState) return null;
+    const entity = entityMap.get(activeId);
+    const baseSpeed = typeof entity?.['speed'] === 'number' ? (entity['speed'] as number) : 5;
+    const conditions = Array.isArray(entity?.['conditions'])
+      ? (entity['conditions'] as ConditionName[])
+      : [];
+    const budget = MovementLogic.getMovementBudget(baseSpeed, turnState, conditions);
+    return { entityId: activeId, remaining: budget.remaining };
+  }, [combat, entityMap]);
+
   /** Convert viewport-relative coords to container-relative coords for overlays. */
   const toLocal = useCallback((viewportX: number, viewportY: number) => {
     const rect = stageRef.current?.getBoundingClientRect();
@@ -676,6 +694,9 @@ export function BattleStage({
         case 'e':
           setActiveTool('eraser');
           return;
+        case 'm':
+          setActiveTool('measure');
+          return;
         case 'g':
           setGridVisible((v) => !v);
           return;
@@ -732,6 +753,7 @@ export function BattleStage({
         onMoveEntity={handleMoveEntity}
         onMultiSelectEntities={handleMultiSelectEntities}
         onMultiMoveEntities={handleMultiMoveEntities}
+        activeMoverBudget={activeMoverBudget}
         builderMode={isDirector}
         activeTool={isDirector ? activeTool : 'select'}
         drawColor={drawColor}

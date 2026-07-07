@@ -6,6 +6,7 @@ import { TokenLayer } from './layers/TokenLayer.js';
 import { FogLayer } from './layers/FogLayer.js';
 import { DrawingLayer } from './layers/DrawingLayer.js';
 import { TerrainLayer } from './layers/TerrainLayer.js';
+import { TargetingLayer } from './layers/TargetingLayer.js';
 import { ViewportSystem } from './systems/ViewportSystem.js';
 import { InteractionManager } from './systems/InteractionManager.js';
 import type { ActiveTool } from './systems/InteractionManager.js';
@@ -325,6 +326,13 @@ export interface BattleCanvasProps {
     moves: Array<{ entityId: string; gridX: number; gridY: number }>,
   ) => void;
 
+  /**
+   * When set, the dragged token is the active combatant with this many squares
+   * of movement remaining — the canvas draws a costed movement path (red when
+   * over speed). Null/undefined outside combat (plain distance label).
+   */
+  activeMoverBudget?: { entityId: string; remaining: number } | null;
+
   // Builder mode props (all optional — omit for live session)
   builderMode?: boolean;
   activeTool?: ActiveTool;
@@ -392,6 +400,7 @@ export function BattleCanvas({
   onMoveEntity,
   onMultiSelectEntities,
   onMultiMoveEntities,
+  activeMoverBudget = null,
   builderMode = false,
   activeTool = 'select',
   drawColor = '#ef4444',
@@ -433,6 +442,7 @@ export function BattleCanvas({
     drawing: DrawingLayer;
     terrain: TerrainLayer;
     tokens: TokenLayer;
+    targeting: TargetingLayer;
     fog: FogLayer;
     world: Container;
     viewport: ViewportSystem;
@@ -553,14 +563,16 @@ export function BattleCanvas({
         const drawingLayer = new DrawingLayer();
         const terrainLayer = new TerrainLayer();
         const tokens = new TokenLayer();
+        const targeting = new TargetingLayer();
         const fog = new FogLayer();
 
-        // Render order: bg → grid → drawings → terrain → tokens → fog
+        // Render order: bg → grid → drawings → terrain → tokens → targeting → fog
         world.addChild(background);
         world.addChild(grid);
         world.addChild(drawingLayer);
         world.addChild(terrainLayer);
         world.addChild(tokens);
+        world.addChild(targeting);
         world.addChild(fog);
 
         const viewport = new ViewportSystem(
@@ -614,6 +626,8 @@ export function BattleCanvas({
         }
 
         tokens.setCellSize(cellSize);
+        targeting.setCellSize(cellSize);
+        interaction.setTargetingLayer(targeting);
         terrainLayer.setCellSize(cellSize);
         terrainLayer.setDirectorMode(isDirector);
         fog.setCellSize(cellSize);
@@ -635,6 +649,7 @@ export function BattleCanvas({
           drawing: drawingLayer,
           terrain: terrainLayer,
           tokens,
+          targeting,
           fog,
           world,
           viewport,
@@ -803,6 +818,11 @@ export function BattleCanvas({
   useEffect(() => {
     layersRef.current?.interaction.setActiveTool(activeTool);
   }, [activeTool, pixiReady]);
+
+  // Sync the active combatant's movement budget (drives the costed drag path).
+  useEffect(() => {
+    layersRef.current?.interaction.setMoverBudget(activeMoverBudget);
+  }, [activeMoverBudget, pixiReady]);
 
   // Sync draw config to InteractionManager
   useEffect(() => {

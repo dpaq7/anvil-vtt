@@ -1,5 +1,7 @@
 import { Swords, Shield, Footprints, Zap, Heart, Wind } from 'lucide-react';
 import { Button, Badge } from '@anvil/ui';
+import { MovementLogic } from '@anvil/data';
+import type { ConditionName } from '@anvil/types';
 import type { TurnActionState } from '../../types/protocol.js';
 
 interface TurnActionBarProps {
@@ -45,7 +47,20 @@ export function TurnActionBar({
   const mainAvailable = !turnActions.mainActionUsed && turnActions.mainConvertedTo === null;
   const maneuverAvailable = !turnActions.maneuverUsed ||
     (turnActions.mainConvertedTo === 'maneuver' && !turnActions.mainActionUsed);
-  const _moveUsed = (turnActions.mainConvertedTo === 'move' ? baseSpeed * 2 : baseSpeed) - turnActions.moveRemaining;
+
+  // Condition-adjusted movement (slowed caps at 2, grabbed/restrained to 0).
+  const budget = MovementLogic.getMovementBudget(
+    baseSpeed,
+    turnActions,
+    conditions as ConditionName[],
+  );
+  const moveNote = budget.isImmobilized
+    ? 'immobilized'
+    : budget.mustCrawl
+      ? 'crawl'
+      : budget.totalSpeed < baseSpeed
+        ? 'slowed'
+        : null;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
@@ -85,11 +100,12 @@ export function TurnActionBar({
 
         {/* Move */}
         <div className={`flex flex-col items-center gap-0.5 rounded p-1.5 ${
-          turnActions.moveRemaining > 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-zinc-800/50 text-zinc-600'
+          budget.remaining > 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-zinc-800/50 text-zinc-600'
         }`}>
           <Footprints className="size-3.5" />
           <span className="text-[9px] font-medium">Move</span>
-          <span className="text-[8px]">{turnActions.moveRemaining}/{baseSpeed}</span>
+          <span className="text-[8px]">{budget.remaining}/{budget.totalSpeed}</span>
+          {moveNote && <span className="text-[7px] text-amber-400">{moveNote}</span>}
         </div>
 
         {/* Triggered */}
