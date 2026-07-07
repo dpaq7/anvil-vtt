@@ -1,80 +1,27 @@
-import type { CharacterInProgress, DerivedStats } from '@anvil/data';
-import { GameData, PERKS, WizardLogic } from '@anvil/data';
+import type { CharacterInProgress } from '@anvil/data';
+import { formatScore, resolveWizardSummary } from './wizard-summary.js';
 
 interface Props {
   character: CharacterInProgress;
 }
 
-function getCultureDisplay(character: CharacterInProgress): string | null {
-  const preset = character.culture.preset
-    ? GameData.getPrebuiltCulture(character.culture.preset)
-    : null;
-  const environment = character.culture.environment
-    ? GameData.getCulturesByType('environment').find((item) => item.id === character.culture.environment)?.name
-    : null;
-  const organization = character.culture.organization
-    ? GameData.getCulturesByType('organization').find((item) => item.id === character.culture.organization)?.name
-    : null;
-  const upbringing = character.culture.upbringing
-    ? GameData.getCulturesByType('upbringing').find((item) => item.id === character.culture.upbringing)?.name
-    : null;
-
-  const parts = [environment, organization, upbringing].filter(Boolean);
-  if (preset?.type === 'bespoke') {
-    return parts.length > 0 ? `${preset.name}: ${parts.join(' / ')}` : preset.name;
-  }
-  if (preset?.type === 'professional') return preset.name;
-  return parts.length > 0 ? parts.join(' / ') : null;
-}
-
 export function WizardPreview({ character }: Props) {
-  const canDerive = WizardLogic.canCalculateDerivedStats(character);
-  let stats: DerivedStats | null = null;
-  if (canDerive) {
-    stats = WizardLogic.calculateDerivedStats(character);
-  }
-
-  const ancestryName = character.ancestry
-    ? GameData.getAncestry(character.ancestry)?.name ?? character.ancestry
-    : null;
-  const className = character.heroClass
-    ? GameData.getClass(character.heroClass)?.name ?? character.heroClass
-    : null;
-  const subclassName = character.subclass && character.heroClass
-    ? (Array.isArray(character.subclass) ? character.subclass : [character.subclass])
-        .map((id) => GameData.getSubclass(character.heroClass!, id)?.name ?? id)
-        .join(', ')
-    : null;
-  const careerName = character.career
-    ? GameData.getCareer(character.career)?.name ?? character.career
-    : null;
-  const cultureDisplay = getCultureDisplay(character);
-  const complicationName = character.complication?.name ?? null;
-  const kitName = character.kit
-    ? GameData.getKit(character.kit)?.name ?? character.kit
-    : null;
-  const secondaryKitName = character.secondaryKit
-    ? GameData.getKit(character.secondaryKit)?.name ?? character.secondaryKit
-    : null;
-  const selectedSkills = WizardLogic.getSelectedSkillNames(character);
-  const selectedAbilities = WizardLogic.getSelectedAbilityIds(character).map((abilityId) => {
-    const slug = abilityId.includes(':') ? abilityId.split(':').pop() ?? abilityId : abilityId;
-    const ability = GameData.getByScc(abilityId) ?? GameData.getAbility(abilityId) ?? GameData.getAbility(slug);
-    return ability?.name ?? slug;
-  });
-  const selectedPerks = WizardLogic.getSelectedPerkIds(character).map((perkId) => {
-    return PERKS.find((perk) => perk.id === perkId)?.name ?? perkId;
-  });
-  const selectedMinions = WizardLogic.getSelectedSummonerMinionIds(character).map((minionId) => {
-    for (const slot of WizardLogic.getAbilityChoiceSlots(character)) {
-      const minion = WizardLogic.getSummonerMinionOptionsForSlot(character, slot).find((option) => option.id === minionId);
-      if (minion) return minion.name;
-    }
-    return minionId;
-  });
-  const companionName = character.companion
-    ? WizardLogic.getCompanionOptions().find((option) => option.id === character.companion)?.name ?? character.companion
-    : null;
+  const {
+    stats,
+    ancestryName,
+    className,
+    subclassName,
+    careerName,
+    cultureDisplay,
+    complicationName,
+    kitName,
+    secondaryKitName,
+    companionName,
+    selectedSkills,
+    selectedAbilities,
+    selectedPerks,
+    selectedMinions,
+  } = resolveWizardSummary(character);
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -104,7 +51,7 @@ export function WizardPreview({ character }: Props) {
             {(Object.entries(character.characteristics) as [string, number][]).map(([name, val]) => (
               <div key={name} className="flex flex-col items-center rounded bg-zinc-800 px-2 py-1">
                 <span className="text-[10px] uppercase text-zinc-500">{name.slice(0, 3)}</span>
-                <span className="font-mono text-zinc-200">{val >= 0 ? `+${val}` : val}</span>
+                <span className="font-mono text-zinc-200">{formatScore(val)}</span>
               </div>
             ))}
           </div>

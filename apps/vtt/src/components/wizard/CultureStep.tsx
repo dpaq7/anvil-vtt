@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { GameData } from '@anvil/data';
 import type { CharacterInProgress, CultureBenefit } from '@anvil/data';
 import { Card, CardContent, cn } from '@anvil/ui';
 import { Check } from 'lucide-react';
+import { BottomSheet, PhoneDecisionFlow } from '../creator/phone/index.js';
+import { buildCultureScreens } from './phone/CultureScreens.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -35,7 +38,13 @@ const PRESET_GROUPS = [
 
 type CulturePreset = ReturnType<typeof GameData.getPrebuiltCultures>[number];
 
+/** Phone info sheet — presets and aspect options have different shapes. */
+type CulturePeek =
+  | { kind: 'preset'; preset: CulturePreset }
+  | { kind: 'aspect'; benefit: CultureBenefit };
+
 export function CultureStep({ character, onChange }: Props) {
+  const [peek, setPeek] = useState<CulturePeek | null>(null);
   const environments = GameData.getCulturesByType('environment');
   const organizations = GameData.getCulturesByType('organization');
   const upbringings = GameData.getCulturesByType('upbringing');
@@ -96,7 +105,59 @@ export function CultureStep({ character, onChange }: Props) {
     });
   };
 
-  return (
+  // Phone: preset pick first, then one screen per bespoke aspect. Aspect
+  // screens follow desktop's showBespokeBuilder, so picking a professional
+  // preset collapses the step to a single screen.
+  const screens = buildCultureScreens({
+    presetGroups: PRESET_GROUPS.map((group) => ({
+      label: group.label,
+      presets: GameData.getPrebuiltCulturesByType(group.type),
+    })),
+    selectedPresetId: visibleSelectedPreset?.id ?? null,
+    aspects: showBespokeBuilder
+      ? [
+          {
+            field: 'environment',
+            label: 'Environment',
+            question: 'Pick an environment',
+            helper: 'Where did you grow up?',
+            options: environments,
+            selectedId: character.culture.environment,
+          },
+          {
+            field: 'organization',
+            label: 'Organization',
+            question: 'Pick an organization',
+            helper: 'How was your community structured?',
+            options: organizations,
+            selectedId: character.culture.organization,
+          },
+          {
+            field: 'upbringing',
+            label: 'Upbringing',
+            question: 'Pick an upbringing',
+            helper: 'What kind of education or training did you receive?',
+            options: upbringings,
+            selectedId: character.culture.upbringing,
+          },
+        ]
+      : [],
+    onSelectPreset: (presetId) => {
+      const preset = GameData.getPrebuiltCulture(presetId);
+      if (preset) selectPreset(preset);
+    },
+    onPeekPreset: (presetId) => {
+      const preset = GameData.getPrebuiltCulture(presetId);
+      if (preset) setPeek({ kind: 'preset', preset });
+    },
+    onSelectAspect: updateCulture,
+    onPeekAspect: (optionId) => {
+      const benefit = GameData.getCulture(optionId);
+      if (benefit) setPeek({ kind: 'aspect', benefit });
+    },
+  });
+
+  const renderDesktop = () => (
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="mb-1 text-lg font-semibold">Choose Your Culture</h2>
@@ -143,6 +204,45 @@ export function CultureStep({ character, onChange }: Props) {
         </div>
       )}
     </div>
+  );
+
+  return (
+    <>
+      <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />
+      {/* Renders null on desktop: nothing there ever sets peek. */}
+      <BottomSheet
+        open={peek !== null}
+        onClose={() => setPeek(null)}
+        title={
+          peek?.kind === 'preset'
+            ? peek.preset.name
+            : peek?.kind === 'aspect'
+              ? peek.benefit.name
+              : undefined
+        }
+      >
+        {peek?.kind === 'preset' && (
+          <>
+            <p className="text-sm leading-relaxed text-creator-text">
+              {peek.preset.description}
+            </p>
+            {peek.preset.language && (
+              <span className="mt-3 inline-flex rounded bg-creator-border px-2 py-0.5 text-xs text-creator-text-muted">
+                {peek.preset.language}
+              </span>
+            )}
+          </>
+        )}
+        {peek?.kind === 'aspect' && (
+          <>
+            <p className="text-sm leading-relaxed text-creator-text">
+              {CULTURE_DESCRIPTIONS[peek.benefit.id as keyof typeof CULTURE_DESCRIPTIONS] ?? ''}
+            </p>
+            <p className="mt-2 text-xs text-creator-text-muted">{peek.benefit.effect}</p>
+          </>
+        )}
+      </BottomSheet>
+    </>
   );
 }
 

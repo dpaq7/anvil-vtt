@@ -8,10 +8,14 @@ interface WizardStore {
   currentStepId: string;
   sidebarVisible: boolean;
   steps: WizardStepDefinition[];
+  subStepIndex: number;
+  subStepCount: number;
 
   // Actions
   patch: (updates: Partial<CharacterInProgress>) => void;
   goToStep: (stepId: string) => void;
+  setSubStepIndex: (index: number) => void;
+  registerSubStepCount: (count: number) => void;
   getStepStatus: (stepId: string) => StepStatus;
   setLevel: (level: number) => void;
   setLevelUpChoice: (level: number, choice: LevelUpChoice) => void;
@@ -22,11 +26,15 @@ interface WizardStore {
 
 const initialSteps = WizardLogic.generateWizardSteps(1);
 
+/** Entering a step always starts at its first (and, until registered, only) screen. */
+const SUB_STEP_RESET = { subStepIndex: 0, subStepCount: 1 };
+
 export const useWizardStore = create<WizardStore>((set, get) => ({
   character: WizardLogic.createEmptyCharacter(),
   currentStepId: WizardLogic.WIZARD_STEP_IDS.LEVEL,
   sidebarVisible: false,
   steps: initialSteps,
+  ...SUB_STEP_RESET,
 
   patch: (updates) =>
     set((state) => {
@@ -48,7 +56,27 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
       return { character: newCharacter, sidebarVisible };
     }),
 
-  goToStep: (stepId) => set({ currentStepId: stepId }),
+  goToStep: (stepId) =>
+    set((state) => {
+      // No-op on the current step: resetting subStepCount here would desync
+      // PhoneDecisionFlow, whose effect only re-registers when its count changes.
+      if (stepId === state.currentStepId) return state;
+      return { currentStepId: stepId, ...SUB_STEP_RESET };
+    }),
+
+  setSubStepIndex: (index) =>
+    set((state) => ({
+      subStepIndex: Math.min(Math.max(index, 0), state.subStepCount - 1),
+    })),
+
+  registerSubStepCount: (count) =>
+    set((state) => {
+      const subStepCount = Math.max(count, 1);
+      return {
+        subStepCount,
+        subStepIndex: Math.min(state.subStepIndex, subStepCount - 1),
+      };
+    }),
 
   getStepStatus: (stepId) => {
     const { character } = get();
@@ -118,6 +146,7 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
       currentStepId: WizardLogic.WIZARD_STEP_IDS.LEVEL,
       sidebarVisible: false,
       steps: WizardLogic.generateWizardSteps(1),
+      ...SUB_STEP_RESET,
     }),
 
   loadFromSaved: (character, stepId) =>
@@ -130,6 +159,7 @@ export const useWizardStore = create<WizardStore>((set, get) => ({
         !!character.career ||
         !!character.kit,
       steps: WizardLogic.generateWizardSteps(character.level || 1),
+      ...SUB_STEP_RESET,
     }),
 }));
 
@@ -165,13 +195,20 @@ export function useWizardNavigation() {
   const steps = useWizardStore((state) => state.steps);
   const currentStepId = useWizardStore((state) => state.currentStepId);
   const goToStep = useWizardStore((state) => state.goToStep);
+  const subStepIndex = useWizardStore((state) => state.subStepIndex);
+  const subStepCount = useWizardStore((state) => state.subStepCount);
+  const setSubStepIndex = useWizardStore((state) => state.setSubStepIndex);
 
   const currentIndex = steps.findIndex((s) => s.id === currentStepId);
-  const canGoBack = currentIndex > 0;
+  const canGoBack = currentIndex > 0 || subStepIndex > 0;
   const canGoNext = currentIndex < steps.length - 1;
 
   const goBack = () => {
-    if (canGoBack && currentIndex > 0) {
+    if (subStepIndex > 0) {
+      setSubStepIndex(subStepIndex - 1);
+      return;
+    }
+    if (currentIndex > 0) {
       const prevStep = steps[currentIndex - 1];
       if (prevStep) {
         goToStep(prevStep.id);
@@ -180,6 +217,10 @@ export function useWizardNavigation() {
   };
 
   const goNext = () => {
+    if (subStepIndex < subStepCount - 1) {
+      setSubStepIndex(subStepIndex + 1);
+      return;
+    }
     if (canGoNext && currentIndex < steps.length - 1) {
       const nextStep = steps[currentIndex + 1];
       if (nextStep) {
@@ -197,5 +238,7 @@ export function useWizardNavigation() {
     goBack,
     goNext,
     goToStep,
+    subStepIndex,
+    subStepCount,
   };
 }

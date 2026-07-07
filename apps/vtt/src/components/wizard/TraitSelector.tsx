@@ -10,6 +10,22 @@ interface Props {
 }
 
 /**
+ * Points left in the ancestry's trait budget after the given selections.
+ * Shared by the selector's budget pill and the phone traits-screen helper.
+ */
+export function getRemainingTraitPoints(
+  ancestry: Ancestry,
+  selectedTraitIds: string[]
+): number {
+  const traits = ancestry.purchasedTraits ?? [];
+  const spentPoints = selectedTraitIds.reduce((sum, id) => {
+    const trait = traits.find((t) => t.id === id);
+    return sum + (trait?.cost ?? 0);
+  }, 0);
+  return ancestry.ancestryPoints - spentPoints;
+}
+
+/**
  * Point-buy trait selector for ancestry traits.
  * Groups traits by cost and enforces the ancestry point budget.
  */
@@ -22,12 +38,8 @@ export function TraitSelector({
   const traits = ancestry.purchasedTraits ?? [];
 
   // Calculate spent and remaining points
-  const spentPoints = selectedTraitIds.reduce((sum, id) => {
-    const trait = traits.find((t) => t.id === id);
-    return sum + (trait?.cost ?? 0);
-  }, 0);
-
-  const remainingPoints = ancestry.ancestryPoints - spentPoints;
+  const remainingPoints = getRemainingTraitPoints(ancestry, selectedTraitIds);
+  const spentPoints = ancestry.ancestryPoints - remainingPoints;
 
   // Check if a trait can be selected (either already selected or affordable)
   const canSelectTrait = (trait: AncestryFeature): boolean => {
