@@ -2,9 +2,13 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   AbilityLogic,
   ConditionLogic,
+  ForcedMovementLogic,
   GameData,
+  GeometryLogic,
   HeroLogic,
   KitLogic,
+  MovementLogic,
+  OpportunityAttackLogic,
   RollLogic,
   UniversalActions,
   WizardLogic,
@@ -29,6 +33,11 @@ import type {
   TokenActionPowerRoll,
   TokenActionRequest,
   TokenActionResult,
+  MovementMode,
+  OpportunityAttackTrigger,
+  OpportunityAttackDecision,
+  ThreatSource,
+  ProtocolGridPoint,
   HeroInventoryItemInput,
   HeroTrackerOperation,
   DrawSteelDieResult,
@@ -1268,12 +1277,21 @@ export class SessionRoom extends DurableObject<Env> {
           return;
         }
 
-        const bounded = this.clampToActiveBattleGrid(msg.x, msg.y);
-        entity.x = bounded.x;
-        entity.y = bounded.y;
-        this.broadcast({ type: 'entity_moved', entityId: msg.entityId, x: bounded.x, y: bounded.y });
+        this.moveEntityTo(entity as unknown as Record<string, unknown>, msg.x, msg.y);
         break;
       }
+
+      case 'commit_move':
+        this.handleCommitMove(ws, meta, msg.entityId, msg.path, msg.mode);
+        break;
+
+      case 'resolve_forced_movement':
+        this.handleResolveForcedMovement(ws, msg.sourceId, msg.targetId, msg.kind, msg.distance, msg.direction);
+        break;
+
+      case 'resolve_opportunity_attack':
+        await this.handleResolveOpportunityAttack(ws, meta, msg.trigger, msg.decision);
+        break;
 
       case 'combat_action':
         await this.handleCombatAction(ws, meta, msg.action);
@@ -2714,6 +2732,221 @@ export class SessionRoom extends DurableObject<Env> {
     });
   }
 
+  /**
+   * Build the list of potential opportunity-attack threats from all entities
+   * except the mover. Reach defaults to 1; conditions that block reactions
+   * (dazed/grabbed/restrained) set `canMakeOA` false.
+   */
+  private buildThreatSources(moverId: string): ThreatSource[] {
+    if (!this.sessionState) return [];
+    return this.sessionState.entities
+      .filter((entity) => entity.id !== moverId)
+      .map((entity) => {
+        const record = entity as unknown as Record<string, unknown>;
+        const canMakeOA =
+          !this.hasCondition(record, 'dazed') &&
+          !this.hasCondition(record, 'grabbed') &&
+          !this.hasCondition(record, 'restrained');
+        return {
+          entityId: entity.id,
+          name: entity.name,
+          gridX: typeof entity.x === 'number' ? entity.x : 0,
+          gridY: typeof entity.y === 'number' ? entity.y : 0,
+          side: entity.type === 'hero' ? 'heroes' : 'enemies',
+          reach: 1,
+          canMakeOA,
+          size: this.getEntitySize(record),
+        } satisfies ThreatSource;
+      });
+  }
+
+  /**
+   * Record a rules-aware move: cost it against the movement budget, detect
+   * opportunity attacks, apply the move, and broadcast an advisory summary.
+   * Never rejects — an over-budget move still happens (manual-tracking ethos).
+   */
+  private handleCommitMove(
+    ws: WebSocket,
+    meta: ConnectionMeta,
+    entityId: string,
+    path: ProtocolGridPoint[],
+    mode: MovementMode,
+  ): void {
+    const entity = this.getEntity(entityId);
+    if (!entity) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Token not found' });
+      return;
+    }
+    if (meta.role === 'player' && (entity.type !== 'hero' || entity.id !== meta.heroId)) {
+      this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Can only move your own hero' });
+      return;
+    }
+    if (!path || path.length < 2) return;
+
+    const baseSpeed = typeof entity['speed'] === 'number' ? entity['speed'] : 5;
+    const conditions = this.getEntityConditions(entity);
+    const combat = this.sessionState?.combat;
+    const isActiveTurn = Boolean(combat && combat.activeEntityId === entityId);
+    const turnState =
+      (isActiveTurn ? combat!.turnActions[entityId] : undefined) ??
+      this.createTurnActions(baseSpeed);
+
+    const budget = MovementLogic.getMovementBudget(baseSpeed, turnState, conditions);
+    const movePath = MovementLogic.buildMovementPath(path, budget);
+
+    const mover: OpportunityAttackLogic.MoverInfo = {
+      entityId,
+      name: entity.name,
+      side: entity.type === 'hero' ? 'heroes' : 'enemies',
+      size: this.getEntitySize(entity),
+    };
+    const oa = OpportunityAttackLogic.detectOpportunityAttacks(
+      path,
+      mover,
+      mode,
+      this.buildThreatSources(entityId),
+    );
+
+    const destination = path[path.length - 1]!;
+    this.moveEntityTo(entity, destination.x, destination.y);
+
+    if (isActiveTurn && combat) {
+      turnState.moveRemaining = Math.max(0, turnState.moveRemaining - movePath.totalCost);
+      combat.turnActions[entityId] = turnState;
+      this.broadcast({ type: 'combat_updated', combat });
+    }
+
+    const detailParts = [`Moved ${movePath.totalCost} square${movePath.totalCost === 1 ? '' : 's'}`];
+    if (movePath.overBudget) detailParts.push('(exceeded speed)');
+    if (oa.triggersOA) {
+      detailParts.push(
+        `— provoked ${oa.triggers.length} opportunity attack${oa.triggers.length === 1 ? '' : 's'}`,
+      );
+    }
+    this.appendActionLog({
+      actorId: entityId,
+      actorName: entity.name,
+      title: `${entity.name} ${mode === 'disengage' ? 'shifted' : 'moved'}`,
+      detail: detailParts.join(' '),
+    });
+
+    this.broadcast({
+      type: 'move_committed',
+      entityId,
+      path,
+      cost: movePath.totalCost,
+      overBudget: movePath.overBudget,
+      oaTriggers: oa.triggers,
+    });
+  }
+
+  /**
+   * Resolve a push/pull/slide: plan the straight-line path, stop at the first
+   * collision, apply slam damage (dice stay server-side), move the target, and
+   * broadcast the outcome.
+   */
+  private handleResolveForcedMovement(
+    ws: WebSocket,
+    sourceId: string,
+    targetId: string,
+    kind: 'push' | 'pull' | 'slide',
+    distance: number,
+    direction?: ProtocolGridPoint,
+  ): void {
+    const source = this.getEntity(sourceId);
+    const target = this.getEntity(targetId);
+    if (!source || !target) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
+      return;
+    }
+
+    const effects: TokenActionEffect[] = [];
+    const plan = this.applyForcedMovement(source, target, kind, distance, effects, direction);
+    const slamDamage = this.slamDamageForPlan(plan);
+
+    this.appendActionLog({
+      actorId: source.id,
+      actorName: source.name,
+      title: `${target.name} was ${kind === 'pull' ? 'pulled' : kind === 'slide' ? 'slid' : 'pushed'}`,
+      detail: plan.collided
+        ? `Stopped after ${plan.totalDistance - plan.remainingSquares} square${plan.totalDistance - plan.remainingSquares === 1 ? '' : 's'}${slamDamage ? ` (${slamDamage} slam damage)` : ''}`
+        : `Moved ${plan.totalDistance} square${plan.totalDistance === 1 ? '' : 's'}`,
+    });
+
+    this.broadcast({
+      type: 'forced_movement_resolved',
+      targetId,
+      finalPosition: plan.finalPosition,
+      collided: plan.collided,
+      collisionWith: plan.collisionWith,
+      slamDamage,
+    });
+  }
+
+  /**
+   * Resolve an opportunity attack: on 'take', make a melee free strike from the
+   * threatening creature (a free triggered action — no turn/action-slot gate);
+   * on 'pass', just log that it was waived.
+   */
+  private handleResolveOpportunityAttack(
+    ws: WebSocket,
+    _meta: ConnectionMeta,
+    trigger: OpportunityAttackTrigger,
+    decision: OpportunityAttackDecision,
+  ): void {
+    if (decision === 'pass') {
+      this.appendActionLog({
+        actorId: trigger.attackerId,
+        actorName: trigger.attackerName,
+        title: 'Opportunity attack waived',
+        detail: `${trigger.attackerName} let ${trigger.targetName} go.`,
+      });
+      return;
+    }
+
+    const attacker = this.getEntity(trigger.attackerId);
+    const target = this.getEntity(trigger.targetId);
+    if (!attacker || !target) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Opportunity attack participants not found' });
+      return;
+    }
+
+    const timestamp = Date.now();
+    const effects: TokenActionEffect[] = [];
+    const characteristic = this.bestCharacteristic(attacker, ['might', 'agility']).characteristic;
+    const powerRoll = this.resolvePowerRoll(
+      attacker,
+      target,
+      characteristic,
+      { kind: 'free-strike', sourceId: attacker.id, targetId: target.id },
+      { isAttack: true, attackMode: 'melee' },
+    );
+    const damage = this.getFreeStrikeDamage(attacker, powerRoll.tier, characteristic, 'melee');
+    this.applyDamageToEntity(target, damage, effects);
+
+    const combat = this.sessionState?.combat;
+    const attackerActions = combat?.turnActions[trigger.attackerId];
+    if (combat && attackerActions) {
+      attackerActions.triggeredUsedThisRound = true;
+      this.broadcast({ type: 'combat_updated', combat });
+    }
+
+    this.finishTokenAction(
+      {
+        id: this.createActionResultId('free-strike'),
+        kind: 'free-strike',
+        sourceId: attacker.id,
+        targetId: target.id,
+        abilityName: 'Opportunity Attack',
+        powerRoll,
+        effects,
+        summary: this.summarizeAction('free-strike', target, effects),
+        timestamp,
+      },
+      this.toAbilityResult('free-strike', attacker, target, 'Opportunity Attack', powerRoll, effects, timestamp),
+    );
+  }
+
   private async handleTokenAction(
     ws: WebSocket,
     meta: ConnectionMeta,
@@ -2893,15 +3126,23 @@ export class SessionRoom extends DurableObject<Env> {
           this.applyDamageToEntity(target, damage, effects);
         } else if (action.kind === 'grab') {
           const grab = UniversalActions.resolveGrab(powerRoll.tier);
-          if (grab.targetGrabbed) this.applyConditionToEntity(ws, target, 'grabbed', effects);
+          if (grab.targetGrabbed) {
+            this.applyConditionToEntity(ws, target, 'grabbed', effects);
+            // Track the grabber so the target moves with them (moveEntityTo).
+            (target as Record<string, unknown>)['grabbedBy'] = source.id;
+          }
         } else {
           const knockback = UniversalActions.resolveKnockback(powerRoll.tier);
-          effects.push({
-            kind: 'movement',
-            entityId: target.id,
-            amount: knockback.pushDistance,
-            message: `Push ${knockback.pushDistance} square${knockback.pushDistance === 1 ? '' : 's'}.`,
-          });
+          if (knockback.pushDistance > 0) {
+            const plan = this.applyForcedMovement(source, target, 'push', knockback.pushDistance, effects);
+            const moved = plan.totalDistance - plan.remainingSquares;
+            effects.push({
+              kind: 'movement',
+              entityId: target.id,
+              amount: moved,
+              message: `Pushed ${moved} square${moved === 1 ? '' : 's'}${plan.collided ? ' (slammed)' : ''}.`,
+            });
+          }
           if (knockback.targetProne) this.applyConditionToEntity(ws, target, 'prone', effects);
         }
 
@@ -2917,6 +3158,50 @@ export class SessionRoom extends DurableObject<Env> {
           summary: this.summarizeAction(action.kind, target, effects),
           timestamp,
         }, this.toAbilityResult(action.kind, source, target, abilityName, powerRoll, effects, timestamp));
+        return;
+      }
+
+      case 'charge': {
+        // Charge: the move itself is a normal commit_move; this resolves the
+        // main-action melee free strike it ends with, which gains an edge.
+        const source = this.getRequiredSource(ws, meta, action.sourceId);
+        const target = this.getEntity(action.targetId);
+        if (!source || !target) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
+          return;
+        }
+        if (!this.isWithinDistance(source, target, 'Melee 1')) {
+          this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Charge target must be adjacent at the end of the move' });
+          return;
+        }
+
+        const turnActions = this.getActiveTurnActions(ws, source, 'main');
+        if (!turnActions) return;
+        if (!this.consumeActionForSource(ws, source, turnActions, 'main', effects)) return;
+
+        const characteristic = action.characteristic ?? this.bestCharacteristic(source, ['might', 'agility']).characteristic;
+        const powerRoll = this.resolvePowerRoll(
+          source,
+          target,
+          characteristic,
+          { ...action, edges: (action.edges ?? 0) + 1 },
+          { isAttack: true, attackMode: 'melee' },
+        );
+        const damage = this.getFreeStrikeDamage(source, powerRoll.tier, characteristic, 'melee');
+        this.applyDamageToEntity(target, damage, effects);
+        effects.push({ kind: 'note', message: 'Charge grants an edge on the strike.' });
+
+        this.finishTokenAction({
+          id: this.createActionResultId('charge'),
+          kind: 'charge',
+          sourceId: source.id,
+          targetId: target.id,
+          abilityName: 'Charge',
+          powerRoll,
+          effects,
+          summary: this.summarizeAction('charge', target, effects),
+          timestamp,
+        }, this.toAbilityResult('charge', source, target, 'Charge', powerRoll, effects, timestamp));
         return;
       }
 
@@ -3276,6 +3561,8 @@ export class SessionRoom extends DurableObject<Env> {
     if (!condition) return;
     const next = this.getEntityConditions(entity).filter((candidate) => candidate !== condition);
     entity['conditions'] = next;
+    // Releasing a grab clears the grabber link used by moveEntityTo.
+    if (condition === 'grabbed') delete entity['grabbedBy'];
     this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
     effects.push({
       kind: 'condition-removed',
@@ -3565,11 +3852,126 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private getGridDistance(source: Record<string, unknown>, target: Record<string, unknown>): number {
-    const sourceX = typeof source['x'] === 'number' ? source['x'] : 0;
-    const sourceY = typeof source['y'] === 'number' ? source['y'] : 0;
-    const targetX = typeof target['x'] === 'number' ? target['x'] : 0;
-    const targetY = typeof target['y'] === 'number' ? target['y'] : 0;
-    return Math.max(Math.abs(sourceX - targetX), Math.abs(sourceY - targetY));
+    // Footprint-aware Chebyshev distance: large tokens measure from their
+    // nearest occupied square, not a single corner.
+    return GeometryLogic.distanceBetweenFootprints(
+      this.getEntityFootprint(source),
+      this.getEntityFootprint(target),
+    );
+  }
+
+  /** Resolve a token's edge length in squares from its `size` field (number or Size string). */
+  private getEntitySize(entity: Record<string, unknown>): number {
+    const size = entity['size'];
+    if (typeof size === 'number') return Math.max(1, Math.floor(size));
+    if (typeof size === 'string') {
+      const numeric = Number(size);
+      if (Number.isFinite(numeric)) return Math.max(1, Math.floor(numeric));
+      // Size categories 1T/1S/1M/1L all occupy a single square.
+      return 1;
+    }
+    return 1;
+  }
+
+  private getEntityFootprint(entity: Record<string, unknown>): GeometryLogic.TokenFootprint {
+    const x = typeof entity['x'] === 'number' ? entity['x'] : 0;
+    const y = typeof entity['y'] === 'number' ? entity['y'] : 0;
+    return GeometryLogic.makeFootprint(x, y, this.getEntitySize(entity));
+  }
+
+  private getActiveGridBounds(): GeometryLogic.GridBounds {
+    const data = this.getActiveSceneData();
+    const cols = typeof data?.['gridCols'] === 'number'
+      ? data['gridCols'] as number
+      : typeof data?.['gridSize'] === 'number'
+        ? data['gridSize'] as number
+        : 30;
+    const rows = typeof data?.['gridRows'] === 'number' ? data['gridRows'] as number : 20;
+    return { cols, rows };
+  }
+
+  /**
+   * Move an entity to a grid cell, clamp to bounds, broadcast, and drag along any
+   * creature it has grabbed (grabbed creatures move with their grabber). Shared by
+   * move_token, commit_move, and forced-movement resolution.
+   */
+  private moveEntityTo(entity: Record<string, unknown>, x: number, y: number): { x: number; y: number } {
+    const prevX = typeof entity['x'] === 'number' ? entity['x'] : 0;
+    const prevY = typeof entity['y'] === 'number' ? entity['y'] : 0;
+    const bounded = this.clampToActiveBattleGrid(x, y);
+    entity['x'] = bounded.x;
+    entity['y'] = bounded.y;
+    this.broadcast({ type: 'entity_moved', entityId: String(entity['id']), x: bounded.x, y: bounded.y });
+
+    // Drag any grabbed creature along by the same offset (Draw Steel: a grabbed
+    // creature moves with its grabber).
+    const dx = bounded.x - prevX;
+    const dy = bounded.y - prevY;
+    if ((dx !== 0 || dy !== 0) && this.sessionState) {
+      const grabberId = String(entity['id']);
+      for (const other of this.sessionState.entities) {
+        if ((other as Record<string, unknown>)['grabbedBy'] === grabberId) {
+          const ox = typeof other.x === 'number' ? other.x : 0;
+          const oy = typeof other.y === 'number' ? other.y : 0;
+          const movedTo = this.clampToActiveBattleGrid(ox + dx, oy + dy);
+          other.x = movedTo.x;
+          other.y = movedTo.y;
+          this.broadcast({ type: 'entity_moved', entityId: String(other.id), x: movedTo.x, y: movedTo.y });
+        }
+      }
+    }
+
+    return bounded;
+  }
+
+  /**
+   * Plan and apply a forced movement: move the target, and on collision apply
+   * slam damage into `effects` (2 + remaining vs a surface/edge; remaining to
+   * both creatures vs another token). Returns the plan for logging/broadcast.
+   */
+  private applyForcedMovement(
+    source: Record<string, unknown>,
+    target: SessionEntity & Record<string, unknown>,
+    kind: 'push' | 'pull' | 'slide',
+    distance: number,
+    effects: TokenActionEffect[],
+    direction?: ProtocolGridPoint,
+  ): ForcedMovementLogic.ForcedMovementPlan {
+    const occupants: ForcedMovementLogic.OccupantFootprint[] = (this.sessionState?.entities ?? [])
+      .filter((entity) => entity.id !== target.id)
+      .map((entity) => ({
+        id: entity.id,
+        footprint: this.getEntityFootprint(entity as unknown as Record<string, unknown>),
+      }));
+
+    const plan = ForcedMovementLogic.planForcedMovement(
+      kind,
+      this.getEntityFootprint(source),
+      this.getEntityFootprint(target),
+      distance,
+      occupants,
+      this.getActiveGridBounds(),
+      direction,
+    );
+
+    this.moveEntityTo(target, plan.finalPosition.x, plan.finalPosition.y);
+
+    if (plan.collided && plan.remainingSquares > 0) {
+      if (plan.collisionWith === 'edge') {
+        this.applyDamageToEntity(target, 2 + plan.remainingSquares, effects);
+      } else {
+        this.applyDamageToEntity(target, plan.remainingSquares, effects);
+        const blocker = this.getEntity(plan.collisionWith);
+        if (blocker) this.applyDamageToEntity(blocker, plan.remainingSquares, effects);
+      }
+    }
+
+    return plan;
+  }
+
+  private slamDamageForPlan(plan: ForcedMovementLogic.ForcedMovementPlan): number | undefined {
+    if (!plan.collided || plan.remainingSquares <= 0) return undefined;
+    return plan.collisionWith === 'edge' ? 2 + plan.remainingSquares : plan.remainingSquares;
   }
 
   private getFreeStrikeDamage(

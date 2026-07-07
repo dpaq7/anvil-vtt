@@ -41,6 +41,12 @@ export * as UniversalActions from './universal-actions.js';
 export * as AbilityLogic from './ability-logic.js';
 export * as EntityStatusLogic from './entity-status-logic.js';
 
+// Battle spatial rules — grid geometry, targeting templates, movement budgets
+export * as GeometryLogic from './geometry-logic.js';
+export * as MovementLogic from './movement-logic.js';
+export * as OpportunityAttackLogic from './opportunity-attack-logic.js';
+export * as ForcedMovementLogic from './forced-movement-logic.js';
+
 // Phase 7: Director Support
 export * as FormatLogic from './format-logic.js';
 export * as MonsterLogic from './monster-logic.js';
@@ -203,6 +209,31 @@ export type {
   AbilityKeyword,
   AbilityCategory,
 } from './ability-logic.js';
+
+// Geometry Logic types
+export type {
+  GridPoint,
+  TokenFootprint,
+  GridBounds,
+  AffectedSquaresOptions,
+} from './geometry-logic.js';
+
+// Movement Logic types
+export type {
+  MovementBudget,
+  PathStep,
+  MovementPath,
+} from './movement-logic.js';
+
+// Opportunity Attack Logic types
+export type { MoverInfo } from './opportunity-attack-logic.js';
+
+// Forced Movement Logic types
+export type {
+  OccupantFootprint,
+  ForcedMovementType,
+  ForcedMovementPlan,
+} from './forced-movement-logic.js';
 
 // Entity Status Logic types
 export type {
