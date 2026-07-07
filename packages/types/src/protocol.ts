@@ -2,6 +2,27 @@
  * WebSocket message protocol between client and SessionRoom DO.
  */
 
+import type {
+  MovementMode,
+  OpportunityAttackTrigger,
+  OpportunityAttackDecision,
+} from './combat.js';
+
+// Re-exported so protocol consumers (server/client) get the movement/OA types
+// referenced by the messages below without importing from the combat module.
+export type {
+  MovementMode,
+  OpportunityAttackTrigger,
+  OpportunityAttackDecision,
+  ThreatSource,
+} from './combat.js';
+
+/** A grid cell in a movement/forced-movement path. */
+export interface ProtocolGridPoint {
+  x: number;
+  y: number;
+}
+
 // Client → Server
 export type ClientMessage =
   | { type: 'request_state' }
@@ -12,6 +33,22 @@ export type ClientMessage =
   | { type: 'update_entity'; entityId: string; changes: Record<string, unknown> }
   | { type: 'delete_entity'; entityId: string }
   | { type: 'move_token'; entityId: string; x: number; y: number }
+  // Rules-aware movement: carries the drawn path + mode so the server can record
+  // cost and opportunity attacks (advisory — the move is never rejected).
+  | { type: 'commit_move'; entityId: string; path: ProtocolGridPoint[]; mode: MovementMode }
+  | {
+      type: 'resolve_forced_movement';
+      sourceId: string;
+      targetId: string;
+      kind: 'push' | 'pull' | 'slide';
+      distance: number;
+      direction?: ProtocolGridPoint;
+    }
+  | {
+      type: 'resolve_opportunity_attack';
+      trigger: OpportunityAttackTrigger;
+      decision: OpportunityAttackDecision;
+    }
   | { type: 'combat_action'; action: CombatAction }
   | { type: 'token_action'; action: TokenActionRequest }
   | { type: 'draw_steel_roll'; roll: DrawSteelRollRequest }
@@ -60,6 +97,22 @@ export type ServerMessage =
   | { type: 'entity_updated'; entityId: string; changes: Record<string, unknown> }
   | { type: 'entity_deleted'; entityId: string }
   | { type: 'entity_moved'; entityId: string; x: number; y: number }
+  | {
+      type: 'move_committed';
+      entityId: string;
+      path: ProtocolGridPoint[];
+      cost: number;
+      overBudget: boolean;
+      oaTriggers: OpportunityAttackTrigger[];
+    }
+  | {
+      type: 'forced_movement_resolved';
+      targetId: string;
+      finalPosition: ProtocolGridPoint;
+      collided: boolean;
+      collisionWith?: string;
+      slamDamage?: number;
+    }
   | { type: 'combat_updated'; combat: CombatState | null }
   | { type: 'ability_resolved'; result: AbilityResult }
   | { type: 'token_action_resolved'; result: TokenActionResult }
@@ -113,6 +166,8 @@ export interface EntityData {
   type: string;
   x: number;
   y: number;
+  /** Vertical position in squares, for high-ground detection (default 0). */
+  elevation?: number;
   [key: string]: unknown;
 }
 
@@ -221,6 +276,7 @@ export type TokenActionKind =
   | 'free-strike'
   | 'grab'
   | 'knockback'
+  | 'charge'
   | 'catch-breath'
   | 'defend'
   | 'stand-up'

@@ -33,6 +33,11 @@ export {
   // Phase 6: Core Gaps
   AbilityLogic,
   EntityStatusLogic,
+  // Battle spatial rules
+  GeometryLogic,
+  MovementLogic,
+  OpportunityAttackLogic,
+  ForcedMovementLogic,
   // Phase 7: Director Support
   FormatLogic,
   MonsterLogic,
