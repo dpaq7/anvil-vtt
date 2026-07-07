@@ -32,6 +32,7 @@ import { AbilityPanel } from "../../components/session/AbilityPanel.js";
 import type { AbilityInfo } from "../../components/session/AbilityCard.js";
 import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
 import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
+import type { PendingTargetedAction } from "../../lib/targeting.js";
 import {
   PlayerHeroCommandBar,
   PlayerHeroSheetPanel,
@@ -75,7 +76,9 @@ export function PlayerView({
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
-  const [pendingAbility, setPendingAbility] = useState<AbilityInfo | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingTargetedAction | null>(
+    null,
+  );
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>("sheet");
   const [focusMode, setFocusMode] = useState(false);
@@ -122,11 +125,14 @@ export function PlayerView({
   const initiativePending =
     sceneType === "battle" && combat?.initiativeRoll === null;
 
-  // Resolve targeting for the pending ability (range / flanking / high ground).
+  // Resolve targeting for the pending action (range / flanking / high ground).
+  const targetingSource = pendingAction
+    ? (entities.find((e) => e.id === pendingAction.sourceId) ?? null)
+    : null;
   const targeting = useTargetingResolution({
-    sourceEntity: heroEntity ?? null,
+    sourceEntity: targetingSource,
     entities,
-    distance: pendingAbility?.distance,
+    distance: pendingAction?.distance,
   });
 
   const handleSelectEntity = useCallback((entityId: string | null) => {
@@ -150,12 +156,12 @@ export function PlayerView({
 
   useEffect(() => {
     handleSelectEntity(null);
-    setPendingAbility(null);
+    setPendingAction(null);
   }, [activeSceneId, handleSelectEntity]);
 
-  // Leave targeting mode if the turn ends while an ability is pending.
+  // Leave targeting mode if the turn ends while an action is pending.
   useEffect(() => {
-    if (!isMyTurn) setPendingAbility(null);
+    if (!isMyTurn) setPendingAction(null);
   }, [isMyTurn]);
 
   // Determine which action types have been used (for ability panel greying out)
@@ -206,41 +212,53 @@ export function PlayerView({
         toast.error("No enemy targets available.");
         return;
       }
-      setPendingAbility(ability);
+      setPendingAction({
+        sourceId: heroEntity.id,
+        kind: "ability",
+        abilityId: ability.id,
+        label: ability.name,
+        distance: ability.distance,
+      });
     },
     [combat, heroEntity, heroAbilities, entities, isMyTurn],
   );
 
+  // The token context menu requests targeting for an arbitrary action.
+  const handleRequestTargeting = useCallback((action: PendingTargetedAction) => {
+    setPendingAction(action);
+  }, []);
+
   const handleTargetConfirm = useCallback(
     (targetId: string) => {
-      if (!heroEntity || !pendingAbility) return;
+      if (!pendingAction) return;
       const target = entities.find((e) => e.id === targetId);
       if (!target) return;
+      const { sourceId, kind, abilityId, label } = pendingAction;
       send({
         type: "token_action",
         action: {
-          kind: "ability",
-          sourceId: heroEntity.id,
+          kind,
+          sourceId,
           targetId: target.id,
-          abilityId: pendingAbility.id,
+          ...(abilityId ? { abilityId } : {}),
         },
       });
-      toast.info(`Using ${pendingAbility.name} on ${target.name}...`);
-      setPendingAbility(null);
+      toast.info(`${label} → ${target.name}...`);
+      setPendingAction(null);
     },
-    [entities, heroEntity, pendingAbility, send],
+    [entities, pendingAction, send],
   );
 
   const handleTargetCancel = useCallback(() => {
-    setPendingAbility(null);
+    setPendingAction(null);
   }, []);
 
   const battleTargetingContext = useMemo(
     () =>
-      pendingAbility && heroEntity
+      pendingAction && targetingSource
         ? {
-            sourceId: heroEntity.id,
-            abilityName: pendingAbility.name,
+            sourceId: pendingAction.sourceId,
+            abilityName: pendingAction.label,
             parsedDistance: targeting.parsedDistance,
             rangeSquares: targeting.rangeSquares,
             inRangeById: targeting.inRangeById,
@@ -248,7 +266,7 @@ export function PlayerView({
             highGroundByTargetId: targeting.highGroundByTargetId,
           }
         : null,
-    [pendingAbility, heroEntity, targeting],
+    [pendingAction, targetingSource, targeting],
   );
 
   const handleRollCharacteristic = useCallback(
@@ -523,6 +541,8 @@ export function PlayerView({
             targetingContext={battleTargetingContext}
             onTargetConfirm={handleTargetConfirm}
             onTargetCancel={handleTargetCancel}
+            onRequestTargeting={handleRequestTargeting}
+            ownHeroEntityId={heroEntityId}
             onSelectEntity={handleSelectEntity}
             onSelectEntities={handleSelectEntities}
             onRollInitiative={handleRollInitiative}

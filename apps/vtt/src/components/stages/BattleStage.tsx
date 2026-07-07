@@ -5,11 +5,11 @@ import type {
   ReactNode,
 } from 'react';
 import { Dices, GripVertical, X } from 'lucide-react';
-import { GeometryLogic, MovementLogic } from '@anvil/data';
-import type { AbilityLogic } from '@anvil/data';
+import { AbilityLogic, GeometryLogic, MovementLogic } from '@anvil/data';
 import type { ConditionName } from '@anvil/types';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import type { TargetingModeContext } from '../../canvas/systems/InteractionManager.js';
+import type { PendingTargetedAction } from '../../lib/targeting.js';
 import { BattleToolbar } from '../builder/BattleToolbar.js';
 import { ViewportControls } from '../builder/ViewportControls.js';
 import type { BattleTool, FogBrushMode } from '../builder/BattleToolbar.js';
@@ -365,6 +365,10 @@ interface BattleStageProps {
   onTargetConfirm?: (targetId: string) => void;
   /** Fired to leave targeting mode (cancel button / Escape). */
   onTargetCancel?: () => void;
+  /** Begin on-canvas targeting for a token-menu action (ability / strike / maneuver). */
+  onRequestTargeting?: (action: PendingTargetedAction) => void;
+  /** The requesting player's own hero id (lets them act on that token's menu). */
+  ownHeroEntityId?: string | null;
   onSelectEntity: (entityId: string | null) => void;
   onSelectEntities?: (entityIds: string[]) => void;
   onRollInitiative?: () => void;
@@ -396,6 +400,8 @@ export function BattleStage({
   targetingContext = null,
   onTargetConfirm,
   onTargetCancel,
+  onRequestTargeting,
+  ownHeroEntityId = null,
   onSelectEntity,
   onSelectEntities,
   onRollInitiative,
@@ -408,6 +414,10 @@ export function BattleStage({
   const [fogBrushMode, setFogBrushMode] = useState<FogBrushMode>('draw');
   const [fogBrushSize, setFogBrushSize] = useState(1);
   const [gridVisible, setGridVisible] = useState(true);
+
+  // Manual cover advisory shown while targeting (advisory only — feeds the
+  // banes readout in the targeting banner, never sent).
+  const [coverLevel, setCoverLevel] = useState<AbilityLogic.CoverLevel>('none');
 
   // Viewport
   const [zoom, setZoom] = useState(1);
@@ -516,9 +526,11 @@ export function BattleStage({
     };
   }, [targetingContext, entities, entityMap, cols, rows]);
 
-  // Escape leaves targeting mode (advisory cancel).
+  // Escape leaves targeting mode (advisory cancel); each new targeting session
+  // starts from no cover.
   useEffect(() => {
     if (!targetingContext) return;
+    setCoverLevel('none');
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onTargetCancel?.();
     };
@@ -938,6 +950,28 @@ export function BattleStage({
                 high ground
               </span>
             </span>
+            <label className="flex items-center gap-1 border-l border-zinc-700 pl-3 text-[10px] text-zinc-400">
+              Cover
+              <select
+                value={coverLevel}
+                onChange={(e) => setCoverLevel(e.target.value as AbilityLogic.CoverLevel)}
+                className="h-6 rounded border border-zinc-700 bg-zinc-950 px-1 text-[10px] text-zinc-100"
+              >
+                <option value="none">none</option>
+                <option value="half">half</option>
+                <option value="three-quarters">¾</option>
+                <option value="full">full</option>
+              </select>
+              {coverLevel !== 'none' && (
+                <span className="text-red-300">
+                  {coverLevel === 'full'
+                    ? 'no target'
+                    : `+${AbilityLogic.getCoverBanes(coverLevel)} bane${
+                        AbilityLogic.getCoverBanes(coverLevel) > 1 ? 's' : ''
+                      }`}
+                </span>
+              )}
+            </label>
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
@@ -1042,12 +1076,15 @@ export function BattleStage({
       {contextMenu && entityMap.get(contextMenu.entityId) && (
         <TokenContextMenu
           entity={entityMap.get(contextMenu.entityId)!}
-          entities={entities}
-          selectedTargetId={selectedEntityId}
           x={contextMenu.x}
           y={contextMenu.y}
           isDirector={isDirector}
+          ownHeroEntityId={ownHeroEntityId}
           send={send}
+          onRequestTargeting={(action) => {
+            handleCloseContextMenu();
+            onRequestTargeting?.(action);
+          }}
           onClose={handleCloseContextMenu}
         />
       )}
