@@ -16,7 +16,7 @@ interface BuildReviewScreensArgs {
   missingText: string | null;
   identity: ReviewField[];
   stats: ReviewField[];
-  /** Compact characteristics line (e.g. "M2 A1 R1 I0 P-1"). */
+  /** Compact characteristics line (e.g. "M+2 A+1 R+1 I+0 P-1"). */
   characteristics: string | null;
   selections: ReviewField[];
 }

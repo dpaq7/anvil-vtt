@@ -33,6 +33,12 @@ const ECHELON_NAMES: Record<number, string> = {
   4: "Legend",
 };
 
+// Sign convention for the compact characteristics line: zero and positive
+// scores read as modifiers ("+0", "+2"); negatives already carry "-".
+function formatScore(value: number): string {
+  return value >= 0 ? `+${value}` : String(value);
+}
+
 function getMissingStepText(character: CharacterInProgress): string | null {
   const firstIncomplete = WizardLogic.getFirstIncompleteStep(character);
   if (!firstIncomplete) return null;
@@ -118,7 +124,7 @@ export function ReviewStep({ character }: Props) {
     identity,
     stats,
     characteristics: chars
-      ? `M${chars.might} A${chars.agility} R${chars.reason} I${chars.intuition} P${chars.presence}`
+      ? `M${formatScore(chars.might)} A${formatScore(chars.agility)} R${formatScore(chars.reason)} I${formatScore(chars.intuition)} P${formatScore(chars.presence)}`
       : null,
     selections,
   });

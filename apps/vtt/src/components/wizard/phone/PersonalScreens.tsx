@@ -83,12 +83,13 @@ export function buildPersonalScreens({
                   className="size-16 shrink-0 rounded-lg border border-creator-border object-cover"
                 />
               )}
-              <label className="flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-lg border border-creator-border text-sm text-creator-text-muted">
+              <label className="flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-lg border border-creator-border text-sm text-creator-text-muted focus-within:ring-2 focus-within:ring-creator-highlight">
                 {portraitUrl ? 'Replace portrait' : 'Upload portrait'}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   className="sr-only"
+                  aria-describedby={uploadError ? 'portrait-upload-error' : undefined}
                   onChange={onUploadPortrait}
                 />
               </label>
@@ -102,7 +103,13 @@ export function buildPersonalScreens({
                 </button>
               )}
             </div>
-            {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+            {uploadError && (
+              // Fixed literal id is safe: the builder renders at most one
+              // portrait screen at a time (hook-free, so no useId here).
+              <p id="portrait-upload-error" className="text-xs text-red-400">
+                {uploadError}
+              </p>
+            )}
           </div>
         </DecisionScreen>
       ),
