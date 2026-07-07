@@ -1,6 +1,8 @@
 import { useState, type ChangeEvent } from 'react';
 import type { CharacterInProgress } from '@anvil/data';
 import { Input } from '@anvil/ui';
+import { PhoneDecisionFlow } from '../creator/phone/index.js';
+import { buildPersonalScreens } from './phone/PersonalScreens.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -40,7 +42,30 @@ export function PersonalStep({ character, onChange }: Props) {
     reader.readAsDataURL(file);
   };
 
-  return (
+  const clearPortrait = () => {
+    onChange({ portraitUrl: null });
+    setUploadError(null);
+  };
+
+  // Phone: two static screens — identity (name/pronouns/portrait) and story
+  // (backstory/appearance). Same handlers as desktop; only the name gates
+  // the step's completion, so both screens always render.
+  const screens = buildPersonalScreens({
+    name: character.name,
+    pronouns: character.pronouns,
+    backstory: character.backstory,
+    appearance: character.appearance,
+    portraitUrl: character.portraitUrl ?? null,
+    uploadError,
+    onChangeName: (name) => onChange({ name }),
+    onChangePronouns: (pronouns) => onChange({ pronouns }),
+    onChangeBackstory: (backstory) => onChange({ backstory }),
+    onChangeAppearance: (appearance) => onChange({ appearance }),
+    onUploadPortrait: handlePortraitUpload,
+    onClearPortrait: clearPortrait,
+  });
+
+  const renderDesktop = () => (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">Personal Details</h2>
 
@@ -124,4 +149,6 @@ export function PersonalStep({ character, onChange }: Props) {
       </div>
     </div>
   );
+
+  return <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />;
 }

@@ -1,17 +1,52 @@
+import { useState } from 'react';
 import { GameData } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
 import { Card, CardHeader, CardTitle, CardContent, cn } from '@anvil/ui';
 import { Check } from 'lucide-react';
+import { BottomSheet, PhoneDecisionFlow } from '../creator/phone/index.js';
+import { buildClassScreens } from './phone/ClassScreens.js';
 
 interface Props {
   character: CharacterInProgress;
   onChange: (patch: Partial<CharacterInProgress>) => void;
 }
 
+type HeroClassOption = ReturnType<typeof GameData.getAllClasses>[number];
+
 export function ClassStep({ character, onChange }: Props) {
+  const [peek, setPeek] = useState<HeroClassOption | null>(null);
   const classes = GameData.getAllClasses();
 
-  return (
+  const selectClass = (cls: HeroClassOption) =>
+    onChange({
+      heroClass: cls.id as CharacterInProgress['heroClass'],
+      subclass: null,
+      companion: null,
+      characteristics: null,
+      secondaryKit: null,
+      classSkillChoices: [],
+      abilityChoices: {},
+      summonerMinionChoices: {},
+      selectedAbilities: [],
+      selectedPerks: [],
+    });
+
+  // Phone: a single decision screen with one row per class; the info peek
+  // shows the same description and role the desktop card displays.
+  const screens = buildClassScreens({
+    classes,
+    selectedClassId: character.heroClass,
+    onSelectClass: (classId) => {
+      const cls = classes.find((c) => c.id === classId);
+      if (cls) selectClass(cls);
+    },
+    onPeekClass: (classId) => {
+      const cls = classes.find((c) => c.id === classId);
+      if (cls) setPeek(cls);
+    },
+  });
+
+  const renderDesktop = () => (
     <div>
       <h2 className="mb-1 text-lg font-semibold">Choose Your Class</h2>
       <p className="mb-4 text-sm text-zinc-400">Your class defines your role in combat and your heroic abilities.</p>
@@ -28,20 +63,7 @@ export function ClassStep({ character, onChange }: Props) {
                   ? 'border-creator-highlight ring-1 ring-creator-highlight/50 bg-creator-highlight/20'
                   : 'border-creator-border hover:border-creator-text-muted hover:bg-creator-card-hover'
               )}
-              onClick={() =>
-                onChange({
-                  heroClass: cls.id as CharacterInProgress['heroClass'],
-                  subclass: null,
-                  companion: null,
-                  characteristics: null,
-                  secondaryKit: null,
-                  classSkillChoices: [],
-                  abilityChoices: {},
-                  summonerMinionChoices: {},
-                  selectedAbilities: [],
-                  selectedPerks: [],
-                })
-              }
+              onClick={() => selectClass(cls)}
             >
               <CardHeader className="py-3">
                 <div className="flex items-center justify-between">
@@ -62,5 +84,20 @@ export function ClassStep({ character, onChange }: Props) {
         })}
       </div>
     </div>
+  );
+
+  return (
+    <>
+      <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />
+      {/* Renders null on desktop: nothing there ever sets peek. */}
+      <BottomSheet open={peek !== null} onClose={() => setPeek(null)} title={peek?.name}>
+        {peek?.description && (
+          <p className="text-sm leading-relaxed text-creator-text">{peek.description}</p>
+        )}
+        {peek?.role && (
+          <p className="mt-2 text-xs text-creator-text-muted">Role: {peek.role}</p>
+        )}
+      </BottomSheet>
+    </>
   );
 }

@@ -24,6 +24,8 @@ import {
   Search as SearchIcon,
   Hammer,
 } from 'lucide-react';
+import { BottomSheet, PhoneDecisionFlow } from '../creator/phone/index.js';
+import { buildPerksScreens } from './phone/PerksScreens.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -76,6 +78,7 @@ export function PerksStep({ character, onChange }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<number>(0);
   const [previewedPerk, setPreviewedPerk] = useState<Perk | null>(null);
+  const [peekPerk, setPeekPerk] = useState<Perk | null>(null);
 
   const level = character.level ?? 1;
 
@@ -121,19 +124,22 @@ export function PerksStep({ character, onChange }: Props) {
   // Get the perk selected for the current slot
   const currentSlotPerkId = currentSlot?.selectedPerkId ?? null;
 
-  const handleSelectPerk = (perk: Perk) => {
-    if (!currentSlot) return;
-
-    if (currentSlot.source === 'career') {
+  const selectPerkForSlot = (slot: PerkSlot, perk: Perk) => {
+    if (slot.source === 'career') {
       onChange({ careerPerk: perk.id });
       return;
     }
 
     const newPerks = [...(character.selectedPerks ?? [])];
-    const classIndex = currentSlot.classIndex ?? 0;
+    const classIndex = slot.classIndex ?? 0;
     while (newPerks.length <= classIndex) newPerks.push('');
     newPerks[classIndex] = perk.id;
     onChange({ selectedPerks: newPerks });
+  };
+
+  const handleSelectPerk = (perk: Perk) => {
+    if (!currentSlot) return;
+    selectPerkForSlot(currentSlot, perk);
   };
 
   const handleClearSlot = () => {
@@ -243,155 +249,198 @@ export function PerksStep({ character, onChange }: Props) {
     );
   };
 
-  // If no perks available at this level
-  if (perkSlots.length === 0) {
-    return (
-      <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col items-center justify-center">
-        <div className="text-center text-zinc-500">
-          <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <h2 className="text-lg font-semibold mb-2">No Perks Available</h2>
-          <p className="text-sm max-w-md">
-            {!character.career
-              ? 'Select a career first to see available perks.'
-              : level < 2
-                ? 'Your current choices do not grant a perk slot.'
-                : 'Your class and level combination has no perk slots available.'}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Phone: one decision screen per perk slot.
+  const screens = buildPerksScreens({
+    slots: perkSlots,
+    emptyHelper: !character.career
+      ? 'Select a career first to see available perks.'
+      : level < 2
+        ? 'Your current choices do not grant a perk slot.'
+        : 'Your class and level combination has no perk slots available.',
+    selectedPerkIds,
+    getEligiblePerks: (categories) =>
+      PERKS.filter((p) => categories.includes(p.category)),
+    onSelectPerk: (slotId, perk) => {
+      const slot = perkSlots.find((s) => s.id === slotId);
+      if (slot) selectPerkForSlot(slot, perk);
+    },
+    onPeekPerk: setPeekPerk,
+  });
 
-  return (
-    <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col">
-      <div className="flex-shrink-0 space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold">Select Perks</h2>
-            <p className="mt-1 text-sm text-zinc-400">
-              Choose the perk granted by your career, plus any class perks
-              unlocked by your level.
+  const renderDesktop = () => {
+    // If no perks available at this level
+    if (perkSlots.length === 0) {
+      return (
+        <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col items-center justify-center">
+          <div className="text-center text-zinc-500">
+            <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <h2 className="text-lg font-semibold mb-2">No Perks Available</h2>
+            <p className="text-sm max-w-md">
+              {!character.career
+                ? 'Select a career first to see available perks.'
+                : level < 2
+                  ? 'Your current choices do not grant a perk slot.'
+                  : 'Your class and level combination has no perk slots available.'}
             </p>
           </div>
-          <div className="rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-400">
-            <span className="font-medium text-zinc-200">
-              {perkSlots.filter((slot) => slot.selectedPerkId).length} /{' '}
-              {perkSlots.length}
-            </span>{' '}
-            filled
-          </div>
         </div>
+      );
+    }
 
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
-          {/* Slot Selector */}
-          <div className="flex flex-wrap gap-2">
-            {perkSlots.map((slot, index) => {
-              const slotPerkId = slot.selectedPerkId;
-              const slotPerk = slotPerkId
-                ? PERKS.find((p) => p.id === slotPerkId)
-                : null;
-              const isActive = selectedSlot === index;
-              const hasSelection = !!slotPerk;
-              const isRestricted =
-                slot.categories.length < ALL_PERK_CATEGORIES.length;
-
-              return (
-                <button
-                  key={slot.id}
-                  onClick={() => setSelectedSlot(index)}
-                  className={cn(
-                    'min-w-[12rem] max-w-full rounded-md border px-3 py-1.5 text-left text-sm font-medium transition',
-                    isActive
-                      ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                      : hasSelection
-                        ? 'border-green-700 bg-green-900/20 text-green-400'
-                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-500',
-                  )}
-                >
-                  <div className="flex items-center gap-1.5">
-                    {slot.label}
-                    {hasSelection && <Check className="h-3.5 w-3.5" />}
-                    {isRestricted && !hasSelection && (
-                      <Lock className="h-3 w-3 opacity-50" />
-                    )}
-                  </div>
-                  {slotPerk && (
-                    <div className="mt-0.5 truncate text-xs opacity-75">
-                      {slotPerk.name}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+    return (
+      <div className="flex h-[calc(100vh-12rem)] min-h-[560px] flex-col">
+        <div className="flex-shrink-0 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">Select Perks</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Choose the perk granted by your career, plus any class perks
+                unlocked by your level.
+              </p>
+            </div>
+            <div className="rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-400">
+              <span className="font-medium text-zinc-200">
+                {perkSlots.filter((slot) => slot.selectedPerkId).length} /{' '}
+                {perkSlots.length}
+              </span>{' '}
+              filled
+            </div>
           </div>
 
-          {/* Search and Clear */}
-          <div className="flex gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-              <Input
-                className="pl-9"
-                placeholder="Search perks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+            {/* Slot Selector */}
+            <div className="flex flex-wrap gap-2">
+              {perkSlots.map((slot, index) => {
+                const slotPerkId = slot.selectedPerkId;
+                const slotPerk = slotPerkId
+                  ? PERKS.find((p) => p.id === slotPerkId)
+                  : null;
+                const isActive = selectedSlot === index;
+                const hasSelection = !!slotPerk;
+                const isRestricted =
+                  slot.categories.length < ALL_PERK_CATEGORIES.length;
+
+                return (
+                  <button
+                    key={slot.id}
+                    onClick={() => setSelectedSlot(index)}
+                    className={cn(
+                      'min-w-[12rem] max-w-full rounded-md border px-3 py-1.5 text-left text-sm font-medium transition',
+                      isActive
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                        : hasSelection
+                          ? 'border-green-700 bg-green-900/20 text-green-400'
+                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {slot.label}
+                      {hasSelection && <Check className="h-3.5 w-3.5" />}
+                      {isRestricted && !hasSelection && (
+                        <Lock className="h-3 w-3 opacity-50" />
+                      )}
+                    </div>
+                    {slotPerk && (
+                      <div className="mt-0.5 truncate text-xs opacity-75">
+                        {slotPerk.name}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            {currentSlotPerkId && (
-              <button
-                onClick={handleClearSlot}
-                className="shrink-0 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700"
-              >
-                Clear Slot
-              </button>
+
+            {/* Search and Clear */}
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search perks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              {currentSlotPerkId && (
+                <button
+                  onClick={handleClearSlot}
+                  className="shrink-0 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700"
+                >
+                  Clear Slot
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Category Restrictions Info */}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            <span>Available categories:</span>
+            {isAnyCategory ? (
+              <span className="inline-flex px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 text-xs">
+                Any
+              </span>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {allowedCategories.map((cat) => {
+                  const Icon = CATEGORY_ICONS[cat];
+                  return (
+                    <span
+                      key={cat}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-zinc-600 text-xs text-zinc-300"
+                    >
+                      <Icon className="h-3 w-3" />
+                      {PERK_CATEGORY_INFO[cat].name}
+                    </span>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Category Restrictions Info */}
-        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-          <span>Available categories:</span>
-          {isAnyCategory ? (
-            <span className="inline-flex px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 text-xs">
-              Any
-            </span>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {allowedCategories.map((cat) => {
-                const Icon = CATEGORY_ICONS[cat];
-                return (
-                  <span
-                    key={cat}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-zinc-600 text-xs text-zinc-300"
-                  >
-                    <Icon className="h-3 w-3" />
-                    {PERK_CATEGORY_INFO[cat].name}
-                  </span>
-                );
-              })}
-            </div>
-          )}
+        <div className="min-h-0 flex-1 pt-3">
+          <SplitViewSelector
+            items={flatPerks}
+            selectedId={currentSlotPerkId}
+            onPreview={setPreviewedPerk}
+            onSelect={handleSelectPerk}
+            renderCard={renderCard}
+            renderDetail={renderDetail}
+            previewedItem={previewedPerk}
+            emptyMessage={
+              searchQuery
+                ? 'No perks match your search'
+                : 'No perks available for these categories'
+            }
+            gridCols={2}
+            listClassName="lg:w-[58%]"
+            detailClassName="lg:w-[42%]"
+          />
         </div>
       </div>
+    );
+  };
 
-      <div className="min-h-0 flex-1 pt-3">
-        <SplitViewSelector
-          items={flatPerks}
-          selectedId={currentSlotPerkId}
-          onPreview={setPreviewedPerk}
-          onSelect={handleSelectPerk}
-          renderCard={renderCard}
-          renderDetail={renderDetail}
-          previewedItem={previewedPerk}
-          emptyMessage={
-            searchQuery
-              ? 'No perks match your search'
-              : 'No perks available for these categories'
-          }
-          gridCols={2}
-          listClassName="lg:w-[58%]"
-          detailClassName="lg:w-[42%]"
-        />
-      </div>
-    </div>
+  return (
+    <>
+      <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />
+      {/* Renders null on desktop: nothing there ever sets peekPerk. */}
+      <BottomSheet
+        open={peekPerk !== null}
+        onClose={() => setPeekPerk(null)}
+        title={peekPerk?.name}
+      >
+        {peekPerk && (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wider text-creator-text-muted">
+              {PERK_CATEGORY_INFO[peekPerk.category].name} Perk
+            </p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-creator-text">
+              {peekPerk.description}
+            </p>
+          </>
+        )}
+      </BottomSheet>
+    </>
   );
 }

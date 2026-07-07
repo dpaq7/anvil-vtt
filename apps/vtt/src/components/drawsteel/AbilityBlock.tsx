@@ -1,6 +1,7 @@
 import { cn } from '@anvil/ui';
 import type { LucideIcon } from 'lucide-react';
 import { Clock3, Crosshair, Gauge, Sparkles, Target, Zap } from 'lucide-react';
+import { abilityDisplayType, isSignatureAbility } from './abilityData.js';
 import type { DrawSteelAbilityView, DrawSteelEffectBlock, DrawSteelPowerRoll } from './abilityData.js';
 
 interface AbilityBlockProps {
@@ -17,18 +18,6 @@ const TIER_LABELS = [
   ['12-16', 'tier2'],
   ['17+', 'tier3'],
 ] as const;
-
-function isSignature(ability: DrawSteelAbilityView): boolean {
-  return [ability.abilityType, ability.cost]
-    .filter(Boolean)
-    .some((value) => value!.toLowerCase().includes('signature'));
-}
-
-function displayType(ability: DrawSteelAbilityView): string | null {
-  if (ability.cost) return ability.cost;
-  if (ability.abilityType) return ability.abilityType;
-  return isSignature(ability) ? 'Signature' : null;
-}
 
 function normalizedUsage(usage?: string): string | null {
   if (!usage?.trim()) return null;
@@ -182,8 +171,8 @@ function EffectsBlock({ effects, compact }: { effects?: DrawSteelEffectBlock[]; 
 
 export function AbilityBlock({ ability, className, compact = false, disabled = false, selected = false, onClick }: AbilityBlockProps) {
   const Component = onClick ? 'button' : 'div';
-  const type = displayType(ability);
-  const signature = isSignature(ability);
+  const type = abilityDisplayType(ability);
+  const signature = isSignatureAbility(ability);
 
   return (
     <Component
@@ -226,7 +215,7 @@ export function AbilityBlock({ ability, className, compact = false, disabled = f
               compact ? 'max-w-24 text-[9px]' : 'max-w-32 text-[10px]',
             )}
           >
-            {signature ? 'Signature' : type}
+            {type}
           </span>
         ) : null}
       </header>

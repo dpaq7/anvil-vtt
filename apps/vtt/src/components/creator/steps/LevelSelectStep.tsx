@@ -1,6 +1,8 @@
 import { HeroLogic } from "@anvil/data";
 import { cn } from "@anvil/ui";
 import { useWizardStore } from "../../../stores/wizardStore.js";
+import { PhoneDecisionFlow } from "../phone/index.js";
+import { buildLevelScreens } from "../../wizard/phone/LevelScreens.js";
 
 const LEVEL_RANGE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
@@ -40,7 +42,23 @@ export function LevelSelectStep() {
     {} as Record<number, number[]>,
   );
 
-  return (
+  // Phone: one screen, a row per level. setLevel regenerates the wizard's
+  // step list, but this remains the one-screen 'level' step, so the phone
+  // flow's sub-step registration is unaffected.
+  const screens = buildLevelScreens({
+    levels: LEVEL_RANGE.map((level) => {
+      const echelon = HeroLogic.getEchelon(level);
+      return {
+        level,
+        echelon,
+        echelonName: ECHELON_NAMES[echelon] ?? `Echelon ${echelon}`,
+      };
+    }),
+    selectedLevel,
+    onSelectLevel: setLevel,
+  });
+
+  const renderDesktop = () => (
     <div>
       <p className="mb-6 text-sm text-creator-text-muted">
         Choose your starting level. Higher levels unlock additional abilities
@@ -113,4 +131,6 @@ export function LevelSelectStep() {
       )}
     </div>
   );
+
+  return <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />;
 }
