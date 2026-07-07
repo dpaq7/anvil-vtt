@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { GameData, WizardLogic } from '@anvil/data';
 import type { CharacterInProgress } from '@anvil/data';
 import { Card, CardContent, cn } from '@anvil/ui';
 import { Check } from 'lucide-react';
+import { BottomSheet, PhoneDecisionFlow } from '../creator/phone/index.js';
+import { buildLanguagesScreens } from './phone/LanguagesScreens.js';
+import type { LanguageChoice } from './phone/LanguagesScreens.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -9,6 +13,7 @@ interface Props {
 }
 
 export function LanguagesStep({ character, onChange }: Props) {
+  const [peek, setPeek] = useState<LanguageChoice | null>(null);
   const languages = GameData.getSelectableLanguages();
   const needed = WizardLogic.getLanguageSelectionsNeeded(character);
 
@@ -21,7 +26,19 @@ export function LanguagesStep({ character, onChange }: Props) {
     }
   };
 
-  return (
+  // Phone: one multi-select screen; rows toggle through the same handler and
+  // unselected rows disable once the budget is spent (desktop silently
+  // ignores extra adds — same constraint, made visible).
+  const screens = buildLanguagesScreens({
+    languages,
+    selectedIds: character.selectedLanguages,
+    needed,
+    grantedLanguageName: GameData.getDefaultLanguage()?.name ?? null,
+    onToggle: toggle,
+    onPeek: setPeek,
+  });
+
+  const renderDesktop = () => (
     <div>
       <h2 className="mb-1 text-lg font-semibold">Select Languages</h2>
       <p className="mb-4 text-sm text-zinc-400">
@@ -64,5 +81,15 @@ export function LanguagesStep({ character, onChange }: Props) {
         {character.selectedLanguages.length} / {needed} selected
       </p>
     </div>
+  );
+
+  return (
+    <>
+      <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />
+      {/* Renders null on desktop: nothing there ever sets peek. */}
+      <BottomSheet open={peek !== null} onClose={() => setPeek(null)} title={peek?.name}>
+        <p className="text-sm leading-relaxed text-creator-text">{peek?.relatedTo}</p>
+      </BottomSheet>
+    </>
   );
 }

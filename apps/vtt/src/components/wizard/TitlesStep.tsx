@@ -1,5 +1,8 @@
 import type { CharacterInProgress, Title } from '@anvil/data';
 import { Button, Input } from '@anvil/ui';
+import { PhoneDecisionFlow } from '../creator/phone/index.js';
+import { useWizardNavigation } from '../../stores/wizardStore.js';
+import { buildTitlesScreens } from './phone/TitlesScreens.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -7,6 +10,8 @@ interface Props {
 }
 
 export function TitlesStep({ character, onChange }: Props) {
+  const { goNext } = useWizardNavigation();
+
   const addTitle = () => {
     onChange({
       selectedTitles: [
@@ -27,7 +32,17 @@ export function TitlesStep({ character, onChange }: Props) {
     onChange({ selectedTitles: character.selectedTitles.filter((_, i) => i !== index) });
   };
 
-  return (
+  // Phone: one optional screen — "Skip for now" advances to the next macro
+  // step; titles stay free-text entries, mirroring desktop's add/remove rows.
+  const screens = buildTitlesScreens({
+    titles: character.selectedTitles,
+    onAddTitle: addTitle,
+    onRenameTitle: (index, name) => updateTitle(index, { name }),
+    onRemoveTitle: removeTitle,
+    onSkip: goNext,
+  });
+
+  const renderDesktop = () => (
     <div>
       <h2 className="mb-1 text-lg font-semibold">Titles</h2>
       <p className="mb-4 text-sm text-zinc-400">
@@ -56,4 +71,6 @@ export function TitlesStep({ character, onChange }: Props) {
       </Button>
     </div>
   );
+
+  return <PhoneDecisionFlow screens={screens} desktop={renderDesktop} />;
 }
