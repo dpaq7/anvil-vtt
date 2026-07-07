@@ -37,6 +37,10 @@ export interface TokenStyle {
   size: number; // grid cells
   color: number;
   selected: boolean;
+  /** Combatant is currently taking its turn (amber active-turn ring). */
+  active?: boolean;
+  /** Combatant has already acted this round (dimmed + done badge). */
+  acted?: boolean;
 }
 
 interface TokenSprite {
@@ -48,6 +52,8 @@ interface TokenSprite {
   size: number;
   conditionBadge: Text | null;
   selected: boolean;
+  active: boolean;
+  acted: boolean;
 }
 
 export class TokenLayer extends Container {
@@ -62,15 +68,19 @@ export class TokenLayer extends Container {
       entity: token.entity,
       size: token.size,
       selected: token.selected,
+      active: token.active,
+      acted: token.acted,
     }));
     this.cellSize = size;
     if (existingTokens.length === 0) return;
     this.clear();
-    for (const { entity, size: tokenSize, selected } of existingTokens) {
+    for (const { entity, size: tokenSize, selected, active, acted } of existingTokens) {
       this.addToken(entity, {
         size: tokenSize,
         color: TYPE_COLORS[entity.type] ?? 0x8b5cf6,
         selected,
+        active,
+        acted,
       });
     }
   }
@@ -210,6 +220,48 @@ export class TokenLayer extends Container {
       });
     }
 
+    // Combat turn cues (tied to the initiative tracker's state).
+    // Acted this round → dim the token face + a "done" check badge. The active
+    // combatant is never dimmed and instead gets a bright amber turn ring.
+    if (style.acted && !style.active) {
+      const scrim = new Graphics();
+      scrim.circle(cx, cy, radius);
+      scrim.fill({ color: 0x09090b, alpha: 0.55 });
+      container.addChild(scrim);
+
+      const bR = Math.max(7, size * 0.14);
+      const bx = cx - radius * 0.68;
+      const by = cy - radius * 0.68;
+      const badge = new Graphics();
+      badge.circle(bx, by, bR);
+      badge.fill({ color: 0x18181b, alpha: 0.95 });
+      badge.circle(bx, by, bR);
+      badge.stroke({ width: 1.5, color: 0x71717a, alpha: 0.95 });
+      container.addChild(badge);
+      const check = new Text({
+        text: '✓',
+        style: {
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: bR * 1.4,
+          fill: 0xd4d4d8,
+          fontWeight: 'bold',
+        },
+      });
+      check.anchor.set(0.5);
+      check.x = bx;
+      check.y = by;
+      container.addChild(check);
+    }
+
+    if (style.active) {
+      const activeRing = new Graphics();
+      activeRing.circle(cx, cy, radius + 4);
+      activeRing.stroke({ width: 3, color: 0xfbbf24, alpha: 0.95 });
+      activeRing.circle(cx, cy, radius + 7);
+      activeRing.stroke({ width: 2, color: 0xfbbf24, alpha: 0.35 });
+      container.addChild(activeRing);
+    }
+
     container.x = entity.x * this.cellSize;
     container.y = entity.y * this.cellSize;
     container.eventMode = 'static';
@@ -225,6 +277,8 @@ export class TokenLayer extends Container {
       size: style.size,
       conditionBadge,
       selected: style.selected,
+      active: Boolean(style.active),
+      acted: Boolean(style.acted),
     });
   }
 
@@ -293,8 +347,10 @@ export class TokenLayer extends Container {
     const sizeChanged = style.size !== existing.size;
     const nameChanged = oldEntity.name !== entity.name;
     const portraitChanged = oldEntity['portraitUrl'] !== entity['portraitUrl'];
+    const activeChanged = Boolean(style.active) !== existing.active;
+    const actedChanged = Boolean(style.acted) !== existing.acted;
 
-    if (!staminaChanged && !conditionsChanged && !selectionChanged && !sizeChanged && !nameChanged && !portraitChanged) {
+    if (!staminaChanged && !conditionsChanged && !selectionChanged && !sizeChanged && !nameChanged && !portraitChanged && !activeChanged && !actedChanged) {
       // Only position may have changed — sync from entity if not being dragged
       // (dragged tokens have their position updated by InteractionManager)
       if (existing.gridX !== entity.x || existing.gridY !== entity.y) {

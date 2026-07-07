@@ -866,6 +866,8 @@ export function BattleStage({
         activeMoverBudget={activeMoverBudget}
         targeting={canvasTargeting}
         onTargetConfirm={onTargetConfirm}
+        actedEntityIds={combat?.actedThisRound}
+        activeEntityId={combat?.activeEntityId ?? null}
         builderMode={isDirector}
         activeTool={isDirector ? activeTool : 'select'}
         drawColor={drawColor}

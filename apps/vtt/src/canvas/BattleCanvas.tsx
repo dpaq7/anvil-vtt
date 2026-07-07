@@ -345,6 +345,14 @@ export interface BattleCanvasProps {
   targeting?: TargetingModeContext | null;
   onTargetConfirm?: (targetId: string) => void;
 
+  /**
+   * Combat turn cues: ids that have already acted this round are dimmed with a
+   * "done" badge; the active combatant gets an amber turn ring. Driven by the
+   * same state as the initiative tracker. Omit outside combat.
+   */
+  actedEntityIds?: string[];
+  activeEntityId?: string | null;
+
   // Builder mode props (all optional — omit for live session)
   builderMode?: boolean;
   activeTool?: ActiveTool;
@@ -415,6 +423,8 @@ export function BattleCanvas({
   activeMoverBudget = null,
   targeting = null,
   onTargetConfirm,
+  actedEntityIds,
+  activeEntityId = null,
   builderMode = false,
   activeTool = 'select',
   drawColor = '#ef4444',
@@ -783,6 +793,7 @@ export function BattleCanvas({
     const selectedSet = new Set(selectedEntityIds);
     // Always include the single-select ID too
     if (selectedEntityId) selectedSet.add(selectedEntityId);
+    const actedSet = new Set(actedEntityIds ?? []);
 
     // Sync multi-select state into the InteractionManager so group-drag works
     layers.interaction.setSelectedIds(selectedSet);
@@ -803,26 +814,32 @@ export function BattleCanvas({
             ? 0xef4444
             : 0x8b5cf6;
       const size = getEntityTokenSize(entity);
+      const active = activeEntityId === entity.id;
+      const acted = actedSet.has(entity.id);
       if (!prevIds.has(entity.id)) {
         // New entity — add token
         layers.tokens.addToken(entity, {
           size,
           color,
           selected: selectedSet.has(entity.id),
+          active,
+          acted,
         });
       } else {
-        // Existing entity — update in place (position, selection, stamina, conditions)
+        // Existing entity — update in place (position, selection, stamina, conditions, turn cues)
         layers.tokens.updateToken(entity, {
           size,
           color,
           selected: selectedSet.has(entity.id),
+          active,
+          acted,
         });
       }
     }
 
     prevEntityIdsRef.current = currentIds;
     layers.interaction.rebuildIndex();
-  }, [entities, selectedEntityId, selectedEntityIds, pixiReady]);
+  }, [entities, selectedEntityId, selectedEntityIds, actedEntityIds, activeEntityId, pixiReady]);
 
   // Update fog zones
   useEffect(() => {
