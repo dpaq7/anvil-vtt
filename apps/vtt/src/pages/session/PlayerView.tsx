@@ -33,6 +33,7 @@ import type { AbilityInfo } from "../../components/session/AbilityCard.js";
 import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
 import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
 import type { PendingTargetedAction } from "../../lib/targeting.js";
+import { conditionNames } from "../../lib/conditions.js";
 import {
   PlayerHeroCommandBar,
   PlayerHeroSheetPanel,
@@ -109,9 +110,7 @@ export function PlayerView({
     () => (heroEntity?.["abilities"] as AbilityInfo[] | undefined) ?? [],
     [heroEntity],
   );
-  const heroConditions = Array.isArray(heroEntity?.["conditions"])
-    ? (heroEntity["conditions"] as string[])
-    : [];
+  const heroConditions = conditionNames(heroEntity) as string[];
   const heroSpeed =
     typeof heroEntity?.["speed"] === "number"
       ? (heroEntity["speed"] as number)

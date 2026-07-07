@@ -5,6 +5,7 @@ import {
   mediaElementCrossOrigin,
   resolveApiBackedMediaUrl,
 } from '../../lib/api-url.js';
+import { conditionNames } from '../../lib/conditions.js';
 
 /** Condition ID → emoji for badge display */
 const CONDITION_EMOJI: Record<string, string> = {
@@ -174,12 +175,24 @@ export class TokenLayer extends Container {
       arc.arc(cx, cy, radius + 1, startAngle, endAngle);
       arc.stroke({ width: 3, color: arcColor });
       container.addChild(arc);
+
+      // Stamina-state status ring (matches the context-menu badges): dying at
+      // ≤ 0 (red), winded at ≤ half (orange). Sits outside the HP arc.
+      if (currentStamina <= 0) {
+        const dyingRing = new Graphics();
+        dyingRing.circle(cx, cy, radius + 2);
+        dyingRing.stroke({ width: 3.5, color: 0xdc2626, alpha: 0.95 });
+        container.addChild(dyingRing);
+      } else if (currentStamina <= maxStamina / 2) {
+        const windedRing = new Graphics();
+        windedRing.circle(cx, cy, radius + 2);
+        windedRing.stroke({ width: 2.5, color: 0xfb923c, alpha: 0.9 });
+        container.addChild(windedRing);
+      }
     }
 
     // Condition emoji tags — positioned around the token ring starting at ~2 o'clock
-    const conditions = Array.isArray(entity['conditions'])
-      ? (entity['conditions'] as string[])
-      : [];
+    const conditions = conditionNames(entity);
     const conditionBadge: Text | null = null;
     if (conditions.length > 0) {
       // Start at ~1:30 (about -60°) and space each tag 30° clockwise

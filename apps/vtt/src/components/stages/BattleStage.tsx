@@ -10,6 +10,7 @@ import type { ConditionName } from '@anvil/types';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import type { TargetingModeContext } from '../../canvas/systems/InteractionManager.js';
 import type { PendingTargetedAction } from '../../lib/targeting.js';
+import { conditionNames } from '../../lib/conditions.js';
 import { BattleToolbar } from '../builder/BattleToolbar.js';
 import { ViewportControls } from '../builder/ViewportControls.js';
 import type { BattleTool, FogBrushMode } from '../builder/BattleToolbar.js';
@@ -471,9 +472,7 @@ export function BattleStage({
     if (!turnState) return null;
     const entity = entityMap.get(activeId);
     const baseSpeed = typeof entity?.['speed'] === 'number' ? (entity['speed'] as number) : 5;
-    const conditions = Array.isArray(entity?.['conditions'])
-      ? (entity['conditions'] as ConditionName[])
-      : [];
+    const conditions = conditionNames(entity) as ConditionName[];
     const budget = MovementLogic.getMovementBudget(baseSpeed, turnState, conditions);
     return { entityId: activeId, remaining: budget.remaining };
   }, [combat, entityMap]);

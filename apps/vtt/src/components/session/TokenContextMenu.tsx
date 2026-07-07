@@ -14,9 +14,17 @@ import {
 } from 'lucide-react';
 import { StaminaBar, Badge, Button } from '@anvil/ui';
 import type { EntityData, ClientMessage, TokenActionKind } from '../../types/protocol.js';
+import type { ConditionName } from '@anvil/types';
 import { AbilityBlock } from '../drawsteel/AbilityBlock.js';
 import { drawSteelAbilityFromLike, type DrawSteelAbilityView } from '../drawsteel/abilityData.js';
 import type { PendingTargetedAction, TargetedActionKind } from '../../lib/targeting.js';
+import {
+  readConditions,
+  defaultEndType,
+  endTypeLabel,
+  CONDITION_IDS,
+  type ConditionEndType,
+} from '../../lib/conditions.js';
 
 /** Condition emojis for Draw Steel's 9 conditions */
 const CONDITION_EMOJIS: Record<string, string> = {
@@ -31,7 +39,6 @@ const CONDITION_EMOJIS: Record<string, string> = {
   weakened: '\u{1F494}',
 };
 
-const ALL_CONDITION_IDS = Object.keys(CONDITION_EMOJIS);
 
 /** Entity type → display badge color */
 const TYPE_BADGE_COLORS: Record<string, string> = {
@@ -138,11 +145,17 @@ export function TokenContextMenu({
   const maxStamina = typeof entity['maxStamina'] === 'number' ? (entity['maxStamina'] as number) : 0;
   const currentStamina = typeof entity['currentStamina'] === 'number' ? (entity['currentStamina'] as number) : maxStamina;
   const level = typeof entity['level'] === 'number' ? (entity['level'] as number) : 1;
-  const conditions = useMemo(
-    () => (Array.isArray(entity['conditions']) ? (entity['conditions'] as string[]) : []),
-    [entity],
-  );
+  const conditionObjects = useMemo(() => readConditions(entity), [entity]);
+  const conditions = useMemo(() => conditionObjects.map((c) => c.name), [conditionObjects]);
   const isHero = entity.type === 'hero';
+
+  // Stamina-derived states (Draw Steel): winded at ≤ half, dying at ≤ 0.
+  const dying = maxStamina > 0 && currentStamina <= 0;
+  const winded = maxStamina > 0 && currentStamina > 0 && currentStamina <= maxStamina / 2;
+
+  // Add-condition form state (end type defaults to the condition's natural rule).
+  const [addCondition, setAddCondition] = useState<ConditionName>('bleeding');
+  const [addEndType, setAddEndType] = useState<ConditionEndType>('save');
 
   // The requester may act with this token if they're the Director or it's their
   // own hero. Otherwise the action list is shown read-only (reference).
@@ -238,19 +251,24 @@ export function TokenContextMenu({
     [send, entity.id],
   );
 
-  const handleToggleCondition = useCallback(
-    (conditionId: string) => {
-      const has = conditions.includes(conditionId);
+  const applyStatus = useCallback(
+    (condition: ConditionName, endType: ConditionEndType) => {
       send({
         type: 'token_action',
-        action: {
-          kind: has ? 'remove-condition' : 'apply-condition',
-          targetId: entity.id,
-          condition: conditionId,
-        },
+        action: { kind: 'apply-condition', targetId: entity.id, condition, endType },
       });
     },
-    [send, entity.id, conditions],
+    [send, entity.id],
+  );
+
+  const removeStatus = useCallback(
+    (condition: string) => {
+      send({
+        type: 'token_action',
+        action: { kind: 'remove-condition', targetId: entity.id, condition },
+      });
+    },
+    [send, entity.id],
   );
 
   const runStandard = useCallback(
@@ -429,32 +447,103 @@ export function TokenContextMenu({
           </div>
         )}
 
-        {/* Condition toggles (director) */}
-        {isDirector && (
-          <div className="border-t border-zinc-800/50 px-3 py-2">
-            <p className="mb-1 text-[10px] font-medium text-zinc-500">Conditions</p>
-            <div className="flex flex-wrap gap-1">
-              {ALL_CONDITION_IDS.map((id) => {
-                const active = conditions.includes(id);
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => handleToggleCondition(id)}
-                    title={id}
-                    className={`rounded px-1.5 py-0.5 text-[10px] transition ${
-                      active
-                        ? 'bg-amber-900/50 text-amber-300 ring-1 ring-amber-600/50'
-                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+        {/* Status — stamina state + conditions with end/save rules */}
+        <div className="border-t border-zinc-800/50 px-3 py-2">
+          <p className="mb-1.5 text-[10px] font-medium text-zinc-500">Status</p>
+
+          {/* Stamina-derived states */}
+          {(dying || winded) && (
+            <div className="mb-1.5 flex flex-wrap gap-1">
+              {dying && (
+                <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 ring-1 ring-red-500/40">
+                  💀 Dying
+                </span>
+              )}
+              {winded && !dying && (
+                <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-500/40">
+                  🫁 Winded
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Active conditions with end-type badges */}
+          {conditionObjects.length > 0 ? (
+            <div className="mb-2 flex flex-col gap-1">
+              {conditionObjects.map((c) => (
+                <div
+                  key={c.name}
+                  className="flex items-center gap-1.5 rounded bg-zinc-800/50 px-1.5 py-1 text-[11px]"
+                >
+                  <span>{CONDITION_EMOJIS[c.name] ?? '•'}</span>
+                  <span className="capitalize text-zinc-200">{c.name}</span>
+                  <span
+                    className={`rounded px-1 text-[9px] ${
+                      c.endType === 'save'
+                        ? 'bg-amber-500/15 text-amber-300'
+                        : c.endType === 'eot'
+                          ? 'bg-sky-500/15 text-sky-300'
+                          : 'bg-zinc-700/60 text-zinc-400'
                     }`}
                   >
-                    {CONDITION_EMOJIS[id]} {id.slice(0, 5)}
-                  </button>
-                );
-              })}
+                    {endTypeLabel(c.endType)}
+                  </span>
+                  {canAct && (
+                    <button
+                      type="button"
+                      className="ml-auto text-zinc-500 hover:text-red-400"
+                      title={`Remove ${c.name}`}
+                      onClick={() => removeStatus(c.name)}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="mb-2 text-[10px] text-zinc-600">No conditions.</p>
+          )}
+
+          {/* Apply a condition with a selectable end/save rule */}
+          {canAct && (
+            <div className="flex items-center gap-1">
+              <select
+                value={addCondition}
+                onChange={(e) => {
+                  const next = e.target.value as ConditionName;
+                  setAddCondition(next);
+                  setAddEndType(defaultEndType(next));
+                }}
+                className="h-7 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-1 text-[11px] capitalize text-zinc-100"
+              >
+                {CONDITION_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={addEndType}
+                onChange={(e) => setAddEndType(e.target.value as ConditionEndType)}
+                className="h-7 rounded border border-zinc-700 bg-zinc-950 px-1 text-[10px] text-zinc-100"
+                title="How the condition ends"
+              >
+                <option value="save">save 6+</option>
+                <option value="eot">end turn</option>
+                <option value="manual">manual</option>
+              </select>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => applyStatus(addCondition, addEndType)}
+              >
+                Add
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
