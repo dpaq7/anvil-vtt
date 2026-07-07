@@ -65,6 +65,7 @@ import { MontageStage } from "../../components/stages/MontageStage.js";
 import { NegotiationStage } from "../../components/stages/NegotiationStage.js";
 import { RespiteStage } from "../../components/stages/RespiteStage.js";
 import { BattleStage } from "../../components/stages/BattleStage.js";
+import { OpportunityAttackPrompt } from "../../components/session/OpportunityAttackPrompt.js";
 import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
 import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
 import { buildVillainCombatGroups } from "../../lib/combat-groups.js";
@@ -657,32 +658,35 @@ export function DirectorView({
       case "battle": {
         const battle = battleData!;
         return (
-          <BattleStage
-            entities={entities}
-            combat={combat}
-            selectedEntityId={selectedEntityId}
-            selectedEntityIds={selectedEntityIds}
-            isDirector
-            cols={battle.cols}
-            rows={battle.rows}
-            cellSize={currentTokenScale}
-            backgroundUrl={battle.backgroundUrl}
-            drawings={battle.drawings}
-            fogZones={battle.fogZones}
-            terrain={battle.terrain}
-            gridOpacity={currentGridOpacity}
-            gridColor={currentGridColor}
-            gridCellSize={currentGridSquareSize}
-            gridOffsetX={currentGridOffsetX}
-            gridOffsetY={currentGridOffsetY}
-            combatLog={combatLog}
-            entityNames={entityNames}
-            onSelectEntity={handleSelectEntity}
-            onSelectEntities={handleSelectEntities}
-            onRollInitiative={undefined}
-            focusEntityRequest={focusEntityRequest}
-            send={send}
-          />
+          <div className="relative h-full w-full">
+            <BattleStage
+              entities={entities}
+              combat={combat}
+              selectedEntityId={selectedEntityId}
+              selectedEntityIds={selectedEntityIds}
+              isDirector
+              cols={battle.cols}
+              rows={battle.rows}
+              cellSize={currentTokenScale}
+              backgroundUrl={battle.backgroundUrl}
+              drawings={battle.drawings}
+              fogZones={battle.fogZones}
+              terrain={battle.terrain}
+              gridOpacity={currentGridOpacity}
+              gridColor={currentGridColor}
+              gridCellSize={currentGridSquareSize}
+              gridOffsetX={currentGridOffsetX}
+              gridOffsetY={currentGridOffsetY}
+              combatLog={combatLog}
+              entityNames={entityNames}
+              onSelectEntity={handleSelectEntity}
+              onSelectEntities={handleSelectEntities}
+              onRollInitiative={undefined}
+              focusEntityRequest={focusEntityRequest}
+              send={send}
+            />
+            <OpportunityAttackPrompt send={send} />
+          </div>
         );
       }
       default:

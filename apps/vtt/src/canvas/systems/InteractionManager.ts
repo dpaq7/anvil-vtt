@@ -3,6 +3,7 @@ import type { TokenLayer } from '../layers/TokenLayer.js';
 import type { DrawingLayer } from '../layers/DrawingLayer.js';
 import type { TerrainLayer, TerrainZoneData } from '../layers/TerrainLayer.js';
 import type { FogLayer } from '../layers/FogLayer.js';
+import type { TargetingLayer } from '../layers/TargetingLayer.js';
 import { Quadtree } from './Quadtree.js';
 
 export type ActiveTool =
@@ -11,6 +12,7 @@ export type ActiveTool =
   | 'fog'
   | 'terrain'
   | 'eraser'
+  | 'measure'
   | 'pan';
 
 const ERASER_CURSOR =
@@ -113,6 +115,11 @@ export class InteractionManager {
   private terrainLayer: TerrainLayer | null = null;
   private fogLayer: FogLayer | null = null;
 
+  // Targeting/measure overlay + active combatant's movement budget
+  private targetingLayer: TargetingLayer | null = null;
+  private moverBudget: { entityId: string; remaining: number } | null = null;
+  private measureFrom: { gridX: number; gridY: number } | null = null;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private viewport: ViewportSystem,
@@ -136,6 +143,19 @@ export class InteractionManager {
     this.drawingLayer = drawing;
     this.terrainLayer = terrain;
     this.fogLayer = fog;
+  }
+
+  /** Attach the targeting overlay layer for movement-path / measure previews. */
+  setTargetingLayer(layer: TargetingLayer | null): void {
+    this.targetingLayer = layer;
+  }
+
+  /**
+   * Set the active combatant's remaining movement so a costed path (red when
+   * over speed) is drawn while dragging that token. Pass null outside combat.
+   */
+  setMoverBudget(budget: { entityId: string; remaining: number } | null): void {
+    this.moverBudget = budget;
   }
 
   get activeTool(): ActiveTool {
@@ -207,6 +227,9 @@ export class InteractionManager {
     this.marqueeStartWorld = null;
     this.tokenLayer.clearSelectionRect();
     this.tokenLayer.clearDistanceLabel();
+    this.targetingLayer?.clearMovement();
+    this.targetingLayer?.clearRuler();
+    this.measureFrom = null;
     this.isDrawing = false;
     this.drawPoints = [];
     this.terrainStart = null;
@@ -361,6 +384,9 @@ export class InteractionManager {
       case 'fog':
         this.handleFogDown(gridX, gridY);
         break;
+      case 'measure':
+        this.handleMeasureDown(gridX, gridY);
+        break;
     }
   };
 
@@ -382,6 +408,9 @@ export class InteractionManager {
         break;
       case 'eraser':
         this.handleEraserMove(e);
+        break;
+      case 'measure':
+        this.handleMeasureMove(e);
         break;
     }
   };
@@ -407,6 +436,9 @@ export class InteractionManager {
         break;
       case 'fog':
         this.handleFogUp(e);
+        break;
+      case 'measure':
+        this.handleMeasureUp();
         break;
     }
     this.releaseActivePointer();
@@ -587,11 +619,26 @@ export class InteractionManager {
       const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
       this.tokenLayer.moveToken(this.dragEntityId, gridX, gridY);
       if (this.dragOriginGrid) {
-        this.tokenLayer.showDistanceLabel(
-          this.dragEntityId,
-          this.dragOriginGrid.gridX,
-          this.dragOriginGrid.gridY,
-        );
+        // During this token's combat turn, show a costed path (red when over
+        // speed); otherwise fall back to the plain distance label.
+        if (
+          this.targetingLayer &&
+          this.moverBudget &&
+          this.moverBudget.entityId === this.dragEntityId
+        ) {
+          this.tokenLayer.clearDistanceLabel();
+          this.targetingLayer.showMovementPath(
+            { x: this.dragOriginGrid.gridX, y: this.dragOriginGrid.gridY },
+            { x: gridX, y: gridY },
+            this.moverBudget.remaining,
+          );
+        } else {
+          this.tokenLayer.showDistanceLabel(
+            this.dragEntityId,
+            this.dragOriginGrid.gridX,
+            this.dragOriginGrid.gridY,
+          );
+        }
       }
       return;
     }
@@ -699,6 +746,7 @@ export class InteractionManager {
       this.dragEntityId = null;
       this.dragOriginGrid = null;
       this.tokenLayer.clearDistanceLabel();
+      this.targetingLayer?.clearMovement();
       this.rebuildIndex();
       return;
     }
@@ -729,6 +777,28 @@ export class InteractionManager {
       }
       return;
     }
+  }
+
+  // --- Measure tool (available to everyone, no director gate) ---
+
+  private handleMeasureDown(gridX: number, gridY: number): void {
+    this.targetingLayer?.clearRuler();
+    this.measureFrom = { gridX, gridY };
+    this.targetingLayer?.showRuler({ x: gridX, y: gridY }, { x: gridX, y: gridY });
+  }
+
+  private handleMeasureMove(e: PointerEvent): void {
+    if (!this.measureFrom || !this.targetingLayer) return;
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+    this.targetingLayer.showRuler(
+      { x: this.measureFrom.gridX, y: this.measureFrom.gridY },
+      { x: gridX, y: gridY },
+    );
+  }
+
+  private handleMeasureUp(): void {
+    // Leave the ruler on screen; the next press starts a fresh measurement.
+    this.measureFrom = null;
   }
 
   // --- Draw tool ---
