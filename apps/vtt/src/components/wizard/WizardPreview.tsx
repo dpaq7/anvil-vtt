@@ -1,5 +1,5 @@
 import type { CharacterInProgress } from '@anvil/data';
-import { resolveWizardSummary } from './wizard-summary.js';
+import { formatScore, resolveWizardSummary } from './wizard-summary.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -51,7 +51,7 @@ export function WizardPreview({ character }: Props) {
             {(Object.entries(character.characteristics) as [string, number][]).map(([name, val]) => (
               <div key={name} className="flex flex-col items-center rounded bg-zinc-800 px-2 py-1">
                 <span className="text-[10px] uppercase text-zinc-500">{name.slice(0, 3)}</span>
-                <span className="font-mono text-zinc-200">{val >= 0 ? `+${val}` : val}</span>
+                <span className="font-mono text-zinc-200">{formatScore(val)}</span>
               </div>
             ))}
           </div>

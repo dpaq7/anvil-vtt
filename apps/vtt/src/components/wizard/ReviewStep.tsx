@@ -2,7 +2,7 @@ import type { CharacterInProgress } from "@anvil/data";
 import { GameData, HeroLogic, WizardLogic } from "@anvil/data";
 import { PhoneDecisionFlow } from "../creator/phone/index.js";
 import { WizardPreview } from "./WizardPreview.js";
-import { resolveWizardSummary } from "./wizard-summary.js";
+import { formatScore, resolveWizardSummary } from "./wizard-summary.js";
 import { buildReviewScreens } from "./phone/ReviewScreens.js";
 import type { ReviewField } from "./phone/ReviewScreens.js";
 
@@ -32,12 +32,6 @@ const ECHELON_NAMES: Record<number, string> = {
   3: "Master",
   4: "Legend",
 };
-
-// Sign convention for the compact characteristics line: zero and positive
-// scores read as modifiers ("+0", "+2"); negatives already carry "-".
-function formatScore(value: number): string {
-  return value >= 0 ? `+${value}` : String(value);
-}
 
 function getMissingStepText(character: CharacterInProgress): string | null {
   const firstIncomplete = WizardLogic.getFirstIncompleteStep(character);

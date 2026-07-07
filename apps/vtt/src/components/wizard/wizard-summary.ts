@@ -1,6 +1,12 @@
 import type { CharacterInProgress, DerivedStats } from '@anvil/data';
 import { GameData, PERKS, WizardLogic } from '@anvil/data';
 
+// Sign convention for characteristic scores: zero and positive read as
+// modifiers ("+0", "+2"); negatives already carry "-".
+export function formatScore(value: number): string {
+  return value >= 0 ? `+${value}` : String(value);
+}
+
 export function getCultureDisplay(character: CharacterInProgress): string | null {
   const preset = character.culture.preset
     ? GameData.getPrebuiltCulture(character.culture.preset)

@@ -9,7 +9,10 @@ import type { HeroClass } from "@anvil/types";
 import { cn, Input } from "@anvil/ui";
 import { SplitViewSelector, DetailPanel } from "../creator/index.js";
 import { AbilityBlock } from "../drawsteel/AbilityBlock.js";
-import { drawSteelAbilityFromLike } from "../drawsteel/abilityData.js";
+import {
+  abilityDisplayType,
+  drawSteelAbilityFromLike,
+} from "../drawsteel/abilityData.js";
 import { Search, Swords, Sparkles } from "lucide-react";
 import { BottomSheet, PhoneDecisionFlow } from "../creator/phone/index.js";
 import { buildAbilitiesScreens } from "./phone/AbilitiesScreens.js";
@@ -68,14 +71,11 @@ function formatStamina(stamina: SummonerMinionChoiceOption["stamina"]): string {
   return Array.isArray(stamina) ? stamina.join("/") : String(stamina);
 }
 
-// One-liner for phone choice rows: cost/type plus keywords.
+// One-liner for phone choice rows: cost/type plus keywords, resolved through
+// the same canonical view AbilityBlock renders (type badge + keyword pills).
 function abilitySummary(ability: GameDataFeature): string {
-  const cost =
-    ability.cost ?? ability.metadata.ability_type ?? ability.ability_type;
-  const keywords = (ability.keywords ?? []).filter(
-    (keyword) => keyword !== "-",
-  );
-  return [cost, keywords.join(", ")]
+  const view = drawSteelAbilityFromLike(ability);
+  return [abilityDisplayType(view), (view.keywords ?? []).join(", ")]
     .filter((part): part is string => !!part)
     .join(" · ");
 }

@@ -54,6 +54,7 @@ export function buildTitlesScreens({
               <button
                 type="button"
                 onClick={() => onRemoveTitle(index)}
+                aria-label={`Remove ${title.name || 'title'}`}
                 className="min-h-11 shrink-0 rounded-lg px-3 text-sm text-creator-text-muted"
               >
                 Remove

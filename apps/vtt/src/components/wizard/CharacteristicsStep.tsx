@@ -5,6 +5,7 @@ import { cn, Button } from "@anvil/ui";
 import { RotateCcw, Check, Lock } from "lucide-react";
 import { PhoneDecisionFlow } from "../creator/phone/index.js";
 import { buildCharacteristicsScreens } from "./phone/CharacteristicsScreens.js";
+import { formatScore } from "./wizard-summary.js";
 
 interface Props {
   character: CharacterInProgress;
@@ -17,10 +18,6 @@ const CHARACTERISTIC_NAMES = WizardLogic.CHARACTERISTIC_ORDER;
 
 function formatCharacteristicName(name: CharacteristicName): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-function formatModifier(value: number): string {
-  return value >= 0 ? `+${value}` : String(value);
 }
 
 function formatArray(values: number[]): string {
@@ -141,7 +138,7 @@ export function CharacteristicsStep({ character, onChange }: Props) {
     : "";
   const fixedSummary = rules
     ? rules.fixedNames
-        .map((name) => `${formatModifier(rules.fixed[name] ?? 0)} in ${formatCharacteristicName(name)}`)
+        .map((name) => `${formatScore(rules.fixed[name] ?? 0)} in ${formatCharacteristicName(name)}`)
         .join(" and ")
     : "";
   const screens = buildCharacteristicsScreens({
@@ -202,7 +199,7 @@ export function CharacteristicsStep({ character, onChange }: Props) {
             You start with{" "}
             <span className="text-creator-highlight">
               {rules.fixedNames
-                .map((name) => `${formatModifier(rules.fixed[name] ?? 0)} in ${formatCharacteristicName(name)}`)
+                .map((name) => `${formatScore(rules.fixed[name] ?? 0)} in ${formatCharacteristicName(name)}`)
                 .join(" and ")}
             </span>
             . Choose a set of values for the other characteristics.
@@ -241,7 +238,7 @@ export function CharacteristicsStep({ character, onChange }: Props) {
                             : "text-zinc-400",
                     )}
                   >
-                    {value === undefined ? "--" : formatModifier(value)}
+                    {value === undefined ? "--" : formatScore(value)}
                   </div>
                 </div>
               );
@@ -320,7 +317,7 @@ export function CharacteristicsStep({ character, onChange }: Props) {
                                 : "border-zinc-700 bg-zinc-900/50 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800",
                             )}
                           >
-                            {formatModifier(value)}
+                            {formatScore(value)}
                           </button>
                         );
                       })}

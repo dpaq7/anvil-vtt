@@ -2,6 +2,7 @@ import { Check, Lock, RotateCcw } from 'lucide-react';
 import { cn } from '@anvil/ui';
 import { DecisionScreen } from '../../creator/phone/index.js';
 import type { DecisionScreenSpec } from '../../creator/phone/index.js';
+import { formatScore } from '../wizard-summary.js';
 
 /** One tappable value from the selected array. */
 export interface CharacteristicValueChip {
@@ -42,10 +43,6 @@ interface BuildCharacteristicsScreensArgs {
   isComplete: boolean;
   /** Non-null once scores exist — clears back to no array chosen. */
   onReset: (() => void) | null;
-}
-
-function formatModifier(value: number): string {
-  return value >= 0 ? `+${value}` : String(value);
 }
 
 function valueTone(value: number): string {
@@ -148,7 +145,7 @@ export function buildCharacteristicsScreens({
                           : 'border-creator-border bg-creator-card text-creator-text',
                       )}
                     >
-                      {formatModifier(chip.value)}
+                      {formatScore(chip.value)}
                     </button>
                   ))}
                 </span>
@@ -159,7 +156,7 @@ export function buildCharacteristicsScreens({
                     row.value === null ? 'text-creator-text-muted' : valueTone(row.value),
                   )}
                 >
-                  {row.value === null ? '--' : formatModifier(row.value)}
+                  {row.value === null ? '--' : formatScore(row.value)}
                 </span>
               )}
             </div>

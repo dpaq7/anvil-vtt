@@ -1,4 +1,5 @@
 import { CheckCircle2 } from 'lucide-react';
+import { cn } from '@anvil/ui';
 import { ChoiceRow, DecisionScreen } from '../../creator/phone/index.js';
 import type { DecisionScreenSpec } from '../../creator/phone/index.js';
 
@@ -79,7 +80,7 @@ export function buildLevelUpScreens({
               ? granted.length > 0
                 ? 'Granted features are automatic — pick one option for each choice.'
                 : 'Pick one option for each choice.'
-              : 'These features are gained automatically.'
+              : 'These features are gained automatically — nothing to choose at this level.'
           }
         >
           {granted.length > 0 && (
@@ -107,8 +108,16 @@ export function buildLevelUpScreens({
               ))}
             </section>
           )}
-          {choices.map((feature) => (
-            <section key={feature.id} className="flex flex-col gap-2 pt-2">
+          {choices.map((feature, index) => (
+            <section
+              key={feature.id}
+              // The first section skips the extra top padding when no granted
+              // block renders above it.
+              className={cn(
+                'flex flex-col gap-2',
+                (granted.length > 0 || index > 0) && 'pt-2',
+              )}
+            >
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-creator-text-muted">
                   {feature.name}

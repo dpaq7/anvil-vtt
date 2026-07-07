@@ -100,6 +100,24 @@ function hasPowerRoll(powerRoll: DrawSteelPowerRoll): boolean {
   return Boolean(powerRoll.roll || powerRoll.tier1 || powerRoll.tier2 || powerRoll.tier3);
 }
 
+export function isSignatureAbility(ability: DrawSteelAbilityView): boolean {
+  return [ability.abilityType, ability.cost]
+    .filter(Boolean)
+    .some((value) => value!.toLowerCase().includes('signature'));
+}
+
+/**
+ * The type badge AbilityBlock renders: cost first, then ability type, with
+ * any signature marker normalized to 'Signature'. Shared so phone summaries
+ * resolve the type exactly like the desktop ability card.
+ */
+export function abilityDisplayType(ability: DrawSteelAbilityView): string | null {
+  if (isSignatureAbility(ability)) return 'Signature';
+  if (ability.cost) return ability.cost;
+  if (ability.abilityType) return ability.abilityType;
+  return null;
+}
+
 export function drawSteelAbilityFromLike(input: AbilityLikeInput, fallbackName = 'Ability'): DrawSteelAbilityView {
   const effects = (input.effects ?? []).filter(isRecord) as EffectLike[];
   const metadataAbilityType = stringValue(input.metadata?.['ability_type']);

@@ -57,7 +57,11 @@ export function buildLanguagesScreens({
   const remaining = Math.max(needed - selectedIds.length, 0);
   const budgetSpent = selectedIds.length >= needed;
   const helper = [
-    `Choose ${needed} ${needed === 1 ? 'language' : 'languages'} · ${remaining} remaining.`,
+    // needed === 0 here means selections outlived the budget (e.g. after a
+    // career change) — the early return above handles the no-selection case.
+    needed === 0
+      ? 'Your career grants no language picks — remove any you no longer need.'
+      : `Choose ${needed} ${needed === 1 ? 'language' : 'languages'} · ${remaining} remaining.`,
     granted,
   ]
     .filter(Boolean)
