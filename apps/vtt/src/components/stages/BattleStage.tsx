@@ -4,10 +4,12 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from 'react';
-import { Dices, GripVertical } from 'lucide-react';
-import { MovementLogic } from '@anvil/data';
+import { Dices, GripVertical, X } from 'lucide-react';
+import { GeometryLogic, MovementLogic } from '@anvil/data';
+import type { AbilityLogic } from '@anvil/data';
 import type { ConditionName } from '@anvil/types';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
+import type { TargetingModeContext } from '../../canvas/systems/InteractionManager.js';
 import { BattleToolbar } from '../builder/BattleToolbar.js';
 import { ViewportControls } from '../builder/ViewportControls.js';
 import type { BattleTool, FogBrushMode } from '../builder/BattleToolbar.js';
@@ -306,6 +308,33 @@ function FloatingStagePanel({
   );
 }
 
+/**
+ * Active on-canvas ability targeting, resolved by the owning view (via
+ * `useTargetingResolution`). BattleStage turns this into the canvas-level range
+ * ring / target highlights / AoE template and surfaces a cancel affordance.
+ */
+export interface BattleTargetingContext {
+  sourceId: string;
+  abilityName: string;
+  parsedDistance: AbilityLogic.ParsedDistance;
+  rangeSquares: GeometryLogic.GridPoint[];
+  inRangeById: Record<string, boolean>;
+}
+
+const AOE_TYPES: ReadonlySet<AbilityLogic.DistanceType> = new Set([
+  'burst',
+  'cube',
+  'aura',
+  'line',
+  'wall',
+]);
+
+function entitySizeOf(entity: EntityData | undefined): number {
+  const raw = entity?.['size'];
+  const size = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(size) && size >= 1 ? Math.floor(size) : 1;
+}
+
 interface BattleStageProps {
   entities: EntityData[];
   combat: CombatState | null;
@@ -328,6 +357,12 @@ interface BattleStageProps {
   combatLog?: AbilityResult[];
   entityNames?: Map<string, string>;
   focusEntityRequest?: { entityId: string; nonce: number } | null;
+  /** When set, the canvas is in on-canvas ability targeting mode. */
+  targetingContext?: BattleTargetingContext | null;
+  /** Fired when a target token is clicked while targeting. */
+  onTargetConfirm?: (targetId: string) => void;
+  /** Fired to leave targeting mode (cancel button / Escape). */
+  onTargetCancel?: () => void;
   onSelectEntity: (entityId: string | null) => void;
   onSelectEntities?: (entityIds: string[]) => void;
   onRollInitiative?: () => void;
@@ -356,6 +391,9 @@ export function BattleStage({
   combatLog,
   entityNames,
   focusEntityRequest,
+  targetingContext = null,
+  onTargetConfirm,
+  onTargetCancel,
   onSelectEntity,
   onSelectEntities,
   onRollInitiative,
@@ -427,6 +465,63 @@ export function BattleStage({
     const budget = MovementLogic.getMovementBudget(baseSpeed, turnState, conditions);
     return { entityId: activeId, remaining: budget.remaining };
   }, [combat, entityMap]);
+
+  // Build the canvas-level targeting overlay (range ring, target footprints, and
+  // a cursor-following AoE template for area abilities) from the resolved context.
+  const canvasTargeting = useMemo<TargetingModeContext | null>(() => {
+    if (!targetingContext) return null;
+    const source = entityMap.get(targetingContext.sourceId);
+    if (!source) return null;
+
+    const targets = entities
+      .filter(
+        (entity) =>
+          entity.id !== source.id &&
+          (entity.type === 'hero' || entity.type === 'monster' || entity.type === 'npc'),
+      )
+      .map((entity) => ({
+        id: entity.id,
+        footprint: { x: entity.x, y: entity.y, size: entitySizeOf(entity) },
+        inRange: targetingContext.inRangeById[entity.id] ?? false,
+      }));
+
+    const parsed = targetingContext.parsedDistance;
+    let computeAoE: ((cursor: GeometryLogic.GridPoint) => GeometryLogic.GridPoint[]) | undefined;
+    if (AOE_TYPES.has(parsed.type)) {
+      const casterFootprint = GeometryLogic.makeFootprint(
+        source.x,
+        source.y,
+        entitySizeOf(source),
+      );
+      const casterCenter = GeometryLogic.footprintCenter(casterFootprint);
+      computeAoE = (cursor) =>
+        GeometryLogic.getAffectedSquares(parsed, cursor, {
+          casterFootprint,
+          direction: {
+            x: cursor.x - Math.round(casterCenter.x),
+            y: cursor.y - Math.round(casterCenter.y),
+          },
+          bounds: { cols, rows },
+        });
+    }
+
+    return {
+      sourceId: source.id,
+      rangeSquares: targetingContext.rangeSquares,
+      targets,
+      computeAoE,
+    };
+  }, [targetingContext, entities, entityMap, cols, rows]);
+
+  // Escape leaves targeting mode (advisory cancel).
+  useEffect(() => {
+    if (!targetingContext) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onTargetCancel?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [targetingContext, onTargetCancel]);
 
   /** Convert viewport-relative coords to container-relative coords for overlays. */
   const toLocal = useCallback((viewportX: number, viewportY: number) => {
@@ -754,6 +849,8 @@ export function BattleStage({
         onMultiSelectEntities={handleMultiSelectEntities}
         onMultiMoveEntities={handleMultiMoveEntities}
         activeMoverBudget={activeMoverBudget}
+        targeting={canvasTargeting}
+        onTargetConfirm={onTargetConfirm}
         builderMode={isDirector}
         activeTool={isDirector ? activeTool : 'select'}
         drawColor={drawColor}
@@ -814,6 +911,28 @@ export function BattleStage({
                 Roll d10
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* On-canvas targeting banner (advisory) */}
+      {targetingContext && (
+        <div className="pointer-events-none absolute inset-x-4 top-16 z-40 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-amber-500/40 bg-zinc-950/90 px-4 py-2 text-xs text-amber-100 shadow-xl backdrop-blur">
+            <span>
+              Click a target for{' '}
+              <span className="font-semibold text-amber-300">
+                {targetingContext.abilityName}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              onClick={() => onTargetCancel?.()}
+            >
+              <X className="size-3" />
+              Cancel <span className="text-zinc-500">Esc</span>
+            </button>
           </div>
         </div>
       )}

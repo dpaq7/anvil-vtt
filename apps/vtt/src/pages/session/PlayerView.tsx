@@ -29,7 +29,9 @@ import { ParticipantStatusBar } from "../../components/session/ParticipantStatus
 import { CombatTracker } from "../../components/session/CombatTracker.js";
 import { TurnActionBar } from "../../components/session/TurnActionBar.js";
 import { AbilityPanel } from "../../components/session/AbilityPanel.js";
+import type { AbilityInfo } from "../../components/session/AbilityCard.js";
 import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
+import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
 import {
   PlayerHeroCommandBar,
   PlayerHeroSheetPanel,
@@ -73,6 +75,7 @@ export function PlayerView({
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+  const [pendingAbility, setPendingAbility] = useState<AbilityInfo | null>(null);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>("sheet");
   const [focusMode, setFocusMode] = useState(false);
@@ -99,19 +102,10 @@ export function PlayerView({
   const turnActions = heroEntityId
     ? (combat?.turnActions?.[heroEntityId] ?? null)
     : null;
-  const heroAbilities =
-    (heroEntity?.["abilities"] as {
-      id: string;
-      name: string;
-      keywords: string[];
-      actionType: string;
-      distance: string;
-      damage: string;
-      cost: string;
-      tier1Effect: string;
-      tier2Effect: string;
-      tier3Effect: string;
-    }[]) ?? [];
+  const heroAbilities = useMemo(
+    () => (heroEntity?.["abilities"] as AbilityInfo[] | undefined) ?? [],
+    [heroEntity],
+  );
   const heroConditions = Array.isArray(heroEntity?.["conditions"])
     ? (heroEntity["conditions"] as string[])
     : [];
@@ -127,6 +121,13 @@ export function PlayerView({
     (heroEntity?.["heroicResourceName"] as string) ?? "Resource";
   const initiativePending =
     sceneType === "battle" && combat?.initiativeRoll === null;
+
+  // Resolve targeting for the pending ability (range / flanking / high ground).
+  const targeting = useTargetingResolution({
+    sourceEntity: heroEntity ?? null,
+    entities,
+    distance: pendingAbility?.distance,
+  });
 
   const handleSelectEntity = useCallback((entityId: string | null) => {
     setSelectedEntityId(entityId);
@@ -149,7 +150,13 @@ export function PlayerView({
 
   useEffect(() => {
     handleSelectEntity(null);
+    setPendingAbility(null);
   }, [activeSceneId, handleSelectEntity]);
+
+  // Leave targeting mode if the turn ends while an ability is pending.
+  useEffect(() => {
+    if (!isMyTurn) setPendingAbility(null);
+  }, [isMyTurn]);
 
   // Determine which action types have been used (for ability panel greying out)
   const usedActionTypes = useMemo(() => {
@@ -181,6 +188,8 @@ export function PlayerView({
     setRightRailTab(tab);
   }, []);
 
+  // Tapping an ability enters on-canvas targeting mode rather than firing
+  // immediately; the confirmed target sends the existing token_action.
   const handleUseAbility = useCallback(
     (abilityId: string) => {
       if (!heroEntity) return;
@@ -188,37 +197,56 @@ export function PlayerView({
         toast.error("Wait until you take your turn.");
         return;
       }
-
-      const selectedTarget = selectedEntityId
-        ? entities.find(
-            (e) =>
-              e.id === selectedEntityId &&
-              (e.type === "monster" || e.type === "npc"),
-          )
-        : null;
-      const targetEntity =
-        selectedTarget ??
-        entities.find((e) => e.type === "monster" || e.type === "npc");
-
-      if (!targetEntity) {
-        toast.error(
-          "No enemy target selected. Click an enemy on the map first.",
-        );
+      const ability = heroAbilities.find((item) => item.id === abilityId);
+      if (!ability) return;
+      const hasEnemy = entities.some(
+        (e) => e.type === "monster" || e.type === "npc",
+      );
+      if (!hasEnemy) {
+        toast.error("No enemy targets available.");
         return;
       }
+      setPendingAbility(ability);
+    },
+    [combat, heroEntity, heroAbilities, entities, isMyTurn],
+  );
 
+  const handleTargetConfirm = useCallback(
+    (targetId: string) => {
+      if (!heroEntity || !pendingAbility) return;
+      const target = entities.find((e) => e.id === targetId);
+      if (!target) return;
       send({
         type: "token_action",
         action: {
           kind: "ability",
           sourceId: heroEntity.id,
-          targetId: targetEntity.id,
-          abilityId,
+          targetId: target.id,
+          abilityId: pendingAbility.id,
         },
       });
-      toast.info(`Using ability on ${targetEntity.name}...`);
+      toast.info(`Using ${pendingAbility.name} on ${target.name}...`);
+      setPendingAbility(null);
     },
-    [combat, heroEntity, entities, isMyTurn, selectedEntityId, send],
+    [entities, heroEntity, pendingAbility, send],
+  );
+
+  const handleTargetCancel = useCallback(() => {
+    setPendingAbility(null);
+  }, []);
+
+  const battleTargetingContext = useMemo(
+    () =>
+      pendingAbility && heroEntity
+        ? {
+            sourceId: heroEntity.id,
+            abilityName: pendingAbility.name,
+            parsedDistance: targeting.parsedDistance,
+            rangeSquares: targeting.rangeSquares,
+            inRangeById: targeting.inRangeById,
+          }
+        : null,
+    [pendingAbility, heroEntity, targeting],
   );
 
   const handleRollCharacteristic = useCallback(
@@ -490,6 +518,9 @@ export function PlayerView({
             }
             combatLog={combatLog}
             entityNames={entityNames}
+            targetingContext={battleTargetingContext}
+            onTargetConfirm={handleTargetConfirm}
+            onTargetCancel={handleTargetCancel}
             onSelectEntity={handleSelectEntity}
             onSelectEntities={handleSelectEntities}
             onRollInitiative={handleRollInitiative}

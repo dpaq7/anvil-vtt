@@ -3,8 +3,24 @@ import type { TokenLayer } from '../layers/TokenLayer.js';
 import type { DrawingLayer } from '../layers/DrawingLayer.js';
 import type { TerrainLayer, TerrainZoneData } from '../layers/TerrainLayer.js';
 import type { FogLayer } from '../layers/FogLayer.js';
-import type { TargetingLayer } from '../layers/TargetingLayer.js';
+import type { TargetingLayer, GridCell, FootprintRect } from '../layers/TargetingLayer.js';
 import { Quadtree } from './Quadtree.js';
+
+/**
+ * On-canvas ability-targeting mode. While active, pointer input selects a target
+ * token (fires `onTargetConfirm`) rather than dragging/selecting, and — for area
+ * abilities — an AoE template follows the cursor. All highlighting is advisory:
+ * out-of-range targets stay clickable.
+ */
+export interface TargetingModeContext {
+  sourceId: string;
+  /** Squares within reach of the caster, tinted as a range ring. */
+  rangeSquares: GridCell[];
+  /** Candidate target footprints (with ids) for hit-testing a click. */
+  targets: Array<{ id: string; footprint: FootprintRect; inRange: boolean }>;
+  /** For area abilities: affected squares for a cursor cell (redrawn on move). */
+  computeAoE?: (cursor: GridCell) => GridCell[];
+}
 
 export type ActiveTool =
   | 'select'
@@ -48,6 +64,8 @@ export interface InteractionCallbacks {
     screenX: number,
     screenY: number,
   ) => void;
+  /** Fired when a target token is clicked while in on-canvas targeting mode. */
+  onTargetConfirm?: (targetId: string) => void;
 }
 
 export class InteractionManager {
@@ -120,6 +138,9 @@ export class InteractionManager {
   private moverBudget: { entityId: string; remaining: number } | null = null;
   private measureFrom: { gridX: number; gridY: number } | null = null;
 
+  // On-canvas ability targeting mode (null when not targeting).
+  private targetingContext: TargetingModeContext | null = null;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private viewport: ViewportSystem,
@@ -156,6 +177,35 @@ export class InteractionManager {
    */
   setMoverBudget(budget: { entityId: string; remaining: number } | null): void {
     this.moverBudget = budget;
+  }
+
+  /**
+   * Enter on-canvas ability-targeting mode: draw the range ring + valid-target
+   * highlights and, for area abilities, start moving an AoE template under the
+   * cursor. Clicking a target token fires `onTargetConfirm`. Advisory only.
+   */
+  enterTargetingMode(ctx: TargetingModeContext): void {
+    this.targetingContext = ctx;
+    const layer = this.targetingLayer;
+    if (!layer) return;
+    layer.showRangeSquares(ctx.rangeSquares);
+    layer.highlightTargets(ctx.targets.map((t) => t.footprint));
+    if (ctx.computeAoE) {
+      // Seed the template at the source until the pointer moves.
+      const source = ctx.targets.find((t) => t.id === ctx.sourceId);
+      const seed = source
+        ? { x: source.footprint.x, y: source.footprint.y }
+        : (ctx.rangeSquares[0] ?? { x: 0, y: 0 });
+      layer.showAoETemplate(ctx.computeAoE(seed), true);
+    }
+    this.canvas.style.cursor = 'crosshair';
+  }
+
+  /** Leave targeting mode and clear the range/AoE/highlight overlays. */
+  exitTargetingMode(): void {
+    this.targetingContext = null;
+    this.targetingLayer?.clearTargeting();
+    this.canvas.style.cursor = this._activeTool === 'eraser' ? 'default' : '';
   }
 
   get activeTool(): ActiveTool {
@@ -364,6 +414,15 @@ export class InteractionManager {
     if (this._activeTool === 'pan') return; // Let ViewportSystem handle
     if (this.viewport.isPinching()) return; // Two-finger gesture owns the pointer stream
     if (this.activePointerId !== null) return;
+
+    // On-canvas targeting mode intercepts input: a click confirms a target.
+    if (this.targetingContext) {
+      e.preventDefault();
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+      this.handleTargetingDown(gridX, gridY);
+      return;
+    }
+
     this.capturePointer(e.pointerId);
     e.preventDefault();
     const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
@@ -392,6 +451,10 @@ export class InteractionManager {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (this._activeTool === 'pan') return;
+    if (this.targetingContext) {
+      this.handleTargetingMove(e);
+      return;
+    }
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     switch (this._activeTool) {
       case 'select':
@@ -423,6 +486,8 @@ export class InteractionManager {
 
   private onPointerUp = (e: PointerEvent): void => {
     if (this._activeTool === 'pan') return;
+    // Targeting mode confirms on pointer-down; nothing to release on up.
+    if (this.targetingContext) return;
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     switch (this._activeTool) {
       case 'select':
@@ -799,6 +864,31 @@ export class InteractionManager {
   private handleMeasureUp(): void {
     // Leave the ruler on screen; the next press starts a fresh measurement.
     this.measureFrom = null;
+  }
+
+  // --- Targeting mode (on-canvas ability targeting) ---
+
+  /** A click confirms whichever candidate target's footprint contains the cell. */
+  private handleTargetingDown(gridX: number, gridY: number): void {
+    const ctx = this.targetingContext;
+    if (!ctx) return;
+    const hit = ctx.targets.find(
+      (t) =>
+        gridX >= t.footprint.x &&
+        gridX < t.footprint.x + t.footprint.size &&
+        gridY >= t.footprint.y &&
+        gridY < t.footprint.y + t.footprint.size,
+    );
+    // Non-target clicks are ignored (cancel is an explicit UI affordance).
+    if (hit) this.callbacks.onTargetConfirm?.(hit.id);
+  }
+
+  /** For area abilities, keep the AoE template under the cursor. */
+  private handleTargetingMove(e: PointerEvent): void {
+    const ctx = this.targetingContext;
+    if (!ctx || !ctx.computeAoE || !this.targetingLayer) return;
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+    this.targetingLayer.showAoETemplate(ctx.computeAoE({ x: gridX, y: gridY }), true);
   }
 
   // --- Draw tool ---
