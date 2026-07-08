@@ -2,6 +2,7 @@ import { useState, type MouseEvent } from 'react';
 import { ChevronDown, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react';
 import { StaminaBar, Badge, Button } from '@anvil/ui';
 import type { EntityData, ClientMessage } from '../../types/protocol.js';
+import { conditionNames } from '../../lib/conditions.js';
 
 /** Compact condition ID → emoji mapping (Draw Steel 9 conditions) */
 const CONDITION_EMOJIS: Record<string, string> = {
@@ -36,9 +37,7 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
   const maxStamina = (entity['maxStamina'] as number) ?? 0;
   const currentStamina = (entity['currentStamina'] as number) ?? maxStamina;
   const level = (entity['level'] as number) ?? 1;
-  const conditions = Array.isArray(entity['conditions'])
-    ? (entity['conditions'] as string[])
-    : [];
+  const conditions = conditionNames(entity) as string[];
 
   const handleDamage = (amount: number) => {
     if (amount <= 0) return;

@@ -33,6 +33,8 @@ import type {
   TokenActionPowerRoll,
   TokenActionRequest,
   TokenActionResult,
+  EntityCondition,
+  ConditionEndType,
   MovementMode,
   OpportunityAttackTrigger,
   OpportunityAttackDecision,
@@ -1927,7 +1929,7 @@ export class SessionRoom extends DurableObject<Env> {
       monsterName,
       level: this.getNumericSceneValue(token['level'], monster?.level, 1),
       roles,
-      conditions: Array.isArray(token['conditions']) ? token['conditions'].map(String) : [],
+      conditions: this.getEntityConditionObjects({ conditions: token['conditions'] }),
       ...(typeof token['squadId'] === 'string' ? { squadId: token['squadId'] } : {}),
       ...(typeof token['squadSize'] === 'number' ? { squadSize: token['squadSize'] } : {}),
       ...(typeof token['portraitUrl'] === 'string' ? { portraitUrl: token['portraitUrl'] } : {}),
@@ -2962,14 +2964,18 @@ export class SessionRoom extends DurableObject<Env> {
       case 'manual-heal':
       case 'apply-condition':
       case 'remove-condition': {
-        if (meta.role !== 'director') {
-          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
-          return;
-        }
-
         const target = this.getEntity(action.targetId);
         if (!target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Target entity not found' });
+          return;
+        }
+
+        // Damage/heal stay Director-only; players may manage conditions on their
+        // own hero (user-selectable status), otherwise Director-only.
+        const conditionKind = action.kind === 'apply-condition' || action.kind === 'remove-condition';
+        const ownsTarget = meta.role === 'player' && meta.heroId === target.id;
+        if (meta.role !== 'director' && !(conditionKind && ownsTarget)) {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
           return;
         }
 
@@ -2988,7 +2994,7 @@ export class SessionRoom extends DurableObject<Env> {
           }
           this.applyHealingToEntity(target, amount, effects);
         } else if (action.kind === 'apply-condition') {
-          if (!action.condition || !this.applyConditionToEntity(ws, target, action.condition, effects)) return;
+          if (!action.condition || !this.applyConditionToEntity(ws, target, action.condition, effects, action.endType)) return;
         } else if (action.condition) {
           this.removeConditionFromEntity(target, action.condition, effects);
         }
@@ -3446,11 +3452,32 @@ export class SessionRoom extends DurableObject<Env> {
     return true;
   }
 
+  /**
+   * Read an entity's tracked conditions as structured objects, tolerant of the
+   * legacy `string[]` shape (each name gets its condition's natural end rule).
+   */
+  private getEntityConditionObjects(entity: Record<string, unknown>): EntityCondition[] {
+    const raw = entity['conditions'];
+    if (!Array.isArray(raw)) return [];
+    const out: EntityCondition[] = [];
+    for (const item of raw as unknown[]) {
+      if (typeof item === 'string') {
+        const name = this.normalizeCondition(item);
+        if (name) out.push({ name, endType: this.defaultConditionEndType(name) });
+      } else if (item && typeof item === 'object') {
+        const rec = item as Record<string, unknown>;
+        const name = this.normalizeCondition(String(rec['name'] ?? ''));
+        if (!name) continue;
+        const cond: EntityCondition = { name, endType: this.normalizeEndType(rec['endType'], name) };
+        if (typeof rec['sourceId'] === 'string') cond.sourceId = rec['sourceId'];
+        out.push(cond);
+      }
+    }
+    return out;
+  }
+
   private getEntityConditions(entity: Record<string, unknown>): ConditionName[] {
-    if (!Array.isArray(entity['conditions'])) return [];
-    return (entity['conditions'] as unknown[])
-      .map((condition) => String(condition).toLowerCase())
-      .filter((condition): condition is ConditionName => VALID_CONDITIONS.has(condition));
+    return this.getEntityConditionObjects(entity).map((c) => c.name as ConditionName);
   }
 
   private hasCondition(entity: Record<string, unknown>, condition: ConditionName): boolean {
@@ -3460,6 +3487,33 @@ export class SessionRoom extends DurableObject<Env> {
   private normalizeCondition(condition: string): ConditionName | null {
     const normalized = condition.trim().toLowerCase();
     return VALID_CONDITIONS.has(normalized) ? normalized as ConditionName : null;
+  }
+
+  private normalizeEndType(value: unknown, condition: ConditionName): ConditionEndType {
+    return value === 'eot' || value === 'save' || value === 'manual'
+      ? value
+      : this.defaultConditionEndType(condition);
+  }
+
+  /**
+   * The condition's natural end rule when the applier doesn't specify one.
+   * Grabbed/prone/restrained persist until a specific action clears them; the
+   * rest end via save if Draw Steel says so, otherwise at end of turn.
+   */
+  private defaultConditionEndType(condition: ConditionName): ConditionEndType {
+    if (condition === 'grabbed' || condition === 'prone' || condition === 'restrained') {
+      return 'manual';
+    }
+    return ConditionLogic.canEndWithSave(condition) ? 'save' : 'eot';
+  }
+
+  private writeConditions(entity: Record<string, unknown>, conditions: EntityCondition[]): void {
+    entity['conditions'] = conditions;
+    this.broadcast({
+      type: 'entity_updated',
+      entityId: String(entity['id']),
+      changes: { conditions },
+    });
   }
 
   private applyDamageToEntity(
@@ -3520,6 +3574,8 @@ export class SessionRoom extends DurableObject<Env> {
     entity: Record<string, unknown>,
     rawCondition: string,
     effects: TokenActionEffect[],
+    endType?: ConditionEndType,
+    sourceId?: string,
   ): boolean {
     const condition = this.normalizeCondition(rawCondition);
     if (!condition) {
@@ -3527,29 +3583,56 @@ export class SessionRoom extends DurableObject<Env> {
       return false;
     }
 
-    const current = this.getEntityConditions(entity);
-    if (current.includes(condition)) return true;
+    const currentObjs = this.getEntityConditionObjects(entity);
+    const currentNames = currentObjs.map((c) => c.name as ConditionName);
+    const resolvedEnd = endType ?? this.defaultConditionEndType(condition);
 
-    let next = [...current];
-    for (const existing of current) {
+    // Already present — just update the end rule if the caller chose a new one.
+    if (currentNames.includes(condition)) {
+      if (endType) {
+        this.writeConditions(
+          entity,
+          currentObjs.map((c) => (c.name === condition ? { ...c, endType: resolvedEnd } : c)),
+        );
+      }
+      return true;
+    }
+
+    // Stacking / severity is resolved on names (existing rules), then rebuilt
+    // into objects preserving each surviving condition's end rule.
+    let nextNames = [...currentNames];
+    for (const existing of currentNames) {
       if (ConditionLogic.canConditionsStack(existing, condition)) continue;
       const severe = ConditionLogic.getMoreSevereCondition(existing, condition);
-      next = next.filter((candidate) => candidate !== existing && candidate !== condition);
-      next.push(severe);
+      nextNames = nextNames.filter((candidate) => candidate !== existing && candidate !== condition);
+      nextNames.push(severe);
     }
-    if (!next.includes(condition) && current.every((existing) => ConditionLogic.canConditionsStack(existing, condition))) {
-      next.push(condition);
+    if (!nextNames.includes(condition) && currentNames.every((existing) => ConditionLogic.canConditionsStack(existing, condition))) {
+      nextNames.push(condition);
     }
 
-    entity['conditions'] = next;
-    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
+    const byName = new Map(currentObjs.map((c) => [c.name, c]));
+    const nextObjs: EntityCondition[] = nextNames.map((name) => {
+      if (name === condition) {
+        const obj: EntityCondition = { name, endType: resolvedEnd };
+        if (sourceId) obj.sourceId = sourceId;
+        return obj;
+      }
+      return byName.get(name) ?? { name, endType: this.defaultConditionEndType(name as ConditionName) };
+    });
+
+    this.writeConditions(entity, nextObjs);
     effects.push({
       kind: 'condition-applied',
       entityId: String(entity['id']),
       condition,
-      message: `${this.formatCondition(condition)} applied.`,
+      message: `${this.formatCondition(condition)} applied (${this.endTypeLabel(resolvedEnd)}).`,
     });
     return true;
+  }
+
+  private endTypeLabel(endType: ConditionEndType): string {
+    return endType === 'save' ? 'save ends' : endType === 'eot' ? 'end of turn' : 'until removed';
   }
 
   private removeConditionFromEntity(
@@ -3559,11 +3642,10 @@ export class SessionRoom extends DurableObject<Env> {
   ): void {
     const condition = this.normalizeCondition(rawCondition);
     if (!condition) return;
-    const next = this.getEntityConditions(entity).filter((candidate) => candidate !== condition);
-    entity['conditions'] = next;
+    const next = this.getEntityConditionObjects(entity).filter((c) => c.name !== condition);
+    this.writeConditions(entity, next);
     // Releasing a grab clears the grabber link used by moveEntityTo.
     if (condition === 'grabbed') delete entity['grabbedBy'];
-    this.broadcast({ type: 'entity_updated', entityId: String(entity['id']), changes: { conditions: next } });
     effects.push({
       kind: 'condition-removed',
       entityId: String(entity['id']),
@@ -3651,18 +3733,48 @@ export class SessionRoom extends DurableObject<Env> {
   private applyEndOfTurnConditionEffects(entityId: string): void {
     const entity = this.getEntity(entityId);
     if (!entity) return;
-    const conditions = this.getEntityConditions(entity);
+    const conditions = this.getEntityConditionObjects(entity);
+    if (conditions.length === 0) return;
     const effects: TokenActionEffect[] = [];
-    if (conditions.some((condition) => ConditionLogic.dealsOngoingDamage(condition))) {
+    const actorName = typeof entity['name'] === 'string' ? (entity['name'] as string) : 'Combatant';
+
+    // Ongoing (bleeding) damage first.
+    if (conditions.some((c) => ConditionLogic.dealsOngoingDamage(c.name as ConditionName))) {
       const level = typeof entity['level'] === 'number' ? entity['level'] : 1;
       const damage = Math.max(1, this.rollDie(6) + level);
       this.applyDamageToEntity(entity, damage, effects, { ignoreResistance: true });
     }
 
-    const remaining = conditions.filter((condition) => !ConditionLogic.endsAtEndOfTurn(condition));
-    if (remaining.length !== conditions.length) {
-      entity['conditions'] = remaining;
-      this.broadcast({ type: 'entity_updated', entityId, changes: { conditions: remaining } });
+    // Resolve end rules: EoT drops, save rolls 1d10 (6+ ends), manual persists.
+    const kept: EntityCondition[] = [];
+    const notes: string[] = [];
+    for (const cond of conditions) {
+      const label = this.formatCondition(cond.name);
+      if (cond.endType === 'manual') {
+        kept.push(cond);
+      } else if (cond.endType === 'eot') {
+        notes.push(`${label} ended (end of turn).`);
+      } else {
+        const roll = this.rollDie(10);
+        if (roll >= 6) {
+          notes.push(`${label} save ${roll} — ends.`);
+        } else {
+          kept.push(cond);
+          notes.push(`${label} save ${roll} — persists.`);
+        }
+      }
+    }
+
+    if (kept.length !== conditions.length) {
+      this.writeConditions(entity, kept);
+    }
+    if (notes.length > 0) {
+      this.appendActionLog({
+        actorId: entityId,
+        actorName,
+        title: 'End of turn',
+        detail: notes.join(' '),
+      });
     }
   }
 

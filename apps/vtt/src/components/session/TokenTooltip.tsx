@@ -1,4 +1,5 @@
 import type { EntityData } from '../../types/protocol.js';
+import { conditionNames } from '../../lib/conditions.js';
 
 /** Condition ID → display name */
 const CONDITION_NAMES: Record<string, string> = {
@@ -26,9 +27,7 @@ export interface TokenTooltipProps {
 export function TokenTooltip({ entity, x, y }: TokenTooltipProps) {
   const maxStamina = typeof entity['maxStamina'] === 'number' ? (entity['maxStamina'] as number) : 0;
   const currentStamina = typeof entity['currentStamina'] === 'number' ? (entity['currentStamina'] as number) : maxStamina;
-  const conditions = Array.isArray(entity['conditions'])
-    ? (entity['conditions'] as string[])
-    : [];
+  const conditions = conditionNames(entity) as string[];
 
   return (
     <div

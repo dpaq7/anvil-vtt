@@ -151,7 +151,7 @@ function SideSegment({
               className={cn(
                 'size-1.5 shrink-0 rounded-full',
                 dot.isEntityActive
-                  ? 'bg-white ring-2 ring-white/30'
+                  ? 'bg-amber-400 ring-2 ring-amber-400/40'
                   : dot.hasActed
                     ? cn('ring-1', config.actedClass)
                     : config.readyClass,
