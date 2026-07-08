@@ -54,6 +54,7 @@ import { api } from '../../lib/api.js';
 import { assetDataUrl, credentialedMediaCrossOrigin } from '../../lib/api-url.js';
 import { uploadFile } from '../../stores/assetsStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
+import { useIsPhoneViewport } from '../../hooks/useIsPhoneViewport.js';
 import {
   PERSONAL_NOTEBOOK_ID,
   useNotesStore,
@@ -199,6 +200,7 @@ export function MobileAppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+  const isPhone = useIsPhoneViewport();
   const role = user?.role ?? 'director';
   const nav = role === 'director' ? DIRECTOR_NAV : PLAYER_NAV;
   const initials = (user?.username ?? 'A')
@@ -250,6 +252,9 @@ export function MobileAppLayout() {
       setPendingRole(null);
     }
   };
+
+  // Tablets and desktops get the full surface, not the phone companion shell.
+  if (!isPhone) return <Navigate to="/app" replace />;
 
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100">

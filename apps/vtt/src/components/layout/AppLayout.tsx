@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   CircleUserRound,
   Download,
@@ -35,6 +35,7 @@ import {
   cn,
 } from '@anvil/ui';
 import { useAuthStore } from '../../stores/authStore';
+import { useIsPhoneViewport } from '../../hooks/useIsPhoneViewport.js';
 import { useThemeStore } from '../../stores/themeStore';
 import { addBreadcrumb } from '../../lib/bug-reporting';
 import { IssueReportButton } from './IssueReportButton.js';
@@ -288,6 +289,7 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+  const isPhone = useIsPhoneViewport();
   const isPlayer = user?.role === 'player';
   const navItems = isPlayer ? PLAYER_NAV : DIRECTOR_NAV;
 
@@ -344,6 +346,9 @@ export function AppLayout() {
       setPendingRole(null);
     }
   };
+
+  // Genuine phones use the companion shell, not the full desktop surface.
+  if (isPhone) return <Navigate to="/app/mobile" replace />;
 
   return (
     <TooltipProvider delayDuration={0}>
