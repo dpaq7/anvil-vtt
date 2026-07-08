@@ -26,6 +26,7 @@ const CONN_LABEL: Record<ConnectionStatus, string> = {
  * connected/disconnected indicators. Sits below the main canvas.
  */
 export function ParticipantStatusBar({ participants, connectionStatus }: ParticipantStatusBarProps) {
+  const directors = participants.filter((p) => p.role === 'director');
   const players = participants.filter((p) => p.role === 'player');
   const connectedCount = players.filter((p) => p.connected).length;
 
@@ -38,6 +39,26 @@ export function ParticipantStatusBar({ participants, connectionStatus }: Partici
       </span>
 
       <div className="h-3 w-px bg-zinc-800" />
+
+      {/* Director chip(s) */}
+      {directors.map((d) => (
+        <div key={d.userId} className="flex items-center gap-1" title={`${d.username} (Director)`}>
+          <span
+            className={cn(
+              'inline-block h-1.5 w-1.5 rounded-full',
+              d.connected ? 'bg-amber-400' : 'bg-zinc-600',
+            )}
+          />
+          <span className={cn('text-xs font-medium', d.connected ? 'text-amber-300' : 'text-zinc-600')}>
+            {d.username}
+          </span>
+          <span className="rounded bg-amber-500/15 px-1 text-[9px] uppercase tracking-wide text-amber-400/90">
+            Director
+          </span>
+        </div>
+      ))}
+
+      {directors.length > 0 && <div className="h-3 w-px bg-zinc-800" />}
 
       {/* Player chips */}
       <div className="flex items-center gap-2">

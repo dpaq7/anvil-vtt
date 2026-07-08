@@ -1665,6 +1665,20 @@ export class SessionRoom extends DurableObject<Env> {
     const nonHeroEntities = this.sessionState.entities.filter((entity) => entity.type !== 'hero');
     this.sessionState.entities = [...heroEntities, ...nonHeroEntities];
     this.broadcast({ type: 'state', state: this.sessionState });
+
+    // If combat is live, splice any newly-loaded heroes into the initiative
+    // roster so they appear in the combat panes, not just as tokens.
+    const combat = this.sessionState.combat;
+    if (combat) {
+      const known = new Set(combat.heroEntities);
+      const added = heroEntities
+        .filter((entity) => !known.has(entity.id) && this.canEntityAct(entity.id))
+        .map((entity) => entity.id);
+      if (added.length > 0) {
+        combat.heroEntities = [...combat.heroEntities, ...added];
+        this.broadcast({ type: 'combat_updated', combat });
+      }
+    }
   }
 
   private parseSceneSnapshot(value: string | null | undefined): SceneLiveSnapshot | null {
@@ -2210,6 +2224,23 @@ export class SessionRoom extends DurableObject<Env> {
           detail: initiativeRoll >= 6 ? 'Heroes act first.' : 'Director acts first.',
           dice: this.toPowerDice([initiativeRoll]),
           total: initiativeRoll,
+        });
+
+        // Surface the initiative roll as a roll result so it toasts for everyone
+        // (initiative is a combat action, not a normal draw_steel_roll).
+        this.broadcast({
+          type: 'draw_steel_roll_resolved',
+          result: {
+            id: this.createActionResultId('initiative'),
+            kind: 'power',
+            label: 'Initiative',
+            rollerId: meta.userId,
+            rollerName: meta.username,
+            dice: this.toPowerDice([initiativeRoll]),
+            modifier: 0,
+            total: initiativeRoll,
+            timestamp: Date.now(),
+          },
         });
         break;
       }

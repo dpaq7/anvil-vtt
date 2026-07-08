@@ -41,7 +41,6 @@ const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
 ];
 
 const PRESET_COLORS = [
-  'none',
   '#ef4444',
   '#f97316',
   '#eab308',
