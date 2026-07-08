@@ -24,6 +24,8 @@ export interface SessionRuntimeState {
   moveNotice: MoveNotice | null;
   /** Most recent dice roll result (drives the roll toast for everyone). */
   lastRoll: DrawSteelRollResult | null;
+  /** Director-forced camera focus target (nonce retriggers same-entity focus). */
+  focusRequest: { entityId: string; nonce: number } | null;
 }
 
 interface SessionRuntimeStore extends SessionRuntimeState {
@@ -41,6 +43,7 @@ export const initialSessionRuntimeState: SessionRuntimeState = {
   pendingOA: [],
   moveNotice: null,
   lastRoll: null,
+  focusRequest: null,
 };
 
 function createInitialSessionRuntimeState(): SessionRuntimeState {
@@ -51,6 +54,7 @@ function createInitialSessionRuntimeState(): SessionRuntimeState {
     pendingOA: [],
     moveNotice: null,
     lastRoll: null,
+    focusRequest: null,
   };
 }
 
@@ -333,6 +337,12 @@ export function applyServerMessageToRuntime(
     // or handled elsewhere.
     case 'draw_steel_roll_resolved':
       return { ...current, lastRoll: message.result };
+
+    case 'focus_broadcast':
+      return {
+        ...current,
+        focusRequest: { entityId: message.entityId, nonce: Date.now() },
+      };
 
     case 'scene_reverted':
     case 'token_action_resolved':

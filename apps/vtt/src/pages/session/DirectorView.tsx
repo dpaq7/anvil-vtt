@@ -68,6 +68,7 @@ import { BattleStage } from "../../components/stages/BattleStage.js";
 import { OpportunityAttackPrompt } from "../../components/session/OpportunityAttackPrompt.js";
 import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
 import type { PendingTargetedAction } from "../../lib/targeting.js";
+import { useSessionStore } from "../../stores/sessionStore.js";
 import { toast } from "sonner";
 import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
 import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
@@ -149,6 +150,13 @@ export function DirectorView({
     entityId: string;
     nonce: number;
   } | null>(null);
+  // Director-broadcast focus (pulls everyone here); take whichever focus fired
+  // most recently — the local tracker double-click or the broadcast.
+  const broadcastFocus = useSessionStore((s) => s.focusRequest);
+  const effectiveFocus =
+    broadcastFocus && (!focusEntityRequest || broadcastFocus.nonce >= focusEntityRequest.nonce)
+      ? broadcastFocus
+      : focusEntityRequest;
   const [montageRoundsByScene, setMontageRoundsByScene] = useState<
     Record<string, boolean[]>
   >({});
@@ -748,7 +756,7 @@ export function DirectorView({
               onSelectEntity={handleSelectEntity}
               onSelectEntities={handleSelectEntities}
               onRollInitiative={undefined}
-              focusEntityRequest={focusEntityRequest}
+              focusEntityRequest={effectiveFocus}
               send={send}
             />
             <OpportunityAttackPrompt send={send} />

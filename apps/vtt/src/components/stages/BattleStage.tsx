@@ -4,7 +4,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from 'react';
-import { Dices, GripVertical, X } from 'lucide-react';
+import { Dices, GripVertical, Hand, MousePointer2, X } from 'lucide-react';
 import { AbilityLogic, GeometryLogic, MovementLogic } from '@anvil/data';
 import type { ConditionName } from '@anvil/types';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
@@ -410,6 +410,8 @@ export function BattleStage({
 }: BattleStageProps) {
   // Tool state (director only)
   const [activeTool, setActiveTool] = useState<BattleTool>('select');
+  // Players don't get the full toolbar, but can toggle select/pan on the canvas.
+  const [playerTool, setPlayerTool] = useState<BattleTool>('select');
   const [drawColor, setDrawColor] = useState('#ef4444');
   const [drawWidth, setDrawWidth] = useState(2);
   const [fogBrushMode, setFogBrushMode] = useState<FogBrushMode>('draw');
@@ -868,7 +870,7 @@ export function BattleStage({
         actedEntityIds={combat?.actedThisRound}
         activeEntityId={combat?.activeEntityId ?? null}
         builderMode={isDirector}
-        activeTool={isDirector ? activeTool : 'select'}
+        activeTool={isDirector ? activeTool : playerTool}
         drawColor={drawColor}
         drawWidth={drawWidth}
         drawings={drawings}
@@ -1045,17 +1047,48 @@ export function BattleStage({
           inset={16}
           label="zoom controls"
         >
-          <ViewportControls
-            zoom={zoom}
-            className="flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm"
-            onZoomIn={() => viewportRef.current?.zoomIn()}
-            onZoomOut={() => viewportRef.current?.zoomOut()}
-            onFitToMap={() => {
-              const fitW = bgNaturalSize?.width ?? cols * cellSize;
-              const fitH = bgNaturalSize?.height ?? rows * cellSize;
-              viewportRef.current?.fitToRect(fitW, fitH);
-            }}
-          />
+          <div className="flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm">
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                title="Select / interact"
+                aria-pressed={playerTool === 'select'}
+                onClick={() => setPlayerTool('select')}
+                className={`flex size-8 items-center justify-center rounded-md transition ${
+                  playerTool === 'select'
+                    ? 'bg-zinc-700 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                }`}
+              >
+                <MousePointer2 className="size-4" />
+              </button>
+              <button
+                type="button"
+                title="Pan the map (drag)"
+                aria-pressed={playerTool === 'pan'}
+                onClick={() => setPlayerTool('pan')}
+                className={`flex size-8 items-center justify-center rounded-md transition ${
+                  playerTool === 'pan'
+                    ? 'bg-zinc-700 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                }`}
+              >
+                <Hand className="size-4" />
+              </button>
+            </div>
+            <div className="h-px w-6 bg-zinc-800" />
+            <ViewportControls
+              zoom={zoom}
+              className="flex flex-col items-center gap-1"
+              onZoomIn={() => viewportRef.current?.zoomIn()}
+              onZoomOut={() => viewportRef.current?.zoomOut()}
+              onFitToMap={() => {
+                const fitW = bgNaturalSize?.width ?? cols * cellSize;
+                const fitH = bgNaturalSize?.height ?? rows * cellSize;
+                viewportRef.current?.fitToRect(fitW, fitH);
+              }}
+            />
+          </div>
         </FloatingStagePanel>
       )}
 

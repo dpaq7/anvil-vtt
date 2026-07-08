@@ -11,6 +11,7 @@ import {
   Unlink,
   HeartPulse,
   Shield,
+  Crosshair,
 } from 'lucide-react';
 import { StaminaBar, Badge, Button } from '@anvil/ui';
 import type { EntityData, ClientMessage, TokenActionKind } from '../../types/protocol.js';
@@ -349,6 +350,20 @@ export function TokenContextMenu({
             </Badge>
           </div>
         </div>
+        {isDirector && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0 text-zinc-500 hover:text-amber-300"
+            title="Pull everyone's view here"
+            onClick={() => {
+              send({ type: 'director_focus', entityId: entity.id });
+              onClose();
+            }}
+          >
+            <Crosshair className="size-3.5" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
