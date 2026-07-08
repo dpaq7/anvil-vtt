@@ -9,7 +9,10 @@ import { TerrainLayer } from './layers/TerrainLayer.js';
 import { TargetingLayer } from './layers/TargetingLayer.js';
 import { ViewportSystem } from './systems/ViewportSystem.js';
 import { InteractionManager } from './systems/InteractionManager.js';
-import type { ActiveTool } from './systems/InteractionManager.js';
+import type {
+  ActiveTool,
+  TargetingModeContext,
+} from './systems/InteractionManager.js';
 import type { Segment } from './vision/VisibilityCalculator.js';
 import type { EntityData } from '../types/protocol.js';
 import type { DrawingData } from './layers/DrawingLayer.js';
@@ -333,6 +336,23 @@ export interface BattleCanvasProps {
    */
   activeMoverBudget?: { entityId: string; remaining: number } | null;
 
+  /**
+   * When set, the canvas enters on-canvas ability-targeting mode: a range ring +
+   * valid-target highlights are drawn (plus a cursor-following AoE template for
+   * area abilities), and clicking a target token fires `onTargetConfirm`. Null to
+   * leave targeting mode. Advisory — out-of-range targets stay clickable.
+   */
+  targeting?: TargetingModeContext | null;
+  onTargetConfirm?: (targetId: string) => void;
+
+  /**
+   * Combat turn cues: ids that have already acted this round are dimmed with a
+   * "done" badge; the active combatant gets an amber turn ring. Driven by the
+   * same state as the initiative tracker. Omit outside combat.
+   */
+  actedEntityIds?: string[];
+  activeEntityId?: string | null;
+
   // Builder mode props (all optional — omit for live session)
   builderMode?: boolean;
   activeTool?: ActiveTool;
@@ -401,6 +421,10 @@ export function BattleCanvas({
   onMultiSelectEntities,
   onMultiMoveEntities,
   activeMoverBudget = null,
+  targeting = null,
+  onTargetConfirm,
+  actedEntityIds,
+  activeEntityId = null,
   builderMode = false,
   activeTool = 'select',
   drawColor = '#ef4444',
@@ -484,6 +508,8 @@ export function BattleCanvas({
   onTokenHoverRef.current = onTokenHover;
   const onTokenRightClickRef = useRef(onTokenRightClick);
   onTokenRightClickRef.current = onTokenRightClick;
+  const onTargetConfirmRef = useRef(onTargetConfirm);
+  onTargetConfirmRef.current = onTargetConfirm;
 
   // Init PixiJS
   useEffect(() => {
@@ -611,6 +637,8 @@ export function BattleCanvas({
             onTokenHover: (...args) => onTokenHoverRef.current?.(...args),
             onTokenRightClick: (...args) =>
               onTokenRightClickRef.current?.(...args),
+            onTargetConfirm: (targetId) =>
+              onTargetConfirmRef.current?.(targetId),
           },
           { cols, rows },
           isDirector,
@@ -765,6 +793,7 @@ export function BattleCanvas({
     const selectedSet = new Set(selectedEntityIds);
     // Always include the single-select ID too
     if (selectedEntityId) selectedSet.add(selectedEntityId);
+    const actedSet = new Set(actedEntityIds ?? []);
 
     // Sync multi-select state into the InteractionManager so group-drag works
     layers.interaction.setSelectedIds(selectedSet);
@@ -785,26 +814,32 @@ export function BattleCanvas({
             ? 0xef4444
             : 0x8b5cf6;
       const size = getEntityTokenSize(entity);
+      const active = activeEntityId === entity.id;
+      const acted = actedSet.has(entity.id);
       if (!prevIds.has(entity.id)) {
         // New entity — add token
         layers.tokens.addToken(entity, {
           size,
           color,
           selected: selectedSet.has(entity.id),
+          active,
+          acted,
         });
       } else {
-        // Existing entity — update in place (position, selection, stamina, conditions)
+        // Existing entity — update in place (position, selection, stamina, conditions, turn cues)
         layers.tokens.updateToken(entity, {
           size,
           color,
           selected: selectedSet.has(entity.id),
+          active,
+          acted,
         });
       }
     }
 
     prevEntityIdsRef.current = currentIds;
     layers.interaction.rebuildIndex();
-  }, [entities, selectedEntityId, selectedEntityIds, pixiReady]);
+  }, [entities, selectedEntityId, selectedEntityIds, actedEntityIds, activeEntityId, pixiReady]);
 
   // Update fog zones
   useEffect(() => {
@@ -823,6 +858,20 @@ export function BattleCanvas({
   useEffect(() => {
     layersRef.current?.interaction.setMoverBudget(activeMoverBudget);
   }, [activeMoverBudget, pixiReady]);
+
+  // Enter/leave on-canvas ability-targeting mode as the prop toggles.
+  useEffect(() => {
+    const interaction = layersRef.current?.interaction;
+    if (!interaction) return;
+    if (targeting) {
+      interaction.enterTargetingMode(targeting);
+    } else {
+      interaction.exitTargetingMode();
+    }
+    return () => {
+      layersRef.current?.interaction.exitTargetingMode();
+    };
+  }, [targeting, pixiReady]);
 
   // Sync draw config to InteractionManager
   useEffect(() => {

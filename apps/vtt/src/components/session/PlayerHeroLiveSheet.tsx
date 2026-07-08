@@ -25,6 +25,7 @@ import type { CharacteristicId, EntityData } from '../../types/protocol.js';
 import { CharacterInventoryPanel } from '../CharacterInventoryPanel.js';
 import { normalizeInventory } from '../../lib/inventory.js';
 import type { CharacterInventoryItem } from '../../lib/inventory.js';
+import { conditionNames } from '../../lib/conditions.js';
 
 type RollCharacteristicHandler = (label: string, modifier: number) => void;
 
@@ -248,7 +249,7 @@ export function PlayerHeroSheetPanel({
   const victories = getNumber(hero, 'victories', 0);
   const xp = getNumber(hero, 'xp', 0);
   const speed = getNumber(hero, 'speed', 0);
-  const conditions = getStringArray(hero, 'conditions');
+  const conditions = conditionNames(hero) as string[];
   const isProne = conditions.includes('prone');
   const isGrabbed = conditions.includes('grabbed') || conditions.includes('restrained');
   const companionName = getString(hero, 'companionName');

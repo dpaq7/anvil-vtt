@@ -6,6 +6,7 @@ import { TargetSelector } from '../../../components/session/TargetSelector.js';
 import { TurnActionBar } from '../../../components/session/TurnActionBar.js';
 import { PlayerHeroSheetPanel } from '../../../components/session/PlayerHeroLiveSheet.js';
 import { useTargetingResolution } from '../../../hooks/useTargetingResolution.js';
+import { conditionNames } from '../../../lib/conditions.js';
 import type { CharacterInventoryItem } from '../../../lib/inventory.js';
 import type {
   ClientMessage,
@@ -50,9 +51,7 @@ export function PhonePlayerView({
     () => ((hero?.['abilities'] as AbilityInfo[] | undefined) ?? []),
     [hero],
   );
-  const heroConditions = Array.isArray(hero?.['conditions'])
-    ? (hero['conditions'] as string[])
-    : [];
+  const heroConditions = conditionNames(hero) as string[];
   const heroSpeed = num(hero, 'speed', 5);
   const heroicResource = num(hero, 'heroicResource', 0);
   const resourceName = str(hero, 'heroicResourceName', 'Resource');
