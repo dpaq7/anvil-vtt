@@ -12,11 +12,11 @@ import {
   HeartPulse,
   Shield,
   Crosshair,
+  ChevronRight,
 } from 'lucide-react';
 import { StaminaBar, Badge, Button } from '@anvil/ui';
 import type { EntityData, ClientMessage, TokenActionKind } from '../../types/protocol.js';
 import type { ConditionName } from '@anvil/types';
-import { AbilityBlock } from '../drawsteel/AbilityBlock.js';
 import { drawSteelAbilityFromLike, type DrawSteelAbilityView } from '../drawsteel/abilityData.js';
 import type { PendingTargetedAction, TargetedActionKind } from '../../lib/targeting.js';
 import {
@@ -157,6 +157,10 @@ export function TokenContextMenu({
   // Add-condition form state (end type defaults to the condition's natural rule).
   const [addCondition, setAddCondition] = useState<ConditionName>('bleeding');
   const [addEndType, setAddEndType] = useState<ConditionEndType>('save');
+
+  // Which category flyout is open (start-menu style nesting keeps the top level
+  // compact and off the screen edges).
+  const [openPanel, setOpenPanel] = useState<'actions' | 'status' | 'hp' | null>(null);
 
   // The requester may act with this token if they're the Director or it's their
   // own hero. Otherwise the action list is shown read-only (reference).
@@ -322,60 +326,76 @@ export function TokenContextMenu({
 
   const hasActions = abilityEntries.length > 0 || (canAct && standardActions.length > 0);
 
-  // Clamp position to viewport so menu doesn't overflow off-screen
-  const menuWidth = 260;
-  const menuHeight = hasActions ? 520 : 260;
-  const clampedX = Math.min(Math.max(8, x), window.innerWidth - menuWidth - 8);
-  const clampedY = Math.min(Math.max(8, y), window.innerHeight - menuHeight - 8);
+  // Compact top level + a flyout panel beside it. Flip the flyout left when it
+  // would overrun the right edge; the flyout scrolls so it never runs off-screen.
+  const TOP_W = 190;
+  const FLYOUT_W = 244;
+  const flipLeft = x + TOP_W + FLYOUT_W + 16 > window.innerWidth;
+  const totalW = openPanel ? TOP_W + FLYOUT_W + 8 : TOP_W;
+  const clampedX = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - totalW - 8));
+  const clampedY = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 140));
 
   const badgeColor = TYPE_BADGE_COLORS[entity.type] ?? TYPE_BADGE_COLORS['npc'];
+
+  const categoryRow = (id: 'actions' | 'status' | 'hp', label: string, Icon: typeof Swords) => (
+    <button
+      type="button"
+      onClick={() => setOpenPanel((p) => (p === id ? null : id))}
+      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition ${
+        openPanel === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-300 hover:bg-zinc-800/60'
+      }`}
+    >
+      <Icon className="size-3.5 shrink-0 text-zinc-400" />
+      <span className="flex-1 truncate">{label}</span>
+      <ChevronRight className="size-3.5 shrink-0 text-zinc-500" />
+    </button>
+  );
 
   return (
     <div
       ref={menuRef}
-      className="absolute z-40 flex max-h-[520px] w-[260px] flex-col overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/95 shadow-2xl backdrop-blur-sm"
+      className={`absolute z-40 flex items-start gap-1 ${flipLeft ? 'flex-row-reverse' : ''}`}
       style={{ left: clampedX, top: clampedY }}
       onContextMenu={(e) => e.stopPropagation()}
     >
-      {/* Header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-zinc-100">{entity.name}</p>
-          <div className="flex items-center gap-1.5">
-            <span className={`inline-block rounded px-1 py-0.5 text-[10px] font-medium ${badgeColor}`}>
-              {entity.type}
-            </span>
-            <Badge variant="secondary" className="px-1 py-0 text-[10px]">
-              Lv{level}
-            </Badge>
+      {/* Top level — compact */}
+      <div className="flex w-[190px] flex-col overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/95 shadow-2xl backdrop-blur-sm">
+        <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-zinc-100">{entity.name}</p>
+            <div className="flex items-center gap-1.5">
+              <span className={`inline-block rounded px-1 py-0.5 text-[10px] font-medium ${badgeColor}`}>
+                {entity.type}
+              </span>
+              <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                Lv{level}
+              </Badge>
+            </div>
           </div>
-        </div>
-        {isDirector && (
+          {isDirector && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0 text-zinc-500 hover:text-amber-300"
+              title="Pull everyone's view here"
+              onClick={() => {
+                send({ type: 'director_focus', entityId: entity.id });
+                onClose();
+              }}
+            >
+              <Crosshair className="size-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 shrink-0 text-zinc-500 hover:text-amber-300"
-            title="Pull everyone's view here"
-            onClick={() => {
-              send({ type: 'director_focus', entityId: entity.id });
-              onClose();
-            }}
+            className="size-6 shrink-0 text-zinc-500 hover:text-zinc-300"
+            onClick={onClose}
           >
-            <Crosshair className="size-3.5" />
+            <X className="size-3.5" />
           </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-zinc-500 hover:text-zinc-300"
-          onClick={onClose}
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
+        </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* Stamina bar */}
         {maxStamina > 0 && (
           <div className="px-3 pt-2">
             <div className="mb-1 flex items-baseline justify-between">
@@ -385,181 +405,190 @@ export function TokenContextMenu({
               </span>
             </div>
             <StaminaBar current={currentStamina} max={maxStamina} className="h-2" />
-          </div>
-        )}
-
-        {/* Quick damage/heal row (director) */}
-        {isDirector && (
-          <div className="flex items-center gap-1 px-3 py-2">
-            <Button variant="ghost" size="icon" className="size-6" onClick={() => handleDamage(1)} title="1 damage">
-              <Minus className="size-3 text-red-400" />
-            </Button>
-            <input
-              type="number"
-              value={damageInput}
-              onChange={(e) => setDamageInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleQuickDamageHeal();
-              }}
-              placeholder="+/- HP"
-              className="h-6 flex-1 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
-            />
-            <Button variant="ghost" size="icon" className="size-6" onClick={() => handleHeal(1)} title="1 heal">
-              <Plus className="size-3 text-emerald-400" />
-            </Button>
-          </div>
-        )}
-
-        {/* Actions — abilities + standard actions grouped by turn economy */}
-        {hasActions && (
-          <div className="border-t border-zinc-800/50 px-3 py-2">
-            {!canAct && (
-              <p className="mb-2 rounded bg-zinc-800/60 px-2 py-1 text-[10px] text-zinc-500">
-                Reference only — you don't control this token.
-              </p>
+            {(dying || winded) && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {dying && (
+                  <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 ring-1 ring-red-500/40">
+                    💀 Dying
+                  </span>
+                )}
+                {winded && !dying && (
+                  <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-500/40">
+                    🫁 Winded
+                  </span>
+                )}
+              </div>
             )}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-0.5 p-1.5">
+          {hasActions && categoryRow('actions', 'Actions', Swords)}
+          {categoryRow('status', 'Status', HeartPulse)}
+          {isDirector && categoryRow('hp', 'Adjust HP', Plus)}
+        </div>
+      </div>
+
+      {/* Flyout panel */}
+      {openPanel && (
+        <div className="max-h-[70vh] w-[244px] overflow-y-auto rounded-lg border border-zinc-700/60 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur-sm">
+          {openPanel === 'actions' && (
             <div className="flex flex-col gap-3">
+              {!canAct && (
+                <p className="rounded bg-zinc-800/60 px-2 py-1 text-[10px] text-zinc-500">
+                  Reference only — you don't control this token.
+                </p>
+              )}
               {CATEGORY_ORDER.map((category) => {
-                const standards = canAct
-                  ? standardActions.filter((a) => a.category === category)
-                  : [];
+                const standards = canAct ? standardActions.filter((a) => a.category === category) : [];
                 const abilities = abilityEntries.filter((a) => a.category === category);
                 if (standards.length === 0 && abilities.length === 0) return null;
                 return (
-                  <section key={category} className="flex flex-col gap-1.5">
-                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <section key={category} className="flex flex-col gap-0.5">
+                    <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                       {CATEGORY_LABELS[category]}
                     </h3>
-                    {standards.length > 0 && (
-                      <div className="grid grid-cols-2 gap-1">
-                        {standards.map((action) => (
-                          <Button
-                            key={action.label}
-                            variant="ghost"
-                            size="sm"
-                            className="h-auto flex-col gap-0.5 py-1.5 text-[10px] text-zinc-300"
-                            title={action.targeted ? `${action.label} — pick a target` : action.label}
-                            onClick={() => runStandard(action)}
-                          >
-                            {action.icon} {action.label}
-                          </Button>
-                        ))}
-                      </div>
-                    )}
+                    {standards.map((action) => (
+                      <button
+                        key={action.label}
+                        type="button"
+                        onClick={() => runStandard(action)}
+                        title={action.targeted ? `${action.label} — pick a target` : action.label}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] text-zinc-300 hover:bg-zinc-800/60"
+                      >
+                        {action.icon}
+                        <span className="flex-1 truncate">{action.label}</span>
+                        {action.targeted && <span className="shrink-0 text-[9px] text-zinc-500">target</span>}
+                      </button>
+                    ))}
                     {abilities.map((ability) => (
-                      <AbilityBlock
+                      <button
                         key={ability.key}
-                        ability={ability.view}
-                        compact
+                        type="button"
                         disabled={!canAct}
                         onClick={() => runAbility(ability)}
-                      />
+                        title={ability.name}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] text-zinc-200 hover:bg-zinc-800/60 disabled:opacity-50 disabled:hover:bg-transparent"
+                      >
+                        <span className="flex-1 truncate">{ability.name}</span>
+                        {ability.distance && (
+                          <span className="shrink-0 text-[9px] text-zinc-500">{ability.distance}</span>
+                        )}
+                      </button>
                     ))}
                   </section>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* Status — stamina state + conditions with end/save rules */}
-        <div className="border-t border-zinc-800/50 px-3 py-2">
-          <p className="mb-1.5 text-[10px] font-medium text-zinc-500">Status</p>
-
-          {/* Stamina-derived states */}
-          {(dying || winded) && (
-            <div className="mb-1.5 flex flex-wrap gap-1">
-              {dying && (
-                <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 ring-1 ring-red-500/40">
-                  💀 Dying
-                </span>
-              )}
-              {winded && !dying && (
-                <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-500/40">
-                  🫁 Winded
-                </span>
-              )}
-            </div>
           )}
 
-          {/* Active conditions with end-type badges */}
-          {conditionObjects.length > 0 ? (
-            <div className="mb-2 flex flex-col gap-1">
-              {conditionObjects.map((c) => (
-                <div
-                  key={c.name}
-                  className="flex items-center gap-1.5 rounded bg-zinc-800/50 px-1.5 py-1 text-[11px]"
-                >
-                  <span>{CONDITION_EMOJIS[c.name] ?? '•'}</span>
-                  <span className="capitalize text-zinc-200">{c.name}</span>
-                  <span
-                    className={`rounded px-1 text-[9px] ${
-                      c.endType === 'save'
-                        ? 'bg-amber-500/15 text-amber-300'
-                        : c.endType === 'eot'
-                          ? 'bg-sky-500/15 text-sky-300'
-                          : 'bg-zinc-700/60 text-zinc-400'
-                    }`}
-                  >
-                    {endTypeLabel(c.endType)}
-                  </span>
-                  {canAct && (
-                    <button
-                      type="button"
-                      className="ml-auto text-zinc-500 hover:text-red-400"
-                      title={`Remove ${c.name}`}
-                      onClick={() => removeStatus(c.name)}
+          {openPanel === 'status' && (
+            <div className="flex flex-col gap-2">
+              <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</h3>
+              {conditionObjects.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  {conditionObjects.map((c) => (
+                    <div
+                      key={c.name}
+                      className="flex items-center gap-1.5 rounded bg-zinc-800/50 px-1.5 py-1 text-[11px]"
                     >
-                      <X className="size-3" />
-                    </button>
-                  )}
+                      <span>{CONDITION_EMOJIS[c.name] ?? '•'}</span>
+                      <span className="capitalize text-zinc-200">{c.name}</span>
+                      <span
+                        className={`rounded px-1 text-[9px] ${
+                          c.endType === 'save'
+                            ? 'bg-amber-500/15 text-amber-300'
+                            : c.endType === 'eot'
+                              ? 'bg-sky-500/15 text-sky-300'
+                              : 'bg-zinc-700/60 text-zinc-400'
+                        }`}
+                      >
+                        {endTypeLabel(c.endType)}
+                      </span>
+                      {canAct && (
+                        <button
+                          type="button"
+                          className="ml-auto text-zinc-500 hover:text-red-400"
+                          title={`Remove ${c.name}`}
+                          onClick={() => removeStatus(c.name)}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <p className="text-[10px] text-zinc-600">No conditions.</p>
+              )}
+              {canAct && (
+                <div className="flex items-center gap-1">
+                  <select
+                    value={addCondition}
+                    onChange={(e) => {
+                      const next = e.target.value as ConditionName;
+                      setAddCondition(next);
+                      setAddEndType(defaultEndType(next));
+                    }}
+                    className="h-7 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-1 text-[11px] capitalize text-zinc-100"
+                  >
+                    {CONDITION_IDS.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={addEndType}
+                    onChange={(e) => setAddEndType(e.target.value as ConditionEndType)}
+                    className="h-7 rounded border border-zinc-700 bg-zinc-950 px-1 text-[10px] text-zinc-100"
+                    title="How the condition ends"
+                  >
+                    <option value="save">save 6+</option>
+                    <option value="eot">end turn</option>
+                    <option value="manual">manual</option>
+                  </select>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => applyStatus(addCondition, addEndType)}
+                  >
+                    Add
+                  </Button>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="mb-2 text-[10px] text-zinc-600">No conditions.</p>
           )}
 
-          {/* Apply a condition with a selectable end/save rule */}
-          {canAct && (
-            <div className="flex items-center gap-1">
-              <select
-                value={addCondition}
-                onChange={(e) => {
-                  const next = e.target.value as ConditionName;
-                  setAddCondition(next);
-                  setAddEndType(defaultEndType(next));
-                }}
-                className="h-7 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-1 text-[11px] capitalize text-zinc-100"
-              >
-                {CONDITION_IDS.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={addEndType}
-                onChange={(e) => setAddEndType(e.target.value as ConditionEndType)}
-                className="h-7 rounded border border-zinc-700 bg-zinc-950 px-1 text-[10px] text-zinc-100"
-                title="How the condition ends"
-              >
-                <option value="save">save 6+</option>
-                <option value="eot">end turn</option>
-                <option value="manual">manual</option>
-              </select>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 px-2 text-[11px]"
-                onClick={() => applyStatus(addCondition, addEndType)}
-              >
-                Add
+          {openPanel === 'hp' && isDirector && (
+            <div className="flex flex-col gap-2">
+              <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Adjust HP</h3>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="size-7" onClick={() => handleDamage(1)} title="1 damage">
+                  <Minus className="size-3.5 text-red-400" />
+                </Button>
+                <input
+                  type="number"
+                  value={damageInput}
+                  onChange={(e) => setDamageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleQuickDamageHeal();
+                  }}
+                  placeholder="+/- HP"
+                  className="h-7 flex-1 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
+                />
+                <Button variant="ghost" size="icon" className="size-7" onClick={() => handleHeal(1)} title="1 heal">
+                  <Plus className="size-3.5 text-emerald-400" />
+                </Button>
+              </div>
+              <Button size="sm" variant="secondary" className="h-7 text-[11px]" onClick={handleQuickDamageHeal}>
+                Apply
               </Button>
             </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
