@@ -1,4 +1,9 @@
 import { useEffect, useRef, useCallback, useState, type SyntheticEvent } from 'react';
+// Patch PixiJS to its eval-free code path so it runs under our strict CSP
+// (script-src without 'unsafe-eval'). Side-effect import — must load before any
+// renderer is created. Without it, Application.init fails its _unsafeEvalCheck
+// and the canvas silently drops to the limited DOM fallback (no zoom, no draw).
+import 'pixi.js/unsafe-eval';
 import { Application, Container } from 'pixi.js';
 import { BackgroundLayer } from './layers/BackgroundLayer.js';
 import { GridLayer } from './layers/GridLayer.js';
