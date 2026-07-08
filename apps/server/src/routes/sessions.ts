@@ -401,7 +401,7 @@ sessionRoutes.post('/sessions/:id/join', async (c) => {
   if (rateLimitError) return rateLimitError;
 
   const sessionId = c.req.param('id');
-  const body = await c.req.json<{ hero_id?: string | null }>();
+  const body = await c.req.json<{ hero_id?: string | null; room_code?: string }>();
 
   const session = await getSessionAccess(c, sessionId);
   if (!session) return c.json({ error: 'Not found' }, 404);
@@ -409,6 +409,15 @@ sessionRoutes.post('/sessions/:id/join', async (c) => {
   if (!(await assertHeroOwnership(c, body.hero_id, user.id))) return c.json({ error: 'Hero not found' }, 404);
 
   const role = session.director_id === user.id ? 'director' : 'player';
+
+  // Everyone but the Director must present the session's room code to join.
+  if (role === 'player') {
+    const provided = typeof body.room_code === 'string' ? normalizeRoomCode(body.room_code) : '';
+    const expected = session.room_code ? normalizeRoomCode(session.room_code) : '';
+    if (!expected || provided !== expected) {
+      return c.json({ error: 'Invalid room code' }, 403);
+    }
+  }
   await c.env.DB.prepare(
     `INSERT INTO campaign_members (campaign_id, user_id, hero_id, role)
      VALUES (?, ?, ?, ?)

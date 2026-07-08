@@ -10,9 +10,12 @@ import { DirectorView } from './DirectorView.js';
 import { PlayerView } from './PlayerView.js';
 import { PhoneSessionPage } from './PhoneSessionPage.js';
 import { isPhoneCompanionViewport } from '../../lib/device.js';
+import { useDiceRollToast } from '../../hooks/useDiceRollToast.js';
 
 export function SessionPage() {
   const [usePhoneCompanion] = useState(isPhoneCompanionViewport);
+  // Toast every resolved dice roll for all participants (not just the log).
+  useDiceRollToast();
   return usePhoneCompanion ? <PhoneSessionPage /> : <DesktopSessionPage />;
 }
 
