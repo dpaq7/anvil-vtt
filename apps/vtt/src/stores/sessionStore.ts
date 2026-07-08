@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   AbilityResult,
+  DrawSteelRollResult,
   OpportunityAttackTrigger,
   ServerMessage,
   SessionState,
@@ -21,6 +22,8 @@ export interface SessionRuntimeState {
   pendingOA: OpportunityAttackTrigger[];
   /** Advisory notice about the latest committed move (over-budget warning). */
   moveNotice: MoveNotice | null;
+  /** Most recent dice roll result (drives the roll toast for everyone). */
+  lastRoll: DrawSteelRollResult | null;
 }
 
 interface SessionRuntimeStore extends SessionRuntimeState {
@@ -37,6 +40,7 @@ export const initialSessionRuntimeState: SessionRuntimeState = {
   sessionStarted: false,
   pendingOA: [],
   moveNotice: null,
+  lastRoll: null,
 };
 
 function createInitialSessionRuntimeState(): SessionRuntimeState {
@@ -46,6 +50,7 @@ function createInitialSessionRuntimeState(): SessionRuntimeState {
     sessionStarted: false,
     pendingOA: [],
     moveNotice: null,
+    lastRoll: null,
   };
 }
 
@@ -326,8 +331,10 @@ export function applyServerMessageToRuntime(
     // No store change needed: forced_movement_resolved's position update arrives
     // via entity_moved (slam damage via entity_updated); the rest are transient
     // or handled elsewhere.
-    case 'scene_reverted':
     case 'draw_steel_roll_resolved':
+      return { ...current, lastRoll: message.result };
+
+    case 'scene_reverted':
     case 'token_action_resolved':
     case 'phone_anchor_status':
     case 'forced_movement_resolved':

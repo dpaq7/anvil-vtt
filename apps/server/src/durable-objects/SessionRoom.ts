@@ -1081,6 +1081,18 @@ export class SessionRoom extends DurableObject<Env> {
     await this.broadcastParticipants();
     this.broadcastPhoneAnchorStatus();
 
+    // A player who joined mid-session (via REST /join, which doesn't notify this
+    // DO) may bring a hero the room hasn't loaded. Pull it in + broadcast so the
+    // Director's panels and the canvas show them.
+    if (
+      role === 'player' &&
+      heroId &&
+      this.sessionState &&
+      !this.sessionState.entities.some((entity) => entity.id === heroId)
+    ) {
+      await this.refreshHeroEntities();
+    }
+
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -1176,14 +1188,7 @@ export class SessionRoom extends DurableObject<Env> {
             .run();
         }
 
-        if (this.sessionState) {
-          const heroEntities = this.applyHeroStart(
-            await this.loadHeroEntities(meta.sessionId),
-            this.getActiveSceneData() ?? {},
-          );
-          const nonHeroEntities = this.sessionState.entities.filter((entity) => entity.type !== 'hero');
-          this.sessionState.entities = [...heroEntities, ...nonHeroEntities];
-        }
+        await this.refreshHeroEntities();
 
         this.updateTag(ws, { ...meta, heroId: msg.heroId });
         await this.broadcastParticipants();
@@ -1642,6 +1647,24 @@ export class SessionRoom extends DurableObject<Env> {
       .all<HeroEntityRow>();
 
     return rows.results.map((hero, index) => this.createHeroEntity(hero, index));
+  }
+
+  /**
+   * Reload hero entities from the DB into session state and broadcast, so a hero
+   * that joined mid-session appears for everyone (the Director's panels and the
+   * canvas). REST `/join` inserts the participant row but doesn't notify this
+   * Durable Object, and a socket connect otherwise only re-broadcasts the
+   * participant list — never the new hero entity.
+   */
+  private async refreshHeroEntities(): Promise<void> {
+    if (!this.sessionState || !this.sessionId) return;
+    const heroEntities = this.applyHeroStart(
+      await this.loadHeroEntities(this.sessionId),
+      this.getActiveSceneData() ?? {},
+    );
+    const nonHeroEntities = this.sessionState.entities.filter((entity) => entity.type !== 'hero');
+    this.sessionState.entities = [...heroEntities, ...nonHeroEntities];
+    this.broadcast({ type: 'state', state: this.sessionState });
   }
 
   private parseSceneSnapshot(value: string | null | undefined): SceneLiveSnapshot | null {

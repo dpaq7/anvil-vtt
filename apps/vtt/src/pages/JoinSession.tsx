@@ -63,7 +63,7 @@ export function JoinSession() {
     if (!session) return;
     setJoining(true);
     try {
-      await api.post(`/api/sessions/${session.id}/join`, { hero_id: selectedHeroId });
+      await api.post(`/api/sessions/${session.id}/join`, { hero_id: selectedHeroId, room_code: code });
       navigate(session.status === 'lobby' ? `/app/session/${session.id}/lobby` : `/app/session/${session.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to join');
