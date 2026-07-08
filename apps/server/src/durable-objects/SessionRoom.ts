@@ -645,6 +645,10 @@ function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?:
       const action = validateTokenAction(raw['action']);
       return action ? { msg: { type, action } } : { error: 'Invalid token action' };
     }
+    case 'director_focus': {
+      const entityId = safeString(raw['entityId']);
+      return entityId ? { msg: { type, entityId } } : { error: 'Invalid focus' };
+    }
     case 'draw_steel_roll': {
       const roll = validateDrawSteelRoll(raw['roll']);
       return roll ? { msg: { type, roll } } : { error: 'Invalid roll' };
@@ -1306,6 +1310,15 @@ export class SessionRoom extends DurableObject<Env> {
 
       case 'token_action':
         await this.handleTokenAction(ws, meta, msg.action);
+        break;
+
+      case 'director_focus':
+        // Director pulls everyone's camera to a token.
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.broadcast({ type: 'focus_broadcast', entityId: msg.entityId });
         break;
 
       case 'draw_steel_roll':

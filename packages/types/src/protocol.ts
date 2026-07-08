@@ -51,6 +51,7 @@ export type ClientMessage =
     }
   | { type: 'combat_action'; action: CombatAction }
   | { type: 'token_action'; action: TokenActionRequest }
+  | { type: 'director_focus'; entityId: string }
   | { type: 'draw_steel_roll'; roll: DrawSteelRollRequest }
   | { type: 'hero_tracker_update'; heroId: string; op: HeroTrackerOperation }
   | { type: 'use_ability'; sourceId: string; targetId: string; abilityId: string }
@@ -114,6 +115,7 @@ export type ServerMessage =
       slamDamage?: number;
     }
   | { type: 'combat_updated'; combat: CombatState | null }
+  | { type: 'focus_broadcast'; entityId: string }
   | { type: 'ability_resolved'; result: AbilityResult }
   | { type: 'token_action_resolved'; result: TokenActionResult }
   | { type: 'draw_steel_roll_resolved'; result: DrawSteelRollResult }
