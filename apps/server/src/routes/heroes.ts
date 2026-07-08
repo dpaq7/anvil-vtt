@@ -310,6 +310,32 @@ function hydrateHeroSummary(row: HeroRow): HeroSummary {
   };
 }
 
+/**
+ * Minimal summary used when full hydration throws (e.g. malformed hero data or
+ * an unknown class/kit), so one bad record can't 500 the whole list.
+ */
+function fallbackHeroSummary(row: HeroRow): HeroSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    level: row.level,
+    heroClass: row.hero_class,
+    subclass: row.subclass,
+    portraitAssetId: row.portrait_asset_id,
+    portraitUrl: portraitUrlForHero(row),
+    ancestry: row.ancestry ? { id: row.ancestry, name: row.ancestry } : null,
+    staminaMax: null,
+    recoveriesMax: null,
+    recoveryValue: null,
+    staminaCurrent: null,
+    recoveriesCurrent: null,
+    victories: 0,
+    xp: 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // List heroes for current user
 heroRoutes.get('/', async (c) => {
   const user = c.get('user') as AuthUser;
@@ -319,7 +345,15 @@ heroRoutes.get('/', async (c) => {
   )
     .bind(user.id)
     .all<HeroRow>();
-  return c.json(result.results.map(hydrateHeroSummary));
+  const summaries = result.results.map((row) => {
+    try {
+      return hydrateHeroSummary(row);
+    } catch (err) {
+      console.error('[heroes] failed to hydrate hero', row.id, err);
+      return fallbackHeroSummary(row);
+    }
+  });
+  return c.json(summaries);
 });
 
 // Get single hero
