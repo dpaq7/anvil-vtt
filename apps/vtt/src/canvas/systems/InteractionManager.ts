@@ -914,7 +914,19 @@ export class InteractionManager {
 
   private handleDrawMove(e: PointerEvent): void {
     if (!this.isDrawing) return;
+    // Cap total points so a long stroke stays under the server's 2048-point
+    // limit (which otherwise rejects it silently on release).
+    if (this.drawPoints.length >= 2000) return;
     const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+    // Decimate: skip points within ~4 world px of the previous one, keeping
+    // strokes smooth but far under the point cap.
+    const lastX = this.drawPoints[this.drawPoints.length - 2];
+    const lastY = this.drawPoints[this.drawPoints.length - 1];
+    if (lastX !== undefined && lastY !== undefined) {
+      const dx = worldX - lastX;
+      const dy = worldY - lastY;
+      if (dx * dx + dy * dy < 16) return;
+    }
     this.drawPoints.push(worldX, worldY);
     // Live-render the in-progress stroke
     this.drawingLayer?.previewStroke(
