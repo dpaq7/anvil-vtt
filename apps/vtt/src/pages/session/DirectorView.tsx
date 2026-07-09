@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { Expand, Minimize2, RotateCcw } from "lucide-react";
+import { Expand, Minimize2, MonitorUp, RotateCcw } from "lucide-react";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts.js";
 import {
   AppShell,
@@ -727,6 +727,21 @@ export function DirectorView({
             {/* Actions float right */}
             <div className="flex shrink-0 items-center gap-2">
               <SessionThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() =>
+                  window.open(
+                    `/app/session/${sessionState.sessionId}/display`,
+                    "anvil-display",
+                    "width=1280,height=800",
+                  )
+                }
+                title="Open player display (external monitor)"
+                aria-label="Open player display in a new window"
+              >
+                <MonitorUp className="size-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
