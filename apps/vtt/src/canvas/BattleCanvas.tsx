@@ -814,6 +814,24 @@ export function BattleCanvas({
     layers.fog.sync(fogZones);
   }, [isDirector, fogZones, pixiReady]);
 
+  // Wire (or detach) the editable overlay layers whenever the editing role
+  // changes. The one-time wiring at init captures `builderMode || isDirector`
+  // from the first render; if the role resolves afterwards (e.g. participants
+  // load late), the draw/fog/eraser previews and hit-tests would never attach.
+  useEffect(() => {
+    const layers = layersRef.current;
+    if (!layers) return;
+    if (builderMode || isDirector) {
+      layers.interaction.setBuilderLayers(
+        layers.drawing,
+        layers.terrain,
+        layers.fog,
+      );
+    } else {
+      layers.interaction.setBuilderLayers(null, null, null);
+    }
+  }, [builderMode, isDirector, pixiReady]);
+
   // Sync active tool to InteractionManager
   useEffect(() => {
     layersRef.current?.interaction.setActiveTool(activeTool);

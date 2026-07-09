@@ -369,6 +369,15 @@ export function BattleStage({
   const [fogBrushSize, setFogBrushSize] = useState(1);
   const [gridVisible, setGridVisible] = useState(true);
 
+  // Optimistic overlays: the director's own drawings/fog render locally the
+  // instant they're committed, rather than waiting for the server echo (the
+  // pen preview is torn down on pointer-up). Each item is pruned once its id
+  // appears in the synced server props, which then become the source of truth.
+  const [optimisticDrawings, setOptimisticDrawings] = useState<DrawingData[]>(
+    [],
+  );
+  const [optimisticFog, setOptimisticFog] = useState<FogZoneData[]>([]);
+
   // Viewport
   const [zoom, setZoom] = useState(1);
   const [bgNaturalSize, setBgNaturalSize] = useState<{
@@ -544,17 +553,18 @@ export function BattleStage({
     [entityMap, send],
   );
 
-  // Drawing handlers — sync via WebSocket
+  // Drawing handlers — sync via WebSocket, rendered optimistically
   const handleDrawingAdd = useCallback(
     (points: number[], color: string, width: number) => {
       if (color === 'none') return; // Blank color — no stroke
-      const drawing = {
+      const drawing: DrawingData = {
         id: generateId(),
         type: 'freehand',
         points,
         color,
         width,
       };
+      setOptimisticDrawings((prev) => [...prev, drawing]);
       send({ type: 'scene_drawing_add', drawing });
     },
     [send],
@@ -562,15 +572,17 @@ export function BattleStage({
 
   const handleDrawingRemove = useCallback(
     (drawingId: string) => {
+      setOptimisticDrawings((prev) => prev.filter((d) => d.id !== drawingId));
       send({ type: 'scene_drawing_remove', drawingId });
     },
     [send],
   );
 
-  // Fog handlers — sync via WebSocket
+  // Fog handlers — sync via WebSocket, rendered optimistically
   const handleFogAdd = useCallback(
     (gridX: number, gridY: number, w: number, h: number) => {
-      const fog = { id: generateId(), x: gridX, y: gridY, w, h };
+      const fog: FogZoneData = { id: generateId(), x: gridX, y: gridY, w, h };
+      setOptimisticFog((prev) => [...prev, fog]);
       send({ type: 'scene_fog_add', fog });
     },
     [send],
@@ -578,6 +590,7 @@ export function BattleStage({
 
   const handleFogRemove = useCallback(
     (fogId: string) => {
+      setOptimisticFog((prev) => prev.filter((z) => z.id !== fogId));
       send({ type: 'scene_fog_remove', fogId });
     },
     [send],
@@ -585,23 +598,68 @@ export function BattleStage({
 
   const handleFogRevealCell = useCallback(
     (gridX: number, gridY: number) => {
-      for (const zone of fogZones) {
+      // Reveal against the merged view so freshly-painted (still-optimistic)
+      // fog can also be carved out before the server round-trip completes.
+      const zones = [
+        ...fogZones,
+        ...optimisticFog.filter((z) => !fogZones.some((f) => f.id === z.id)),
+      ];
+      for (const zone of zones) {
         const pieces = splitFogZoneAroundCell(zone, gridX, gridY);
         if (pieces.length === 1 && pieces[0] === zone) continue;
+        setOptimisticFog((prev) => [
+          ...prev.filter((z) => z.id !== zone.id),
+          ...pieces,
+        ]);
         send({ type: 'scene_fog_remove', fogId: zone.id });
         for (const piece of pieces) {
           send({ type: 'scene_fog_add', fog: piece });
         }
       }
     },
-    [fogZones, send],
+    [fogZones, optimisticFog, send],
   );
 
   const handleClearFog = useCallback(() => {
+    setOptimisticFog([]);
     for (const zone of fogZones) {
       send({ type: 'scene_fog_remove', fogId: zone.id });
     }
   }, [fogZones, send]);
+
+  // Prune optimistic overlays once the server confirms them (their id appears
+  // in the synced props) so the merged view can't double-render or grow
+  // unbounded. Server state is authoritative from that point on.
+  useEffect(() => {
+    if (optimisticDrawings.length === 0) return;
+    const serverIds = new Set(drawings.map((d) => d.id));
+    if (optimisticDrawings.some((d) => serverIds.has(d.id))) {
+      setOptimisticDrawings((prev) => prev.filter((d) => !serverIds.has(d.id)));
+    }
+  }, [drawings, optimisticDrawings]);
+
+  useEffect(() => {
+    if (optimisticFog.length === 0) return;
+    const serverIds = new Set(fogZones.map((z) => z.id));
+    if (optimisticFog.some((z) => serverIds.has(z.id))) {
+      setOptimisticFog((prev) => prev.filter((z) => !serverIds.has(z.id)));
+    }
+  }, [fogZones, optimisticFog]);
+
+  const mergedDrawings = useMemo(() => {
+    if (optimisticDrawings.length === 0) return drawings;
+    const serverIds = new Set(drawings.map((d) => d.id));
+    return [
+      ...drawings,
+      ...optimisticDrawings.filter((d) => !serverIds.has(d.id)),
+    ];
+  }, [drawings, optimisticDrawings]);
+
+  const mergedFog = useMemo(() => {
+    if (optimisticFog.length === 0) return fogZones;
+    const serverIds = new Set(fogZones.map((z) => z.id));
+    return [...fogZones, ...optimisticFog.filter((z) => !serverIds.has(z.id))];
+  }, [fogZones, optimisticFog]);
 
   // Terrain handlers — sync via WebSocket
   const handleTerrainAdd = useCallback(
@@ -748,7 +806,7 @@ export function BattleStage({
         backgroundUrl={backgroundUrl}
         isDirector={isDirector}
         heroPosition={heroPosition}
-        fogZones={fogZones}
+        fogZones={mergedFog}
         onSelectEntity={handleSelectEntity}
         onMoveEntity={handleMoveEntity}
         onMultiSelectEntities={handleMultiSelectEntities}
@@ -758,7 +816,7 @@ export function BattleStage({
         activeTool={isDirector ? activeTool : 'select'}
         drawColor={drawColor}
         drawWidth={drawWidth}
-        drawings={drawings}
+        drawings={mergedDrawings}
         terrain={terrain}
         onDrawingAdd={handleDrawingAdd}
         onDrawingRemove={handleDrawingRemove}

@@ -109,6 +109,8 @@ export class InteractionManager {
 
   private static readonly LONG_PRESS_MS = 500;
   private static readonly LONG_PRESS_MOVE_TOLERANCE_PX = 8;
+  /** Minimum squared world-space distance between sampled freehand points. */
+  private static readonly DRAW_MIN_SAMPLE_DIST_SQ = 4; // 2px
 
   // Optional layers (only present in builder mode)
   private drawingLayer: DrawingLayer | null = null;
@@ -812,6 +814,17 @@ export class InteractionManager {
   private handleDrawMove(e: PointerEvent): void {
     if (!this.isDrawing) return;
     const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
+    // Distance-sample: only keep a point once it has moved far enough from the
+    // last one. This caps stroke length (the server rejects strokes with more
+    // than 2048 points, i.e. 1024 samples) and shrinks the synced payload with
+    // no visible loss of fidelity.
+    const lastX = this.drawPoints[this.drawPoints.length - 2];
+    const lastY = this.drawPoints[this.drawPoints.length - 1];
+    if (lastX !== undefined && lastY !== undefined) {
+      const dx = worldX - lastX;
+      const dy = worldY - lastY;
+      if (dx * dx + dy * dy < InteractionManager.DRAW_MIN_SAMPLE_DIST_SQ) return;
+    }
     this.drawPoints.push(worldX, worldY);
     // Live-render the in-progress stroke
     this.drawingLayer?.previewStroke(
