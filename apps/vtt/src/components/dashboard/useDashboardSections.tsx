@@ -211,8 +211,8 @@ export function useDashboardSections({
           emptyState={
             <EmptyState
               icon={CalendarClock}
-              title={isDirector ? 'No live sessions' : 'No table is live'}
-              detail={isDirector ? 'Start a session from Live when the table is ready.' : 'Live rooms appear here when your Director starts a session.'}
+              title={isDirector ? 'The table is quiet' : 'No table is live right now'}
+              detail={isDirector ? 'Start a session from Live when your party is ready to play.' : 'Live rooms appear here the moment your Director starts a session.'}
               action={isDirector ? { label: 'Open Live', to: '/app/live', icon: Clapperboard } : undefined}
             />
           }
@@ -232,8 +232,8 @@ export function useDashboardSections({
           emptyState={
             <EmptyState
               icon={FolderKanban}
-              title={isDirector ? 'No campaigns yet' : 'No joined campaigns'}
-              detail={isDirector ? 'Create a campaign or import prepared scenes to begin.' : 'Join a campaign with an invite link or room code from your Director.'}
+              title={isDirector ? 'Forge your first campaign' : 'Your party awaits'}
+              detail={isDirector ? 'Sketch a few scenes and line them up on your film strip — prep is half the fun.' : 'Join a campaign with an invite link or room code from your Director.'}
               action={
                 isDirector
                   ? { label: 'Open Campaigns', to: '/app/campaigns', icon: FolderKanban }
@@ -257,8 +257,8 @@ export function useDashboardSections({
           emptyState={
             <EmptyState
               icon={FileText}
-              title="No notes yet"
-              detail={isDirector ? 'Capture personal or campaign notes from the Notes view.' : 'Capture personal notes now; campaign notes appear after you join a table.'}
+              title="A blank notebook"
+              detail={isDirector ? 'Capture lore, plans, and session recaps from the Notes view.' : 'Capture personal notes now; campaign notes appear after you join a table.'}
               action={{ label: 'Open Notes', to: '/app/notes', icon: NotebookText }}
             />
           }
@@ -282,8 +282,8 @@ export function useDashboardSections({
           emptyState={
             <EmptyState
               icon={Users}
-              title={isDirector ? 'No player characters yet' : 'No heroes yet'}
-              detail={isDirector ? 'Joined player heroes will appear here after they select a character.' : 'Create a hero to use when you join a live table.'}
+              title={isDirector ? 'No heroes at the table yet' : 'Roll up your first hero'}
+              detail={isDirector ? 'Joined player heroes will appear here after they select a character.' : 'Create a hero to bring to your next live table.'}
               action={isDirector ? { label: 'Open Live', to: '/app/live', icon: Clapperboard } : { label: 'Create Hero', to: '/app/heroes/new', icon: Plus }}
             />
           }
@@ -303,7 +303,7 @@ export function useDashboardSections({
           emptyState={
             <EmptyState
               icon={ImageIcon}
-              title="No uploaded assets"
+              title="Nothing in the vault yet"
               detail={isDirector ? 'Maps, audio, portraits, and handouts will show up here after upload.' : 'Any files you upload for your characters or notes will show up here.'}
               action={isDirector ? { label: 'Open Assets', to: '/app/assets', icon: Boxes } : undefined}
             />

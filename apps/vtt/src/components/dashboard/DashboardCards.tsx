@@ -12,7 +12,7 @@ export function CampaignCard({ campaign, isDirector }: { campaign: CampaignData;
   const memberCount = campaign.members.filter((member) => member.role === 'player').length;
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-colors hover:border-zinc-700">
+    <Card className="rounded-card border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-[transform,box-shadow,border-color] hover:-translate-y-px hover:border-zinc-700 hover:shadow-paper-lift">
       <CardHeader className="p-3 pb-1.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -52,7 +52,7 @@ export function CampaignCard({ campaign, isDirector }: { campaign: CampaignData;
 
 export function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirector: boolean }) {
   return (
-    <Card className="dashboard-border-green bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className="dashboard-border-green rounded-card bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-paper-lift">
       <CardContent className="flex items-center justify-between gap-3 p-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -77,7 +77,7 @@ export function LiveTableCard({ table, isDirector }: { table: LiveTable; isDirec
 
 export function CharacterCard({ character }: { character: RecentCharacter }) {
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className="rounded-card border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-paper-lift">
       <CardContent className="flex items-center gap-2.5 p-3">
         <div className="dashboard-tone-amber flex size-9 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold">
           {initials(character.name)}
@@ -102,7 +102,7 @@ export function CharacterCard({ character }: { character: RecentCharacter }) {
 export function NoteCard({ note }: { note: DashboardNote }) {
   const preview = plainPreview(note.content);
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className="rounded-card border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-paper-lift">
       <CardContent className="p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -136,7 +136,7 @@ export function AssetCard({ asset, canOpenAssets }: { asset: AssetItem; canOpenA
   );
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm">
+    <Card className="rounded-card border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-paper-lift">
       {canOpenAssets ? <Link to="/app/assets">{content}</Link> : content}
     </Card>
   );

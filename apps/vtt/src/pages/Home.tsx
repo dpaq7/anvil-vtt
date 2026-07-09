@@ -56,7 +56,11 @@ export function Home() {
         )}
       />
       <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-8 p-6 lg:p-8">
-        <DashboardHeader isDirector={isDirector} quickActions={quickActions} />
+        <DashboardHeader
+          isDirector={isDirector}
+          userName={user?.username}
+          quickActions={quickActions}
+        />
 
         {error && (
           <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">

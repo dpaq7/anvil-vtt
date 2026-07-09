@@ -4,8 +4,8 @@ import type { HeroSummary, Note } from '@anvil/types';
 import type { CampaignData, CampaignSession } from '../sessions/types.js';
 
 export const DASHBOARD_BACKGROUNDS = {
-  director: '/dashboard/director-flow-background.png',
-  player: '/dashboard/player-flow-background.png',
+  director: '/dashboard/director-flow-background.webp',
+  player: '/dashboard/player-flow-background.webp',
 } as const;
 
 export interface AssetItem {
