@@ -1,47 +1,63 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { Badge, Button, cn, useSidebar } from '@anvil/ui';
+import { useSidebar } from '@anvil/ui';
 import type { DashboardRoleKey } from '../dashboard/types.js';
 import {
-  APP_VERSION,
   DASHBOARD_ONBOARDING_STEPS,
-  hasOnboardingDismissal,
-  onboardingStorageKey,
-  writeOnboardingDismissal,
+  queryOnboardingTarget,
   type OnboardingPhase,
   type OnboardingRect,
 } from './steps.js';
 import { ONBOARDING_TARGET_PADDING, getCalloutPosition } from './positioning.js';
+import type { OnboardingState } from './useOnboardingState.js';
+import { WelcomeDialog } from './WelcomeDialog.js';
+import { OnboardingSpotlight } from './OnboardingSpotlight.js';
+import { OnboardingCallout } from './OnboardingCallout.js';
 
-export function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRoleKey; userId: string | undefined }) {
+interface DashboardOnboardingProps {
+  roleKey: DashboardRoleKey;
+  onboarding: OnboardingState;
+}
+
+/**
+ * Orchestrates the first-run experience: welcome dialog → 5-step spotlight
+ * tour. Completion state persists via useOnboardingState (finishing or
+ * skipping no longer re-shows the tour on the next visit). The companion
+ * FirstStepsChecklist renders separately in the dashboard body.
+ */
+export function DashboardOnboarding({ roleKey, onboarding }: DashboardOnboardingProps) {
   const { expand } = useSidebar();
   const steps = DASHBOARD_ONBOARDING_STEPS[roleKey];
-  const storageKey = useMemo(() => onboardingStorageKey(userId, roleKey), [roleKey, userId]);
+  const { record, setStatus } = onboarding;
   const [phase, setPhase] = useState<OnboardingPhase>('hidden');
   const [neverShowAgain, setNeverShowAgain] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<OnboardingRect | null>(null);
   const activeStep = phase === 'tour' ? steps[stepIndex] : null;
-  const isFinalStep = stepIndex === steps.length - 1;
   const portalContainer = typeof document === 'undefined' ? null : document.body;
 
+  // Offer the welcome moment only to genuinely fresh users for this
+  // user+role+version — skipped/completed/never all stay hidden. Status
+  // changes mid-session (skip/finish) resolve to 'hidden', which is already
+  // the phase those handlers set, so this effect never fights them.
   useEffect(() => {
-    setNeverShowAgain(false);
-    setStepIndex(0);
-    setTargetRect(null);
-    setPhase(hasOnboardingDismissal(storageKey) ? 'hidden' : 'welcome');
-  }, [storageKey]);
+    if (record.status === 'unseen') {
+      setNeverShowAgain(false);
+      setStepIndex(0);
+      setTargetRect(null);
+      setPhase('welcome');
+    } else {
+      setPhase((current) => (current === 'tour' ? current : 'hidden'));
+    }
+  }, [roleKey, record.status]);
 
   const updateTargetRect = useCallback(() => {
     if (!activeStep) return;
-
-    const target = document.querySelector<HTMLElement>(`[data-onboarding="${activeStep.target}"]`);
+    const target = queryOnboardingTarget(activeStep.target);
     if (!target) {
       setTargetRect(null);
       return;
     }
-
     const rect = target.getBoundingClientRect();
     setTargetRect({
       top: rect.top,
@@ -57,7 +73,7 @@ export function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRol
     if (!activeStep) return;
 
     expand();
-    const target = document.querySelector<HTMLElement>(`[data-onboarding="${activeStep.target}"]`);
+    const target = queryOnboardingTarget(activeStep.target);
     target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
 
     const animationFrame = window.requestAnimationFrame(updateTargetRect);
@@ -74,32 +90,32 @@ export function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRol
   }, [activeStep, expand, updateTargetRect]);
 
   const skipOnboarding = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey);
+    setStatus(neverShowAgain ? 'never' : 'skipped');
     setPhase('hidden');
-  }, [neverShowAgain, storageKey]);
+  }, [neverShowAgain, setStatus]);
 
   const startTour = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey);
     expand();
     setStepIndex(0);
     setTargetRect(null);
     setPhase('tour');
-  }, [expand, neverShowAgain, storageKey]);
+  }, [expand]);
 
   const finishTour = useCallback(() => {
-    if (neverShowAgain) writeOnboardingDismissal(storageKey);
+    setStatus(neverShowAgain ? 'never' : 'completed');
     setPhase('hidden');
-  }, [neverShowAgain, storageKey]);
+    // Hand off to the first-steps checklist.
+    queryOnboardingTarget('first-steps')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [neverShowAgain, setStatus]);
 
   const goNext = useCallback(() => {
-    if (isFinalStep) {
+    if (stepIndex === steps.length - 1) {
       finishTour();
       return;
     }
-
     setTargetRect(null);
     setStepIndex((current) => Math.min(current + 1, steps.length - 1));
-  }, [finishTour, isFinalStep, steps.length]);
+  }, [finishTour, stepIndex, steps.length]);
 
   const goBack = useCallback(() => {
     setTargetRect(null);
@@ -109,54 +125,16 @@ export function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRol
   if (phase === 'hidden' || !portalContainer) return null;
 
   if (phase === 'welcome') {
-    return createPortal((
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dashboard-onboarding-title"
-          className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl shadow-black/40"
-        >
-          <div className="flex flex-wrap gap-2">
-            <Badge className={cn(
-              'border-transparent',
-              roleKey === 'director' ? 'bg-rose-300/10 text-flow-director' : 'bg-cyan-300/10 text-flow-player',
-            )}>
-              {roleKey === 'director' ? 'Director flow' : 'Player flow'}
-            </Badge>
-            <Badge variant="secondary">Beta v{APP_VERSION}</Badge>
-          </div>
-          <h2 id="dashboard-onboarding-title" className="mt-4 text-xl font-semibold text-zinc-50">
-            Welcome to Anvil beta testing
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Thanks for helping test Anvil v{APP_VERSION} in the{' '}
-            {roleKey === 'director' ? 'Director' : 'Player'} flow. This brief tour highlights the
-            dashboard, menu tools, and the issue reporter to use when something crashes, looks wrong,
-            or needs context.
-          </p>
-          <label className="mt-5 flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm text-zinc-300">
-            <input
-              type="checkbox"
-              checked={neverShowAgain}
-              onChange={(event) => setNeverShowAgain(event.currentTarget.checked)}
-              className="size-4 rounded border-zinc-600 bg-zinc-900 accent-zinc-100"
-            />
-            Never show again
-          </label>
-          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={skipOnboarding}>
-              <X size={15} />
-              Skip
-            </Button>
-            <Button type="button" onClick={startTour}>
-              Start tour
-              <ArrowRight size={15} />
-            </Button>
-          </div>
-        </div>
-      </div>
-    ), portalContainer);
+    return createPortal(
+      <WelcomeDialog
+        roleKey={roleKey}
+        neverShowAgain={neverShowAgain}
+        onNeverShowAgainChange={setNeverShowAgain}
+        onStartTour={startTour}
+        onSkip={skipOnboarding}
+      />,
+      portalContainer,
+    );
   }
 
   if (!activeStep) return null;
@@ -173,88 +151,20 @@ export function DashboardOnboarding({ roleKey, userId }: { roleKey: DashboardRol
         };
       })()
     : undefined;
-  const calloutStyle = getCalloutPosition(targetRect, activeStep.placement);
 
-  return createPortal((
+  return createPortal(
     <>
-      {!highlightRect && <div className="fixed inset-0 z-50 bg-black/70" />}
-      {highlightRect && (
-        <>
-          <div
-            aria-hidden="true"
-            className="fixed left-0 top-0 z-50 bg-black/70"
-            style={{ right: 0, height: highlightRect.top }}
-          />
-          <div
-            aria-hidden="true"
-            className="fixed left-0 z-50 bg-black/70"
-            style={{ top: highlightRect.top, width: highlightRect.left, height: highlightRect.height }}
-          />
-          <div
-            aria-hidden="true"
-            className="fixed right-0 z-50 bg-black/70"
-            style={{
-              top: highlightRect.top,
-              left: highlightRect.left + highlightRect.width,
-              height: highlightRect.height,
-            }}
-          />
-          <div
-            aria-hidden="true"
-            className="fixed bottom-0 left-0 z-50 bg-black/70"
-            style={{ right: 0, top: highlightRect.top + highlightRect.height }}
-          />
-        </>
-      )}
-      {highlightRect && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed z-[75] rounded-lg border-4 border-sky-300 bg-sky-300/10 shadow-[0_0_0_4px_rgba(56,189,248,0.28),0_0_30px_rgba(125,211,252,0.45)]"
-          style={highlightRect}
-        />
-      )}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dashboard-onboarding-step-title"
-        className="fixed z-[80] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-5 shadow-2xl shadow-black/50"
-        style={calloutStyle}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <Badge variant="secondary">Step {stepIndex + 1} of {steps.length}</Badge>
-          <button
-            type="button"
-            aria-label="Skip onboarding"
-            onClick={skipOnboarding}
-            className="flex size-8 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <h2 id="dashboard-onboarding-step-title" className="mt-4 text-lg font-semibold text-zinc-50">
-          {activeStep.title}
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-zinc-400">{activeStep.description}</p>
-        <div className="mt-5 flex items-center justify-between gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={goBack} disabled={stepIndex === 0}>
-            <ChevronLeft size={14} />
-            Back
-          </Button>
-          <Button type="button" size="sm" onClick={goNext}>
-            {isFinalStep ? (
-              <>
-                <CheckCircle2 size={14} />
-                Finish
-              </>
-            ) : (
-              <>
-                Next
-                <ChevronRight size={14} />
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-    </>
-  ), portalContainer);
+      <OnboardingSpotlight rect={highlightRect} />
+      <OnboardingCallout
+        step={activeStep}
+        stepIndex={stepIndex}
+        stepCount={steps.length}
+        style={getCalloutPosition(targetRect, activeStep.placement)}
+        onBack={goBack}
+        onNext={goNext}
+        onSkip={skipOnboarding}
+      />
+    </>,
+    portalContainer,
+  );
 }

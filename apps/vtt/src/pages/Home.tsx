@@ -8,6 +8,9 @@ import { DashboardHeader } from '../components/dashboard/DashboardHeader.js';
 import { DashboardStatsRow } from '../components/dashboard/DashboardStats.js';
 import { SortableSections } from '../components/dashboard/sortable.js';
 import { DashboardOnboarding } from '../components/onboarding/DashboardOnboarding.js';
+import { FirstStepsChecklist } from '../components/onboarding/FirstStepsChecklist.js';
+import { buildFirstSteps } from '../components/onboarding/firstSteps.js';
+import { useOnboardingState } from '../components/onboarding/useOnboardingState.js';
 
 export function Home() {
   const user = useAuthStore((state) => state.user);
@@ -16,6 +19,8 @@ export function Home() {
   const backgroundUrl = isDirector ? DASHBOARD_BACKGROUNDS.director : DASHBOARD_BACKGROUNDS.player;
   const roleKey = isDirector ? 'director' : 'player';
   const { dashboardSections, stats, quickActions } = useDashboardSections({ data, isDirector, roleKey });
+  const onboarding = useOnboardingState(user?.id, roleKey);
+  const firstSteps = buildFirstSteps(data, isDirector);
 
   if (loading) {
     return (
@@ -68,11 +73,17 @@ export function Home() {
           </div>
         )}
 
+        <FirstStepsChecklist
+          tasks={firstSteps}
+          dismissed={onboarding.record.checklistDismissed}
+          onDismiss={onboarding.dismissChecklist}
+        />
+
         <DashboardStatsRow stats={stats} />
 
         <SortableSections storageKey={`anvil-dashboard:${roleKey}:sections`} sections={dashboardSections} />
       </div>
-      <DashboardOnboarding roleKey={roleKey} userId={user?.id} />
+      <DashboardOnboarding roleKey={roleKey} onboarding={onboarding} />
     </div>
   );
 }
