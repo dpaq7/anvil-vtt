@@ -122,6 +122,11 @@ const PhoneSessionPage = lazyWithChunkReload(() =>
     default: module.PhoneSessionPage,
   })),
 );
+const DisplayView = lazyWithChunkReload(() =>
+  import('./pages/session/DisplayView.js').then((module) => ({
+    default: module.DisplayView,
+  })),
+);
 const LivePage = lazyWithChunkReload(() =>
   import('./pages/LivePage.js').then((module) => ({
     default: module.LivePage,
@@ -284,6 +289,11 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>{routeChunk(<PhoneSessionPage />)}</ProtectedRoute>
     ),
+    errorElement: routeErrorElement,
+  },
+  {
+    path: '/app/session/:id/display',
+    element: <ProtectedRoute>{routeChunk(<DisplayView />)}</ProtectedRoute>,
     errorElement: routeErrorElement,
   },
   {

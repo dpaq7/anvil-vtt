@@ -375,10 +375,26 @@ export type DrawSteelRollKind = 'power' | 'heroic-resource' | 'd6';
 
 export type DrawSteelDieFaceSet = 'd10-twice' | 'd3-twice' | 'd6';
 
+/**
+ * Applied edge/bane state for a power roll. Mirrors `RollState` in
+ * `@anvil/data`'s roll-logic; duplicated as a literal union here so the wire
+ * types don't depend on the data package.
+ */
+export type DrawSteelRollState =
+  | 'double-edge'
+  | 'edge'
+  | 'standard'
+  | 'bane'
+  | 'double-bane';
+
 export interface DrawSteelRollRequest {
   kind: DrawSteelRollKind;
   label?: string;
   modifier?: number;
+  /** Number of edges (0–2) to apply to a power roll. Ignored for other kinds. */
+  edges?: number;
+  /** Number of banes (0–2) to apply to a power roll. Ignored for other kinds. */
+  banes?: number;
   sourceId?: string;
 }
 
@@ -398,6 +414,10 @@ export interface DrawSteelRollResult {
   modifier: number;
   total: number;
   tier?: 1 | 2 | 3;
+  /** Edge/bane state applied to a power roll (absent or 'standard' when none). */
+  rollState?: DrawSteelRollState;
+  /** True when a double-edge/double-bane shifted the tier up/down. */
+  tierShifted?: boolean;
   timestamp: number;
 }
 
