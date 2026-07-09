@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppRoot } from './AppRoot.js';
 import { installGlobalBugReporter } from './lib/bug-reporting.js';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/fraunces';
 import '@anvil/ui/globals.css';
 
 const root = document.getElementById('root');
