@@ -34,6 +34,7 @@ import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
 import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
 import type { PendingTargetedAction } from "../../lib/targeting.js";
 import { conditionNames } from "../../lib/conditions.js";
+import { useSessionStore } from "../../stores/sessionStore.js";
 import {
   PlayerHeroCommandBar,
   PlayerHeroSheetPanel,
@@ -80,6 +81,8 @@ export function PlayerView({
   const [pendingAction, setPendingAction] = useState<PendingTargetedAction | null>(
     null,
   );
+  // Director-broadcast camera focus ("pull everyone here").
+  const focusRequest = useSessionStore((s) => s.focusRequest);
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>("sheet");
   const [focusMode, setFocusMode] = useState(false);
@@ -537,6 +540,7 @@ export function PlayerView({
             }
             combatLog={combatLog}
             entityNames={entityNames}
+            focusEntityRequest={focusRequest}
             targetingContext={battleTargetingContext}
             onTargetConfirm={handleTargetConfirm}
             onTargetCancel={handleTargetCancel}

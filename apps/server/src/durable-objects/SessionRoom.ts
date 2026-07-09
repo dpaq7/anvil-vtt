@@ -645,6 +645,10 @@ function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?:
       const action = validateTokenAction(raw['action']);
       return action ? { msg: { type, action } } : { error: 'Invalid token action' };
     }
+    case 'director_focus': {
+      const entityId = safeString(raw['entityId']);
+      return entityId ? { msg: { type, entityId } } : { error: 'Invalid focus' };
+    }
     case 'draw_steel_roll': {
       const roll = validateDrawSteelRoll(raw['roll']);
       return roll ? { msg: { type, roll } } : { error: 'Invalid roll' };
@@ -1081,6 +1085,18 @@ export class SessionRoom extends DurableObject<Env> {
     await this.broadcastParticipants();
     this.broadcastPhoneAnchorStatus();
 
+    // A player who joined mid-session (via REST /join, which doesn't notify this
+    // DO) may bring a hero the room hasn't loaded. Pull it in + broadcast so the
+    // Director's panels and the canvas show them.
+    if (
+      role === 'player' &&
+      heroId &&
+      this.sessionState &&
+      !this.sessionState.entities.some((entity) => entity.id === heroId)
+    ) {
+      await this.refreshHeroEntities();
+    }
+
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -1176,14 +1192,7 @@ export class SessionRoom extends DurableObject<Env> {
             .run();
         }
 
-        if (this.sessionState) {
-          const heroEntities = this.applyHeroStart(
-            await this.loadHeroEntities(meta.sessionId),
-            this.getActiveSceneData() ?? {},
-          );
-          const nonHeroEntities = this.sessionState.entities.filter((entity) => entity.type !== 'hero');
-          this.sessionState.entities = [...heroEntities, ...nonHeroEntities];
-        }
+        await this.refreshHeroEntities();
 
         this.updateTag(ws, { ...meta, heroId: msg.heroId });
         await this.broadcastParticipants();
@@ -1301,6 +1310,15 @@ export class SessionRoom extends DurableObject<Env> {
 
       case 'token_action':
         await this.handleTokenAction(ws, meta, msg.action);
+        break;
+
+      case 'director_focus':
+        // Director pulls everyone's camera to a token.
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
+        this.broadcast({ type: 'focus_broadcast', entityId: msg.entityId });
         break;
 
       case 'draw_steel_roll':
@@ -1642,6 +1660,38 @@ export class SessionRoom extends DurableObject<Env> {
       .all<HeroEntityRow>();
 
     return rows.results.map((hero, index) => this.createHeroEntity(hero, index));
+  }
+
+  /**
+   * Reload hero entities from the DB into session state and broadcast, so a hero
+   * that joined mid-session appears for everyone (the Director's panels and the
+   * canvas). REST `/join` inserts the participant row but doesn't notify this
+   * Durable Object, and a socket connect otherwise only re-broadcasts the
+   * participant list — never the new hero entity.
+   */
+  private async refreshHeroEntities(): Promise<void> {
+    if (!this.sessionState || !this.sessionId) return;
+    const heroEntities = this.applyHeroStart(
+      await this.loadHeroEntities(this.sessionId),
+      this.getActiveSceneData() ?? {},
+    );
+    const nonHeroEntities = this.sessionState.entities.filter((entity) => entity.type !== 'hero');
+    this.sessionState.entities = [...heroEntities, ...nonHeroEntities];
+    this.broadcast({ type: 'state', state: this.sessionState });
+
+    // If combat is live, splice any newly-loaded heroes into the initiative
+    // roster so they appear in the combat panes, not just as tokens.
+    const combat = this.sessionState.combat;
+    if (combat) {
+      const known = new Set(combat.heroEntities);
+      const added = heroEntities
+        .filter((entity) => !known.has(entity.id) && this.canEntityAct(entity.id))
+        .map((entity) => entity.id);
+      if (added.length > 0) {
+        combat.heroEntities = [...combat.heroEntities, ...added];
+        this.broadcast({ type: 'combat_updated', combat });
+      }
+    }
   }
 
   private parseSceneSnapshot(value: string | null | undefined): SceneLiveSnapshot | null {
@@ -2187,6 +2237,23 @@ export class SessionRoom extends DurableObject<Env> {
           detail: initiativeRoll >= 6 ? 'Heroes act first.' : 'Director acts first.',
           dice: this.toPowerDice([initiativeRoll]),
           total: initiativeRoll,
+        });
+
+        // Surface the initiative roll as a roll result so it toasts for everyone
+        // (initiative is a combat action, not a normal draw_steel_roll).
+        this.broadcast({
+          type: 'draw_steel_roll_resolved',
+          result: {
+            id: this.createActionResultId('initiative'),
+            kind: 'power',
+            label: 'Initiative',
+            rollerId: meta.userId,
+            rollerName: meta.username,
+            dice: this.toPowerDice([initiativeRoll]),
+            modifier: 0,
+            total: initiativeRoll,
+            timestamp: Date.now(),
+          },
         });
         break;
       }

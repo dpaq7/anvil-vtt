@@ -1,7 +1,6 @@
-import { ArrowLeft, ExternalLink } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
-const LOGO_IMAGE = '/landing/anvil-vtt-logo.png';
+import { ExternalLink } from 'lucide-react';
+import { MarketingLayout } from '../components/marketing/MarketingLayout.js';
+import { Eyebrow } from '../components/marketing/Eyebrow.js';
 
 const acknowledgements = [
   {
@@ -43,7 +42,7 @@ function ExternalTextLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex items-center gap-1 font-medium text-orange-200 underline decoration-orange-300/40 underline-offset-4 transition hover:text-orange-100 hover:decoration-orange-100"
+      className="inline-flex items-center gap-1 font-medium text-anvil-ember-600 underline decoration-anvil-ember-400/40 underline-offset-4 transition hover:text-anvil-ember-500 hover:decoration-anvil-ember-500"
     >
       {children}
       <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
@@ -53,45 +52,36 @@ function ExternalTextLink({
 
 export function About() {
   return (
-    <main data-theme="dark" className="min-h-screen bg-[#242b2f] text-zinc-100">
-      <section className="border-b border-zinc-700/60 bg-[#1f2528] px-6 py-6 sm:px-10 lg:px-16 xl:px-24">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm font-medium text-zinc-300 transition hover:text-white"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            Back to Anvil
-          </Link>
-          <img src={LOGO_IMAGE} alt="Anvil VTT logo" className="h-10 w-10 object-contain" />
-        </div>
-      </section>
-
-      <section className="px-6 py-14 sm:px-10 sm:py-16 lg:px-16 xl:px-24">
+    <MarketingLayout>
+      <section className="px-6 py-14 sm:px-10 sm:py-16 lg:px-16">
         <div className="mx-auto max-w-5xl">
-          <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-200">
-              About Anvil
-            </p>
-            <h1 className="mt-4 text-4xl font-bold leading-tight text-white sm:text-5xl">
+          <div className="max-w-3xl motion-safe:animate-fade-up">
+            <Eyebrow>About Anvil</Eyebrow>
+            <h1 className="mt-4 font-display text-4xl font-bold leading-tight text-anvil-ink sm:text-5xl">
               A focused virtual tabletop for Draw Steel.
             </h1>
-            <p className="mt-6 text-lg leading-8 text-zinc-300">
+            <p className="mt-6 text-lg leading-8 text-anvil-ink-soft">
               Anvil is a lightweight, web-based VTT for running{' '}
               <ExternalTextLink href="https://www.mcdmproductions.com/">Draw Steel</ExternalTextLink>{' '}
               campaigns. It focuses on the parts a Director needs at the table: scene prep,
               fast live-session flow, role-aware views, room codes, and tools shaped around battle,
               story, montage, negotiation, and respite scenes.
             </p>
-            <p className="mt-5 text-base leading-7 text-zinc-400">
+            <p className="mt-5 text-base leading-7 text-anvil-ink-soft/80">
               The project is independent and built for fans. It is not affiliated with, sponsored by,
               or endorsed by MCDM Productions, LLC.
             </p>
-            <section aria-labelledby="transparency-heading" className="mt-10 border-t border-zinc-700/60 pt-8">
-              <h2 id="transparency-heading" className="text-2xl font-semibold text-white">
+            <section
+              aria-labelledby="transparency-heading"
+              className="mt-10 border-t border-anvil-parchment-300 pt-8"
+            >
+              <h2
+                id="transparency-heading"
+                className="font-display text-2xl font-semibold text-anvil-ink"
+              >
                 Transparency
               </h2>
-              <p className="mt-4 text-base leading-8 text-zinc-300">
+              <p className="mt-4 text-base leading-8 text-anvil-ink-soft">
                 Although I have accumulated some years of experience with Python in Data Science
                 projects, and have been an occaisional writer of html, css, basic, and pascal since
                 childhood, I am not a software developer and do not wish to misrepresent myself as
@@ -112,26 +102,29 @@ export function About() {
         </div>
       </section>
 
-      <section className="border-y border-zinc-700/60 bg-[#1f2528] px-6 py-12 sm:px-10 lg:px-16 xl:px-24">
+      <section className="texture-parchment border-t border-anvil-parchment-300 px-6 py-12 sm:px-10 lg:px-16">
         <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[0.8fr_1.2fr]">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-200">
-              Acknowledgements
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-white">Built on generous work.</h2>
+            <Eyebrow>Acknowledgements</Eyebrow>
+            <h2 className="mt-3 font-display text-2xl font-semibold text-anvil-ink">
+              Built on generous work.
+            </h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {acknowledgements.map((item) => (
-              <article key={item.name} className="rounded border border-zinc-700/70 bg-zinc-900/45 p-5">
-                <h3 className="text-base font-semibold text-white">
+              <article
+                key={item.name}
+                className="edge-deckle border border-anvil-parchment-300 bg-anvil-parchment-50 p-5 shadow-paper"
+              >
+                <h3 className="text-base font-semibold text-anvil-ink">
                   <ExternalTextLink href={item.href}>{item.name}</ExternalTextLink>
                 </h3>
-                <p className="mt-3 text-sm leading-6 text-zinc-300">{item.text}</p>
+                <p className="mt-3 text-sm leading-6 text-anvil-ink-soft">{item.text}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
-    </main>
+    </MarketingLayout>
   );
 }

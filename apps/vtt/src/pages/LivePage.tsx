@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Button } from '@anvil/ui';
+import { Button, Dialog, DialogContent, DialogTitle, Input } from '@anvil/ui';
 import { api } from '../lib/api.js';
+import { ROOM_CODE_LENGTH, normalizeRoomCodeInput } from '../lib/room-code.js';
 import { isPhoneCompanionViewport } from '../lib/device.js';
 import { useAuthStore } from '../stores/authStore.js';
 import { CampaignCard } from '../components/sessions/CampaignCard.js';
@@ -27,6 +28,12 @@ export function LivePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Player join is gated by the session's room code (validated server-side).
+  const [joinPrompt, setJoinPrompt] = useState<{ sessionId: string } | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -90,25 +97,40 @@ export function LivePage() {
     }
   };
 
-  /** Player: Join a live session with their campaign hero. */
-  const handlePlayerJoin = async (sessionId: string) => {
-    // Find the campaign this session belongs to so we can get the player's hero_id
+  /** Player: clicking Join opens the room-code prompt (code required to join). */
+  const handlePlayerJoin = (sessionId: string) => {
+    setJoinPrompt({ sessionId });
+    setJoinCode('');
+    setJoinError(null);
+  };
+
+  /** Player: submit the room code and join the session with their campaign hero. */
+  const submitPlayerJoin = async () => {
+    if (!joinPrompt || joining) return;
+    const { sessionId } = joinPrompt;
     const campaign = campaigns.find((c) =>
       c.sessions.some((s) => s.id === sessionId),
     );
     const heroId = campaign?.my_hero?.id ?? null;
 
+    setJoining(true);
+    setJoinError(null);
     try {
-      await api.post(`/api/sessions/${sessionId}/join`, { hero_id: heroId });
-      // Check if session is in lobby or active
+      await api.post(`/api/sessions/${sessionId}/join`, {
+        hero_id: heroId,
+        room_code: joinCode,
+      });
       const session = campaign?.sessions.find((s) => s.id === sessionId);
-      if (session?.status === 'lobby') {
-        navigate(`/app/session/${sessionId}/lobby`);
-      } else {
-        navigate(`/app/session/${sessionId}`);
-      }
+      setJoinPrompt(null);
+      navigate(
+        session?.status === 'lobby'
+          ? `/app/session/${sessionId}/lobby`
+          : `/app/session/${sessionId}`,
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to join session');
+      setJoinError(e instanceof Error ? e.message : 'Failed to join session');
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -216,6 +238,40 @@ export function LivePage() {
           </div>
         </section>
       )}
+
+      <Dialog
+        open={joinPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setJoinPrompt(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Enter room code</DialogTitle>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-zinc-400">
+              Ask your Director for this session's room code.
+            </p>
+            <Input
+              autoFocus
+              value={joinCode}
+              onChange={(e) => setJoinCode(normalizeRoomCodeInput(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && joinCode.length === ROOM_CODE_LENGTH) submitPlayerJoin();
+              }}
+              placeholder="10-character code"
+              maxLength={ROOM_CODE_LENGTH}
+              className="font-mono text-lg tracking-widest"
+            />
+            {joinError && <p className="text-sm text-red-400">{joinError}</p>}
+            <Button
+              onClick={submitPlayerJoin}
+              disabled={joining || joinCode.length < ROOM_CODE_LENGTH}
+            >
+              {joining ? 'Joining...' : 'Join Session'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -52,6 +52,82 @@
   /* Sidebar */
   --sidebar-width: 200px;
   --sidebar-width-collapsed: 48px;
+
+  /* ------------------------------------------------------------------ */
+  /*  Playful-tabletop language (additive — never remapped per theme)    */
+  /* ------------------------------------------------------------------ */
+
+  /* Parchment surfaces */
+  --color-anvil-parchment-50: #fbf7ef;
+  --color-anvil-parchment-100: #f7f2ea;
+  --color-anvil-parchment-200: #efe6d6;
+  --color-anvil-parchment-300: #e2d5bf;
+
+  /* Ember accent — formalizes the marketing orange; theme-stable */
+  --color-anvil-ember-400: #e8703d;
+  --color-anvil-ember-500: #d45a2a;
+  --color-anvil-ember-600: #b34a20;
+
+  /* Warm body ink on parchment */
+  --color-anvil-ink-soft: #4a4238;
+
+  /* Typography */
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --font-body: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Radius & shadow vocabulary */
+  --radius-card: 1rem;
+  --radius-chip: 9999px;
+  --shadow-paper:
+    0 1px 2px rgb(36 36 35 / 0.08), 0 4px 16px rgb(36 36 35 / 0.1);
+  --shadow-paper-lift:
+    0 2px 4px rgb(36 36 35 / 0.1), 0 12px 32px rgb(36 36 35 / 0.16);
+
+  /* Motion vocabulary */
+  --animate-fade-up: fade-up 0.5s ease-out both;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-dice-roll: dice-roll 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-pop-in: pop-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0) rotate(-2deg);
+    }
+    50% {
+      transform: translateY(-8px) rotate(2deg);
+    }
+  }
+  @keyframes dice-roll {
+    from {
+      opacity: 0;
+      transform: rotate(-160deg) scale(0.5);
+    }
+    to {
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 }
 
 :root,
@@ -169,12 +245,33 @@
 
 body {
   @apply bg-zinc-950 text-zinc-100 antialiased;
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-body);
   margin: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Playful-tabletop textures — CSS-only paper grain, no image assets  */
+/* ------------------------------------------------------------------ */
+
+.texture-grain,
+.texture-parchment,
+.texture-parchment-dark {
+  /* ~1 KB SVG fractal-noise grain, tiled */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.045'/%3E%3C/svg%3E");
+}
+
+.texture-parchment {
+  background-color: var(--color-anvil-parchment-100);
+}
+
+.texture-parchment-dark {
+  background-color: var(--color-zinc-900);
+}
+
+/* Slightly irregular "hand-cut card" edge for marketing surfaces. */
+.edge-deckle {
+  position: relative;
+  border-radius: 1rem 1.15rem 0.9rem 1.2rem / 1.1rem 0.9rem 1.2rem 1rem;
 }
 
 .anvil-dashboard-scrim {
