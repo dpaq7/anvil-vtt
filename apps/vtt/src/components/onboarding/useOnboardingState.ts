@@ -15,6 +15,8 @@ export interface OnboardingState {
   record: OnboardingRecord;
   setStatus: (status: OnboardingStatus) => void;
   dismissChecklist: () => void;
+  /** Re-arm the full first-run experience (welcome, tour, checklist). */
+  reset: () => void;
 }
 
 export const CURRENT_TOUR_VERSION = 1;
@@ -91,6 +93,10 @@ export function useOnboardingState(
 
   const setStatus = useCallback((status: OnboardingStatus) => update({ status }), [update]);
   const dismissChecklist = useCallback(() => update({ checklistDismissed: true }), [update]);
+  const reset = useCallback(
+    () => update({ status: 'unseen', checklistDismissed: false }),
+    [update],
+  );
 
-  return { record, setStatus, dismissChecklist };
+  return { record, setStatus, dismissChecklist, reset };
 }
