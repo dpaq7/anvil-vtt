@@ -253,6 +253,7 @@ body {
 /*  Playful-tabletop textures — CSS-only paper grain, no image assets  */
 /* ------------------------------------------------------------------ */
 
+.texture-grain,
 .texture-parchment,
 .texture-parchment-dark {
   /* ~1 KB SVG fractal-noise grain, tiled */
