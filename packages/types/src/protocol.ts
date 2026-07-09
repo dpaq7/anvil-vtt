@@ -51,6 +51,7 @@ export type ClientMessage =
     }
   | { type: 'combat_action'; action: CombatAction }
   | { type: 'token_action'; action: TokenActionRequest }
+  | { type: 'director_focus'; entityId: string }
   | { type: 'draw_steel_roll'; roll: DrawSteelRollRequest }
   | { type: 'hero_tracker_update'; heroId: string; op: HeroTrackerOperation }
   | { type: 'use_ability'; sourceId: string; targetId: string; abilityId: string }
@@ -114,6 +115,7 @@ export type ServerMessage =
       slamDamage?: number;
     }
   | { type: 'combat_updated'; combat: CombatState | null }
+  | { type: 'focus_broadcast'; entityId: string }
   | { type: 'ability_resolved'; result: AbilityResult }
   | { type: 'token_action_resolved'; result: TokenActionResult }
   | { type: 'draw_steel_roll_resolved'; result: DrawSteelRollResult }
@@ -286,6 +288,22 @@ export type TokenActionKind =
   | 'apply-condition'
   | 'remove-condition';
 
+/**
+ * How a tracked condition ends.
+ * - 'eot': removed at the end of the affected creature's turn
+ * - 'save': the creature rolls 1d10 at the end of its turn; 6+ removes it
+ * - 'manual': persists until explicitly removed (e.g. grabbed, prone)
+ */
+export type ConditionEndType = 'eot' | 'save' | 'manual';
+
+/** A condition instance tracked on an entity, with its end/save rule. */
+export interface EntityCondition {
+  name: string;
+  endType: ConditionEndType;
+  /** Entity that applied it (for source-relative effects / attribution). */
+  sourceId?: string;
+}
+
 export interface TokenActionRequest {
   kind: TokenActionKind;
   sourceId?: string;
@@ -293,6 +311,8 @@ export interface TokenActionRequest {
   abilityId?: string;
   amount?: number;
   condition?: string;
+  /** End rule for an applied condition (defaults to the condition's natural rule). */
+  endType?: ConditionEndType;
   edges?: number;
   banes?: number;
   characteristic?: CharacteristicId;

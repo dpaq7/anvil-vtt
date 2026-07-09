@@ -66,6 +66,10 @@ import { NegotiationStage } from "../../components/stages/NegotiationStage.js";
 import { RespiteStage } from "../../components/stages/RespiteStage.js";
 import { BattleStage } from "../../components/stages/BattleStage.js";
 import { OpportunityAttackPrompt } from "../../components/session/OpportunityAttackPrompt.js";
+import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
+import type { PendingTargetedAction } from "../../lib/targeting.js";
+import { useSessionStore } from "../../stores/sessionStore.js";
+import { toast } from "sonner";
 import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
 import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
 import { buildVillainCombatGroups } from "../../lib/combat-groups.js";
@@ -146,6 +150,13 @@ export function DirectorView({
     entityId: string;
     nonce: number;
   } | null>(null);
+  // Director-broadcast focus (pulls everyone here); take whichever focus fired
+  // most recently — the local tracker double-click or the broadcast.
+  const broadcastFocus = useSessionStore((s) => s.focusRequest);
+  const effectiveFocus =
+    broadcastFocus && (!focusEntityRequest || broadcastFocus.nonce >= focusEntityRequest.nonce)
+      ? broadcastFocus
+      : focusEntityRequest;
   const [montageRoundsByScene, setMontageRoundsByScene] = useState<
     Record<string, boolean[]>
   >({});
@@ -374,6 +385,64 @@ export function DirectorView({
     setSelectedEntityId(entityIds[0] ?? null);
   }, []);
 
+  // On-canvas targeting for token-menu actions (the Director acts for any token).
+  const [pendingAction, setPendingAction] = useState<PendingTargetedAction | null>(
+    null,
+  );
+  const targetingSource = pendingAction
+    ? (entities.find((e) => e.id === pendingAction.sourceId) ?? null)
+    : null;
+  const targeting = useTargetingResolution({
+    sourceEntity: targetingSource,
+    entities,
+    distance: pendingAction?.distance,
+  });
+
+  const handleRequestTargeting = useCallback((action: PendingTargetedAction) => {
+    setPendingAction(action);
+  }, []);
+
+  const handleTargetConfirm = useCallback(
+    (targetId: string) => {
+      if (!pendingAction) return;
+      const target = entities.find((e) => e.id === targetId);
+      if (!target) return;
+      const { sourceId, kind, abilityId, label } = pendingAction;
+      send({
+        type: "token_action",
+        action: {
+          kind,
+          sourceId,
+          targetId: target.id,
+          ...(abilityId ? { abilityId } : {}),
+        },
+      });
+      toast.info(`${label} → ${target.name}...`);
+      setPendingAction(null);
+    },
+    [entities, pendingAction, send],
+  );
+
+  const handleTargetCancel = useCallback(() => {
+    setPendingAction(null);
+  }, []);
+
+  const battleTargetingContext = useMemo(
+    () =>
+      pendingAction && targetingSource
+        ? {
+            sourceId: pendingAction.sourceId,
+            abilityName: pendingAction.label,
+            parsedDistance: targeting.parsedDistance,
+            rangeSquares: targeting.rangeSquares,
+            inRangeById: targeting.inRangeById,
+            flankingByTargetId: targeting.flankingByTargetId,
+            highGroundByTargetId: targeting.highGroundByTargetId,
+          }
+        : null,
+    [pendingAction, targetingSource, targeting],
+  );
+
   useKeyboardShortcuts({
     onEscape: () => handleSelectEntity(null),
     onSpace: () => {
@@ -385,6 +454,7 @@ export function DirectorView({
 
   useEffect(() => {
     handleSelectEntity(null);
+    setPendingAction(null);
     setGridOpacityOverride(null);
     setGridColorOverride(null);
     setTokenScaleOverride(null);
@@ -679,10 +749,14 @@ export function DirectorView({
               gridOffsetY={currentGridOffsetY}
               combatLog={combatLog}
               entityNames={entityNames}
+              targetingContext={battleTargetingContext}
+              onTargetConfirm={handleTargetConfirm}
+              onTargetCancel={handleTargetCancel}
+              onRequestTargeting={handleRequestTargeting}
               onSelectEntity={handleSelectEntity}
               onSelectEntities={handleSelectEntities}
               onRollInitiative={undefined}
-              focusEntityRequest={focusEntityRequest}
+              focusEntityRequest={effectiveFocus}
               send={send}
             />
             <OpportunityAttackPrompt send={send} />

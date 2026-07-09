@@ -3,8 +3,30 @@ import type { TokenLayer } from '../layers/TokenLayer.js';
 import type { DrawingLayer } from '../layers/DrawingLayer.js';
 import type { TerrainLayer, TerrainZoneData } from '../layers/TerrainLayer.js';
 import type { FogLayer } from '../layers/FogLayer.js';
-import type { TargetingLayer } from '../layers/TargetingLayer.js';
+import type { TargetingLayer, GridCell, FootprintRect } from '../layers/TargetingLayer.js';
 import { Quadtree } from './Quadtree.js';
+
+/**
+ * On-canvas ability-targeting mode. While active, pointer input selects a target
+ * token (fires `onTargetConfirm`) rather than dragging/selecting, and — for area
+ * abilities — an AoE template follows the cursor. All highlighting is advisory:
+ * out-of-range targets stay clickable.
+ */
+export interface TargetingModeContext {
+  sourceId: string;
+  /** Squares within reach of the caster, tinted as a range ring. */
+  rangeSquares: GridCell[];
+  /** Candidate target footprints (with ids) for hit-testing a click. */
+  targets: Array<{
+    id: string;
+    footprint: FootprintRect;
+    inRange: boolean;
+    flanking?: boolean;
+    highGround?: boolean;
+  }>;
+  /** For area abilities: affected squares for a cursor cell (redrawn on move). */
+  computeAoE?: (cursor: GridCell) => GridCell[];
+}
 
 export type ActiveTool =
   | 'select'
@@ -48,6 +70,8 @@ export interface InteractionCallbacks {
     screenX: number,
     screenY: number,
   ) => void;
+  /** Fired when a target token is clicked while in on-canvas targeting mode. */
+  onTargetConfirm?: (targetId: string) => void;
 }
 
 export class InteractionManager {
@@ -109,8 +133,6 @@ export class InteractionManager {
 
   private static readonly LONG_PRESS_MS = 500;
   private static readonly LONG_PRESS_MOVE_TOLERANCE_PX = 8;
-  /** Minimum squared world-space distance between sampled freehand points. */
-  private static readonly DRAW_MIN_SAMPLE_DIST_SQ = 4; // 2px
 
   // Optional layers (only present in builder mode)
   private drawingLayer: DrawingLayer | null = null;
@@ -121,6 +143,9 @@ export class InteractionManager {
   private targetingLayer: TargetingLayer | null = null;
   private moverBudget: { entityId: string; remaining: number } | null = null;
   private measureFrom: { gridX: number; gridY: number } | null = null;
+
+  // On-canvas ability targeting mode (null when not targeting).
+  private targetingContext: TargetingModeContext | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -158,6 +183,42 @@ export class InteractionManager {
    */
   setMoverBudget(budget: { entityId: string; remaining: number } | null): void {
     this.moverBudget = budget;
+  }
+
+  /**
+   * Enter on-canvas ability-targeting mode: draw the range ring + valid-target
+   * highlights and, for area abilities, start moving an AoE template under the
+   * cursor. Clicking a target token fires `onTargetConfirm`. Advisory only.
+   */
+  enterTargetingMode(ctx: TargetingModeContext): void {
+    this.targetingContext = ctx;
+    const layer = this.targetingLayer;
+    if (!layer) return;
+    layer.showRangeSquares(ctx.rangeSquares);
+    layer.highlightTargets(
+      ctx.targets.map((t) => ({
+        footprint: t.footprint,
+        inRange: t.inRange,
+        flanking: t.flanking,
+        highGround: t.highGround,
+      })),
+    );
+    if (ctx.computeAoE) {
+      // Seed the template at the source until the pointer moves.
+      const source = ctx.targets.find((t) => t.id === ctx.sourceId);
+      const seed = source
+        ? { x: source.footprint.x, y: source.footprint.y }
+        : (ctx.rangeSquares[0] ?? { x: 0, y: 0 });
+      layer.showAoETemplate(ctx.computeAoE(seed), true);
+    }
+    this.canvas.style.cursor = 'crosshair';
+  }
+
+  /** Leave targeting mode and clear the range/AoE/highlight overlays. */
+  exitTargetingMode(): void {
+    this.targetingContext = null;
+    this.targetingLayer?.clearTargeting();
+    this.canvas.style.cursor = this._activeTool === 'eraser' ? 'default' : '';
   }
 
   get activeTool(): ActiveTool {
@@ -366,6 +427,15 @@ export class InteractionManager {
     if (this._activeTool === 'pan') return; // Let ViewportSystem handle
     if (this.viewport.isPinching()) return; // Two-finger gesture owns the pointer stream
     if (this.activePointerId !== null) return;
+
+    // On-canvas targeting mode intercepts input: a click confirms a target.
+    if (this.targetingContext) {
+      e.preventDefault();
+      const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+      this.handleTargetingDown(gridX, gridY);
+      return;
+    }
+
     this.capturePointer(e.pointerId);
     e.preventDefault();
     const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
@@ -394,6 +464,10 @@ export class InteractionManager {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (this._activeTool === 'pan') return;
+    if (this.targetingContext) {
+      this.handleTargetingMove(e);
+      return;
+    }
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     switch (this._activeTool) {
       case 'select':
@@ -425,6 +499,8 @@ export class InteractionManager {
 
   private onPointerUp = (e: PointerEvent): void => {
     if (this._activeTool === 'pan') return;
+    // Targeting mode confirms on pointer-down; nothing to release on up.
+    if (this.targetingContext) return;
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
     switch (this._activeTool) {
       case 'select':
@@ -803,6 +879,31 @@ export class InteractionManager {
     this.measureFrom = null;
   }
 
+  // --- Targeting mode (on-canvas ability targeting) ---
+
+  /** A click confirms whichever candidate target's footprint contains the cell. */
+  private handleTargetingDown(gridX: number, gridY: number): void {
+    const ctx = this.targetingContext;
+    if (!ctx) return;
+    const hit = ctx.targets.find(
+      (t) =>
+        gridX >= t.footprint.x &&
+        gridX < t.footprint.x + t.footprint.size &&
+        gridY >= t.footprint.y &&
+        gridY < t.footprint.y + t.footprint.size,
+    );
+    // Non-target clicks are ignored (cancel is an explicit UI affordance).
+    if (hit) this.callbacks.onTargetConfirm?.(hit.id);
+  }
+
+  /** For area abilities, keep the AoE template under the cursor. */
+  private handleTargetingMove(e: PointerEvent): void {
+    const ctx = this.targetingContext;
+    if (!ctx || !ctx.computeAoE || !this.targetingLayer) return;
+    const { gridX, gridY } = this.screenToGrid(e.clientX, e.clientY);
+    this.targetingLayer.showAoETemplate(ctx.computeAoE({ x: gridX, y: gridY }), true);
+  }
+
   // --- Draw tool ---
 
   private handleDrawDown(e: PointerEvent): void {
@@ -813,17 +914,18 @@ export class InteractionManager {
 
   private handleDrawMove(e: PointerEvent): void {
     if (!this.isDrawing) return;
+    // Cap total points so a long stroke stays under the server's 2048-point
+    // limit (which otherwise rejects it silently on release).
+    if (this.drawPoints.length >= 2000) return;
     const { worldX, worldY } = this.screenToWorld(e.clientX, e.clientY);
-    // Distance-sample: only keep a point once it has moved far enough from the
-    // last one. This caps stroke length (the server rejects strokes with more
-    // than 2048 points, i.e. 1024 samples) and shrinks the synced payload with
-    // no visible loss of fidelity.
+    // Decimate: skip points within ~4 world px of the previous one, keeping
+    // strokes smooth but far under the point cap.
     const lastX = this.drawPoints[this.drawPoints.length - 2];
     const lastY = this.drawPoints[this.drawPoints.length - 1];
     if (lastX !== undefined && lastY !== undefined) {
       const dx = worldX - lastX;
       const dy = worldY - lastY;
-      if (dx * dx + dy * dy < InteractionManager.DRAW_MIN_SAMPLE_DIST_SQ) return;
+      if (dx * dx + dy * dy < 16) return;
     }
     this.drawPoints.push(worldX, worldY);
     // Live-render the in-progress stroke

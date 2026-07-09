@@ -144,10 +144,15 @@ sessionRoutes.post('/sessions/:id/ws-token', async (c) => {
   if (role !== 'director' && !membership) return c.json({ error: 'Forbidden' }, 403);
 
   const participant = await c.env.DB.prepare(
-    'SELECT hero_id FROM session_participants WHERE game_session_id = ? AND user_id = ?',
+    'SELECT hero_id, code_verified FROM session_participants WHERE game_session_id = ? AND user_id = ?',
   )
     .bind(sessionId, user.id)
-    .first<{ hero_id: string | null }>();
+    .first<{ hero_id: string | null; code_verified: number }>();
+
+  // Players must have passed the room code (set at /join) to (re)connect.
+  if (role !== 'director' && participant?.code_verified !== 1) {
+    return c.json({ error: 'Room code required — rejoin from the Live page.' }, 403);
+  }
 
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 30_000).toISOString();
@@ -401,7 +406,7 @@ sessionRoutes.post('/sessions/:id/join', async (c) => {
   if (rateLimitError) return rateLimitError;
 
   const sessionId = c.req.param('id');
-  const body = await c.req.json<{ hero_id?: string | null }>();
+  const body = await c.req.json<{ hero_id?: string | null; room_code?: string }>();
 
   const session = await getSessionAccess(c, sessionId);
   if (!session) return c.json({ error: 'Not found' }, 404);
@@ -409,6 +414,15 @@ sessionRoutes.post('/sessions/:id/join', async (c) => {
   if (!(await assertHeroOwnership(c, body.hero_id, user.id))) return c.json({ error: 'Hero not found' }, 404);
 
   const role = session.director_id === user.id ? 'director' : 'player';
+
+  // Everyone but the Director must present the session's room code to join.
+  if (role === 'player') {
+    const provided = typeof body.room_code === 'string' ? normalizeRoomCode(body.room_code) : '';
+    const expected = session.room_code ? normalizeRoomCode(session.room_code) : '';
+    if (!expected || provided !== expected) {
+      return c.json({ error: 'Invalid room code' }, 403);
+    }
+  }
   await c.env.DB.prepare(
     `INSERT INTO campaign_members (campaign_id, user_id, hero_id, role)
      VALUES (?, ?, ?, ?)
@@ -417,10 +431,12 @@ sessionRoutes.post('/sessions/:id/join', async (c) => {
     .bind(session.campaign_id, user.id, body.hero_id ?? null, role)
     .run();
 
+  // Mark the participant as code-verified (they passed the room code above);
+  // ws-token issuance requires this so reconnects can't bypass the code.
   await c.env.DB.prepare(
-    `INSERT INTO session_participants (game_session_id, user_id, hero_id, status)
-     VALUES (?, ?, ?, 'joined')
-     ON CONFLICT(game_session_id, user_id) DO UPDATE SET hero_id = excluded.hero_id`,
+    `INSERT INTO session_participants (game_session_id, user_id, hero_id, status, code_verified)
+     VALUES (?, ?, ?, 'joined', 1)
+     ON CONFLICT(game_session_id, user_id) DO UPDATE SET hero_id = excluded.hero_id, code_verified = 1`,
   )
     .bind(sessionId, user.id, body.hero_id ?? null)
     .run();

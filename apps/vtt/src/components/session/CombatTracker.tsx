@@ -475,7 +475,7 @@ function CombatantRow({
       onClick={(event) => onEntityClick(event, entityId)}
       onDoubleClick={() => onEntityDoubleClick?.(entityId)}
     >
-      <span className={cn('size-1.5 shrink-0 rounded-full', isActive ? 'bg-white' : acted ? 'bg-zinc-700' : 'bg-zinc-400')} />
+      <span className={cn('size-1.5 shrink-0 rounded-full', isActive ? 'bg-amber-400' : acted ? 'bg-zinc-700' : 'bg-zinc-400')} />
       <span className="min-w-0 flex-1 truncate">{entity?.name ?? entityId}</span>
       {isActive && <span className="text-[9px] uppercase text-zinc-300">Active</span>}
       {acted && !isActive && <span className="text-[10px] text-zinc-600">Done</span>}
