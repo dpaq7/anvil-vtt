@@ -4,6 +4,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Progress, Tabs
 import { AlertTriangle, CircleUserRound, Database, Download, HardDrive, Settings, ShieldCheck, Trash2, Upload, UserRound } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore.js';
 import { csrfHeaders } from '../lib/csrf.js';
+import { TourSettingToggle } from '../components/onboarding/TourSettingToggle.js';
 
 type AccountSection = 'profile' | 'settings' | 'data';
 type UserRole = 'director' | 'player';
@@ -316,6 +317,13 @@ export function Account() {
                       </Button>
                     ))}
                   </div>
+                </div>
+
+                <div className="border-t border-zinc-800 pt-5">
+                  <TourSettingToggle
+                    userId={user?.id}
+                    roleKey={user?.role === 'player' ? 'player' : 'director'}
+                  />
                 </div>
               </CardContent>
             </Card>

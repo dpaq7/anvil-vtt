@@ -504,16 +504,29 @@ function validateTokenAction(value: unknown): TokenActionRequest | null {
   };
 }
 
+const EDGE_BANE_LABELS: Record<string, string> = {
+  edge: 'Edge (+2)',
+  'double-edge': 'Double edge (tier up)',
+  bane: 'Bane (−2)',
+  'double-bane': 'Double bane (tier down)',
+};
+
 function validateDrawSteelRoll(value: unknown): DrawSteelRollRequest | null {
   if (!isRecord(value)) return null;
   const kind = safeString(value['kind'], 40);
   if (kind !== 'power' && kind !== 'heroic-resource' && kind !== 'd6') return null;
   const modifier = value['modifier'] === undefined ? undefined : boundedInteger(value['modifier'], -100, 100);
   if (modifier === null) return null;
+  const edges = value['edges'] === undefined ? undefined : boundedInteger(value['edges'], 0, 2);
+  if (edges === null) return null;
+  const banes = value['banes'] === undefined ? undefined : boundedInteger(value['banes'], 0, 2);
+  if (banes === null) return null;
   return {
     kind,
     ...(safeString(value['label'], 120) ? { label: safeString(value['label'], 120)! } : {}),
     ...(modifier !== undefined ? { modifier } : {}),
+    ...(edges !== undefined ? { edges } : {}),
+    ...(banes !== undefined ? { banes } : {}),
     ...(safeString(value['sourceId']) ? { sourceId: safeString(value['sourceId'])! } : {}),
   };
 }
@@ -2757,7 +2770,11 @@ export class SessionRoom extends DurableObject<Env> {
       };
     } else {
       const values = this.rollD10(2);
-      const total = values.reduce((sum, value) => sum + value, 0) + modifier;
+      const edges = this.sanitizeEdgeBane(roll.edges);
+      const banes = this.sanitizeEdgeBane(roll.banes);
+      // Resolve edge/bane the same way combat does: flat +2/-2 for a single
+      // edge/bane, tier shift for a double. `modifier` is the flat user bonus.
+      const powerRoll = RollLogic.calculatePowerRoll(values, edges, banes, modifier);
       result = {
         id: this.createActionResultId('power-roll'),
         kind: 'power',
@@ -2766,19 +2783,29 @@ export class SessionRoom extends DurableObject<Env> {
         rollerName: meta.username,
         dice: this.toPowerDice(values),
         modifier,
-        total,
-        tier: this.getTier(total),
+        total: powerRoll.total,
+        tier: powerRoll.tier,
+        rollState: powerRoll.rollState,
+        tierShifted: powerRoll.tierShifted,
         timestamp,
       };
     }
 
     this.broadcast({ type: 'draw_steel_roll_resolved', result });
+    const detailParts: string[] = [];
+    if (result.modifier !== 0) {
+      detailParts.push(`Modifier ${result.modifier >= 0 ? '+' : ''}${result.modifier}`);
+    }
+    const edgeBaneLabel = result.rollState ? EDGE_BANE_LABELS[result.rollState] : undefined;
+    if (edgeBaneLabel) {
+      detailParts.push(edgeBaneLabel);
+    }
     this.appendActionLog({
       id: `log-${result.id}`,
       actorId: meta.userId,
       actorName: meta.username,
       title: `${meta.username} rolled ${result.label}`,
-      detail: result.modifier === 0 ? undefined : `Modifier ${result.modifier >= 0 ? '+' : ''}${result.modifier}`,
+      detail: detailParts.length > 0 ? detailParts.join(' · ') : undefined,
       dice: result.dice,
       total: result.total,
       tier: result.tier,

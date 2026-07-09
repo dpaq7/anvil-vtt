@@ -6,7 +6,16 @@ export type { AppShellProps } from './components/layout/AppShell.js';
 export { Button } from './components/Button.js';
 export type { ButtonProps } from './components/Button.js';
 export { Input } from './components/Input.js';
-export { Card, CardHeader, CardTitle, CardContent } from './components/Card.js';
+export {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from './components/Card.js';
+export { Checkbox } from './components/Checkbox.js';
+export { Separator } from './components/Separator.js';
 export {
   Dialog,
   DialogTrigger,
@@ -54,6 +63,8 @@ export type { RoleToggleProps, UserRole } from './components/RoleToggle.js';
 // Icons
 export { AnvilIcon } from './components/icons/AnvilIcon.js';
 export type { AnvilIconProps } from './components/icons/AnvilIcon.js';
+export { D20Icon } from './components/icons/D20Icon.js';
+export type { D20IconProps } from './components/icons/D20Icon.js';
 
 // Table
 export {
