@@ -18,8 +18,6 @@ export interface BattleToolbarProps {
   onDrawColorChange: (color: string) => void;
   drawWidth: number;
   onDrawWidthChange: (width: number) => void;
-  gridVisible: boolean;
-  onToggleGrid: () => void;
   fogZoneCount?: number;
   fogBrushMode?: FogBrushMode;
   onFogBrushModeChange?: (mode: FogBrushMode) => void;
@@ -57,8 +55,6 @@ export function BattleToolbar({
   onDrawColorChange,
   drawWidth,
   onDrawWidthChange,
-  gridVisible,
-  onToggleGrid,
   fogZoneCount = 0,
   fogBrushMode = 'draw',
   onFogBrushModeChange,
@@ -98,16 +94,6 @@ export function BattleToolbar({
             <span className="text-xs">{tool.label}</span>
           </Button>
         ))}
-        <div className={dividerClass} />
-        <Button
-          variant={gridVisible ? 'secondary' : 'ghost'}
-          size="sm"
-          className={toolButtonClass}
-          title="Toggle Grid (G)"
-          onClick={onToggleGrid}
-        >
-          <span className="text-xs">Grid</span>
-        </Button>
         {viewportControls ? (
           <>
             <div className={dividerClass} />

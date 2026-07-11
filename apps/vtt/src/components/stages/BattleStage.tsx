@@ -1071,8 +1071,6 @@ export function BattleStage({
           onDrawColorChange={setDrawColor}
           drawWidth={drawWidth}
           onDrawWidthChange={setDrawWidth}
-          gridVisible={gridVisible}
-          onToggleGrid={() => setGridVisible((v) => !v)}
           fogZoneCount={fogZones.length}
           fogBrushMode={fogBrushMode}
           onFogBrushModeChange={setFogBrushMode}
