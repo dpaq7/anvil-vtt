@@ -189,19 +189,35 @@ export function Assets() {
 
   // ── Deep link (?folder=maps&item=<id>, e.g. from dashboard upload cards) ──
   const [searchParams, setSearchParams] = useSearchParams();
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ folder: AssetFolder | null; item: string } | null>(null);
   useEffect(() => {
     const folder = searchParams.get('folder');
     const item = searchParams.get('item');
     if (!folder && !item) return;
     const validFolders: AssetFolder[] = ['heroes', 'npcs', 'pictures', 'maps', 'bestiary', 'terrain', 'audio'];
-    if (folder && (validFolders as string[]).includes(folder)) {
+    const validFolder = folder && (validFolders as string[]).includes(folder) ? (folder as AssetFolder) : null;
+    if (validFolder) {
       // setSelectedFolder clears the selected item, so select the item after.
-      setSelectedFolder(folder as AssetFolder);
+      setSelectedFolder(validFolder);
     }
-    if (item) setSelectedItemId(item);
+    if (item) setPendingDeepLink({ folder: validFolder, item });
     setSearchParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Resolve the deep-linked item once data is available. Dashboard links carry
+  // the underlying upload's asset id, which for maps differs from the map id.
+  useEffect(() => {
+    if (!pendingDeepLink) return;
+    if (pendingDeepLink.folder === 'maps') {
+      const map = maps.find((m) => m.id === pendingDeepLink.item || m.assetId === pendingDeepLink.item);
+      if (!map) return; // maps not loaded yet — retry when they arrive
+      setSelectedItemId(map.id);
+    } else {
+      setSelectedItemId(pendingDeepLink.item);
+    }
+    setPendingDeepLink(null);
+  }, [maps, pendingDeepLink, setSelectedItemId]);
 
   // ── Heroes (loaded separately, not stored in assets store) ──
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
