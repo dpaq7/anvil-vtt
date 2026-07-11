@@ -1085,6 +1085,7 @@ export function BattleStage({
               className="flex flex-col items-center gap-1"
               onZoomIn={() => viewportRef.current?.zoomIn()}
               onZoomOut={() => viewportRef.current?.zoomOut()}
+              onZoomTo={(z) => viewportRef.current?.setZoom(z)}
               onFitToMap={() => {
                 const fitW = bgNaturalSize?.width ?? cols * cellSize;
                 const fitH = bgNaturalSize?.height ?? rows * cellSize;
@@ -1138,6 +1139,7 @@ export function BattleStage({
               className="flex flex-col items-center gap-1"
               onZoomIn={() => viewportRef.current?.zoomIn()}
               onZoomOut={() => viewportRef.current?.zoomOut()}
+              onZoomTo={(z) => viewportRef.current?.setZoom(z)}
               onFitToMap={() => {
                 const fitW = bgNaturalSize?.width ?? cols * cellSize;
                 const fitH = bgNaturalSize?.height ?? rows * cellSize;

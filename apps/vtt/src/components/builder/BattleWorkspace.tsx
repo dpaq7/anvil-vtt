@@ -1172,6 +1172,7 @@ export function BattleWorkspace({
               orientation="horizontal"
               onZoomIn={() => viewportRef.current?.zoomIn()}
               onZoomOut={() => viewportRef.current?.zoomOut()}
+              onZoomTo={(z) => viewportRef.current?.setZoom(z)}
               onFitToMap={() =>
                 viewportRef.current?.fitToRect(
                   effectiveCols * effectiveCellSize,

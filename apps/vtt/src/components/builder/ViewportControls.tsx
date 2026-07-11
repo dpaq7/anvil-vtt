@@ -1,19 +1,26 @@
 import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { VIEWPORT_MIN_ZOOM, VIEWPORT_MAX_ZOOM } from '../../canvas/systems/ViewportSystem.js';
 
 export interface ViewportControlsProps {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToMap: () => void;
+  /** When provided, renders a slider for continuous zoom control. */
+  onZoomTo?: (zoom: number) => void;
   className?: string;
   orientation?: 'vertical' | 'horizontal';
 }
+
+const SLIDER_MIN = Math.round(VIEWPORT_MIN_ZOOM * 100);
+const SLIDER_MAX = Math.round(VIEWPORT_MAX_ZOOM * 100);
 
 export function ViewportControls({
   zoom,
   onZoomIn,
   onZoomOut,
   onFitToMap,
+  onZoomTo,
   className,
   orientation = 'vertical',
 }: ViewportControlsProps) {
@@ -43,6 +50,23 @@ export function ViewportControls({
       >
         <ZoomOut className="size-4" />
       </button>
+      {onZoomTo && (
+        <input
+          type="range"
+          min={SLIDER_MIN}
+          max={SLIDER_MAX}
+          step={5}
+          value={Math.round(zoom * 100)}
+          aria-label="Zoom level"
+          title={`Zoom: ${Math.round(zoom * 100)}%`}
+          onChange={(e) => onZoomTo(Number(e.target.value) / 100)}
+          className={
+            isHorizontal
+              ? 'mx-1 h-1 w-20 accent-zinc-400'
+              : 'my-1 h-20 accent-zinc-400 [direction:rtl] [writing-mode:vertical-lr]'
+          }
+        />
+      )}
       <div
         className={
           isHorizontal

@@ -10,6 +10,10 @@ const DEFAULT_CONFIG: ViewportConfig = {
   maxZoom: 3,
 };
 
+/** Zoom bounds shared with UI controls (slider range, presets). */
+export const VIEWPORT_MIN_ZOOM = DEFAULT_CONFIG.minZoom;
+export const VIEWPORT_MAX_ZOOM = DEFAULT_CONFIG.maxZoom;
+
 export class ViewportSystem {
   private zoom = 1;
   private panX = 0;
@@ -274,14 +278,14 @@ export class ViewportSystem {
     this.onZoomChange?.(this.zoom);
   }
 
-  /** Zoom in by one step (0.25). */
+  /** Zoom in by one step (0.1). */
   zoomIn(): void {
-    this.setZoom(this.zoom + 0.25);
+    this.setZoom(this.zoom + 0.1);
   }
 
-  /** Zoom out by one step (0.25). */
+  /** Zoom out by one step (0.1). */
   zoomOut(): void {
-    this.setZoom(this.zoom - 0.25);
+    this.setZoom(this.zoom - 0.1);
   }
 
   /** Fit a world-space rectangle into the viewport, centered. */
