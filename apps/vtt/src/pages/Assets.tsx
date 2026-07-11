@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Upload, AlertCircle, RefreshCw } from 'lucide-react';
 import {
   Button,
@@ -186,6 +186,22 @@ export function Assets() {
     error,
     clearError,
   } = useAssetsStore();
+
+  // ── Deep link (?folder=maps&item=<id>, e.g. from dashboard upload cards) ──
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const folder = searchParams.get('folder');
+    const item = searchParams.get('item');
+    if (!folder && !item) return;
+    const validFolders: AssetFolder[] = ['heroes', 'npcs', 'pictures', 'maps', 'bestiary', 'terrain', 'audio'];
+    if (folder && (validFolders as string[]).includes(folder)) {
+      // setSelectedFolder clears the selected item, so select the item after.
+      setSelectedFolder(folder as AssetFolder);
+    }
+    if (item) setSelectedItemId(item);
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Heroes (loaded separately, not stored in assets store) ──
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
