@@ -6,7 +6,7 @@ import { useDashboardData } from '../components/dashboard/useDashboardData.js';
 import { useDashboardSections } from '../components/dashboard/useDashboardSections.js';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader.js';
 import { DashboardStatsRow } from '../components/dashboard/DashboardStats.js';
-import { SortableSections } from '../components/dashboard/sortable.js';
+import { DashboardSections } from '../components/dashboard/sections.js';
 import { DashboardOnboarding } from '../components/onboarding/DashboardOnboarding.js';
 import { FirstStepsChecklist } from '../components/onboarding/FirstStepsChecklist.js';
 import { buildFirstSteps } from '../components/onboarding/firstSteps.js';
@@ -18,7 +18,7 @@ export function Home() {
   const { data, loading, error } = useDashboardData();
   const backgroundUrl = isDirector ? DASHBOARD_BACKGROUNDS.director : DASHBOARD_BACKGROUNDS.player;
   const roleKey = isDirector ? 'director' : 'player';
-  const { dashboardSections, stats, quickActions } = useDashboardSections({ data, isDirector, roleKey });
+  const { dashboardSections, stats, quickActions } = useDashboardSections({ data, isDirector });
   const onboarding = useOnboardingState(user?.id, roleKey);
   const firstSteps = buildFirstSteps(data, isDirector);
 
@@ -81,7 +81,7 @@ export function Home() {
 
         <DashboardStatsRow stats={stats} />
 
-        <SortableSections storageKey={`anvil-dashboard:${roleKey}:sections`} sections={dashboardSections} />
+        <DashboardSections sections={dashboardSections} />
       </div>
       <DashboardOnboarding roleKey={roleKey} onboarding={onboarding} />
     </div>
