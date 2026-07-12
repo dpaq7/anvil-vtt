@@ -1160,8 +1160,6 @@ export function BattleWorkspace({
           onDrawColorChange={setDrawColor}
           drawWidth={drawWidth}
           onDrawWidthChange={setDrawWidth}
-          gridVisible={gridVisible}
-          onToggleGrid={() => setGridVisible((v) => !v)}
           fogZoneCount={battleData.fog.length}
           fogBrushMode={fogBrushMode}
           onFogBrushModeChange={setFogBrushMode}
@@ -1174,6 +1172,7 @@ export function BattleWorkspace({
               orientation="horizontal"
               onZoomIn={() => viewportRef.current?.zoomIn()}
               onZoomOut={() => viewportRef.current?.zoomOut()}
+              onZoomTo={(z) => viewportRef.current?.setZoom(z)}
               onFitToMap={() =>
                 viewportRef.current?.fitToRect(
                   effectiveCols * effectiveCellSize,

@@ -6,6 +6,12 @@ import type { ClientMessage, DrawSteelRollKind } from '../../types/protocol.js';
 interface DiceRollControlsProps {
   send: (msg: ClientMessage) => void;
   className?: string;
+  /**
+   * 'full' shows every combat control; 'simple' is for out-of-combat scenes
+   * (montage, negotiation) — no heroic-resource roll or modifier input, and
+   * the power roll is labeled by its dice (2d10).
+   */
+  variant?: 'full' | 'simple';
 }
 
 type EdgeBane = 'none' | 'edge' | 'bane' | 'double-edge' | 'double-bane';
@@ -24,14 +30,15 @@ const EDGE_BANE_OPTIONS: ReadonlyArray<{
   { value: 'double-bane', short: '2B', title: 'Double bane (tier down)', edges: 0, banes: 2 },
 ];
 
-export function DiceRollControls({ send, className }: DiceRollControlsProps) {
+export function DiceRollControls({ send, className, variant = 'full' }: DiceRollControlsProps) {
+  const isFull = variant === 'full';
   const [modifier, setModifier] = useState('0');
   // Edge/bane is sticky across rolls — a GM often re-rolls under the same
   // condition. Only applies to power rolls.
   const [edgeBane, setEdgeBane] = useState<EdgeBane>('none');
 
   const roll = (kind: DrawSteelRollKind) => {
-    const parsedModifier = Number.parseInt(modifier, 10);
+    const parsedModifier = Number.parseInt(isFull ? modifier : '0', 10);
     const isPower = kind === 'power';
     const selected = EDGE_BANE_OPTIONS.find((option) => option.value === edgeBane);
     send({
@@ -57,24 +64,28 @@ export function DiceRollControls({ send, className }: DiceRollControlsProps) {
       </span>
       <div className="flex items-center gap-1">
         <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('power')}>
-          Power
+          {isFull ? 'Power' : '2d10'}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('heroic-resource')}>
-          Resource
-        </Button>
+        {isFull && (
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('heroic-resource')}>
+            Resource
+          </Button>
+        )}
         <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('d6')}>
           d6
         </Button>
       </div>
-      <label className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-500">
-        Mod
-        <input
-          type="number"
-          value={modifier}
-          onChange={(event) => setModifier(event.target.value)}
-          className="h-7 w-14 rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
-        />
-      </label>
+      {isFull && (
+        <label className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-500">
+          Mod
+          <input
+            type="number"
+            value={modifier}
+            onChange={(event) => setModifier(event.target.value)}
+            className="h-7 w-14 rounded border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
+          />
+        </label>
+      )}
       <div
         className="flex items-center overflow-hidden rounded border border-zinc-700"
         role="group"

@@ -121,6 +121,10 @@ export function NoteCard({ note }: { note: DashboardNote }) {
 
 export function AssetCard({ asset, canOpenAssets }: { asset: AssetItem; canOpenAssets: boolean }) {
   const uploadedAt = formatDate(asset.uploaded_at ?? asset.created_at);
+  // The dashboard feed only surfaces maps and pictures; deep-link into the
+  // matching Assets Manager folder with the item preselected.
+  const assetsFolder = asset.type === 'map' ? 'maps' : 'pictures';
+  const assetsHref = `/app/assets?folder=${assetsFolder}&item=${encodeURIComponent(asset.id)}`;
   const content = (
     <CardContent className="flex items-center gap-2.5 p-3">
       <div className="dashboard-tone-cyan flex size-9 shrink-0 items-center justify-center rounded-lg border">
@@ -137,7 +141,7 @@ export function AssetCard({ asset, canOpenAssets }: { asset: AssetItem; canOpenA
 
   return (
     <Card className="rounded-card border-zinc-800/80 bg-zinc-950/75 shadow-lg shadow-black/20 backdrop-blur-sm transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-paper-lift">
-      {canOpenAssets ? <Link to="/app/assets">{content}</Link> : content}
+      {canOpenAssets ? <Link to={assetsHref}>{content}</Link> : content}
     </Card>
   );
 }

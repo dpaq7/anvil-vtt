@@ -2,6 +2,7 @@ import { DevLoginRow, OAuthButtons } from './OAuthButtons.js';
 
 const HERO_WEBP = '/landing/anvil-hero.webp';
 const HERO_PNG = '/landing/anvil-hero.png';
+const LANDING_TITLE_IMAGE = '/landing/anvil-landing-title.png?v=3';
 
 const heroImageSet = `image-set(url('${HERO_WEBP}') type('image/webp'), url('${HERO_PNG}') type('image/png'))`;
 
@@ -50,9 +51,14 @@ export function LandingHero() {
 
       <div className="relative z-10 flex w-full items-end px-6 pb-28 pt-[34svh] sm:px-10 sm:pb-16 sm:pt-[40svh] md:items-center md:px-12 md:py-16 lg:px-16 xl:px-24">
         <div className="max-w-xl pt-12 motion-safe:animate-fade-up md:pt-0">
-          <h1 className="font-display text-6xl font-bold tracking-tight text-anvil-parchment-50 drop-shadow-[0_6px_28px_rgba(0,0,0,0.85)] sm:text-7xl lg:text-8xl">
-            Anvil
-          </h1>
+          <div className="relative -ml-2 aspect-[2.08/1] w-[72%] max-w-[27rem] overflow-hidden sm:-ml-4">
+            <h1 className="sr-only">Anvil</h1>
+            <img
+              src={LANDING_TITLE_IMAGE}
+              alt="Anvil"
+              className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 -translate-y-1/2 object-cover drop-shadow-[0_8px_30px_rgba(0,0,0,0.8)]"
+            />
+          </div>
           <p className="mt-5 max-w-lg text-balance text-lg leading-8 text-anvil-parchment-100 [text-shadow:0_2px_22px_rgba(0,0,0,0.78)] sm:text-xl">
             A lightweight, easy-to-use, fully web-based VTT for Draw Steel by MCDM.
           </p>

@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { MessageSquare, Dice5 } from 'lucide-react';
-import { Button, Card, CardHeader, CardTitle, CardContent, cn } from '@anvil/ui';
-import { NegotiationLogic, findSkillByName, skills } from '@anvil/data';
-import type { ArgumentLogEntry } from '../../types/protocol.js';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { MessageSquare, Dice5 } from "lucide-react";
+import { Button, cn } from "@anvil/ui";
+import { NegotiationLogic, findSkillByName, skills } from "@anvil/data";
+import type { ArgumentLogEntry } from "../../types/protocol.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,7 +41,7 @@ export interface NegotiationStageProps {
   maxPatience: number;
 
   // Phase
-  phase: 'active' | 'success' | 'failure';
+  phase: "active" | "success" | "failure";
 
   // Motivations & Pitfalls
   motivations: NegotiationMotivationRuntime[];
@@ -70,28 +76,30 @@ export interface NegotiationStageProps {
 interface TrackDotsProps {
   current: number;
   max: number;
-  color: 'purple' | 'amber';
+  color: "purple" | "amber";
   label: string;
 }
 
 function TrackDots({ current, max, color, label }: TrackDotsProps) {
   const colorClasses = {
     purple: {
-      filled: 'bg-purple-500',
-      empty: 'bg-zinc-700',
-      text: 'text-purple-400',
+      filled: "bg-purple-500",
+      empty: "bg-zinc-700",
+      text: "text-purple-400",
     },
     amber: {
-      filled: 'bg-amber-500',
-      empty: 'bg-zinc-700',
-      text: 'text-amber-400',
+      filled: "bg-amber-500",
+      empty: "bg-zinc-700",
+      text: "text-amber-400",
     },
   };
   const c = colorClasses[color];
 
   return (
     <div className="flex flex-col gap-2">
-      <span className={`text-xs font-medium uppercase tracking-wider ${c.text}`}>
+      <span
+        className={`text-xs font-medium uppercase tracking-wider ${c.text}`}
+      >
         {label}
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -99,7 +107,9 @@ function TrackDots({ current, max, color, label }: TrackDotsProps) {
           <div
             key={i}
             className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors ${
-              i <= current ? c.filled + ' text-zinc-50' : c.empty + ' text-zinc-500'
+              i <= current
+                ? c.filled + " text-zinc-50"
+                : c.empty + " text-zinc-500"
             }`}
           >
             {i}
@@ -116,7 +126,11 @@ interface TargetPortraitProps {
   npcPortrait?: string;
 }
 
-function TargetPortrait({ initials, npcName, npcPortrait }: TargetPortraitProps) {
+function TargetPortrait({
+  initials,
+  npcName,
+  npcPortrait,
+}: TargetPortraitProps) {
   if (npcPortrait) {
     return (
       <img
@@ -129,7 +143,7 @@ function TargetPortrait({ initials, npcName, npcPortrait }: TargetPortraitProps)
 
   return (
     <div className="flex h-full w-full items-center justify-center bg-purple-500/20 text-6xl font-bold text-purple-300">
-      {initials || '?'}
+      {initials || "?"}
     </div>
   );
 }
@@ -142,9 +156,14 @@ function TrackPanel({
   className?: string;
 }) {
   return (
-    <Card className={className}>
-      <CardContent className="flex flex-col gap-4 pt-5">{children}</CardContent>
-    </Card>
+    <div
+      className={cn(
+        "flex flex-col gap-4 rounded-md border border-zinc-800 bg-zinc-900/70 p-4",
+        className,
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -154,7 +173,11 @@ interface MotivationItemProps {
   onReveal?: () => void;
 }
 
-function MotivationItem({ motivation, isDirector, onReveal }: MotivationItemProps) {
+function MotivationItem({
+  motivation,
+  isDirector,
+  onReveal,
+}: MotivationItemProps) {
   const typeLabel = formatMotivationType(motivation.type);
 
   if (!motivation.revealed) {
@@ -162,7 +185,12 @@ function MotivationItem({ motivation, isDirector, onReveal }: MotivationItemProp
       <div className="flex items-center gap-2 rounded bg-zinc-800 px-3 py-2">
         <span className="text-sm text-zinc-500">? Hidden motivation</span>
         {isDirector && onReveal && (
-          <Button variant="ghost" size="sm" onClick={onReveal} className="ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReveal}
+            className="ml-auto"
+          >
             Reveal
           </Button>
         )}
@@ -192,7 +220,12 @@ function PitfallItem({ pitfall, isDirector, onReveal }: PitfallItemProps) {
       <div className="flex items-center gap-2 rounded bg-zinc-800 px-3 py-2">
         <span className="text-sm text-zinc-500">? Hidden pitfall</span>
         {isDirector && onReveal && (
-          <Button variant="ghost" size="sm" onClick={onReveal} className="ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReveal}
+            className="ml-auto"
+          >
             Reveal
           </Button>
         )}
@@ -212,10 +245,10 @@ function ArgumentLogItem({ entry }: { entry: ArgumentLogEntry }) {
   const skill = findSkillByName(entry.skillId);
   const deltaColor =
     entry.interestDelta > 0
-      ? 'text-emerald-400'
+      ? "text-emerald-400"
       : entry.interestDelta < 0
-        ? 'text-red-400'
-        : 'text-zinc-500';
+        ? "text-red-400"
+        : "text-zinc-500";
 
   return (
     <div className="rounded bg-zinc-800/50 px-3 py-2">
@@ -227,12 +260,14 @@ function ArgumentLogItem({ entry }: { entry: ArgumentLogEntry }) {
           {entry.roll} &rarr; T{entry.tier}
         </span>
         <span className={`text-xs font-medium ${deltaColor}`}>
-          {entry.interestDelta > 0 ? '+' : ''}
+          {entry.interestDelta > 0 ? "+" : ""}
           {entry.interestDelta} Int
         </span>
       </div>
       {entry.approachText && (
-        <p className="mt-1 text-xs italic text-zinc-400">&ldquo;{entry.approachText}&rdquo;</p>
+        <p className="mt-1 text-xs italic text-zinc-400">
+          &ldquo;{entry.approachText}&rdquo;
+        </p>
       )}
     </div>
   );
@@ -249,31 +284,40 @@ export function NegotiationArgumentPanel({
   onMakeArgument,
   className,
 }: NegotiationArgumentPanelProps) {
-  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
-  const [approachText, setApproachText] = useState<string>('');
-  const availableSkills = useMemo(() => resolveNegotiationSkills(availableSkillIds), [availableSkillIds]);
+  const [selectedSkillId, setSelectedSkillId] = useState<string>("");
+  const [approachText, setApproachText] = useState<string>("");
+  const availableSkills = useMemo(
+    () => resolveNegotiationSkills(availableSkillIds),
+    [availableSkillIds],
+  );
 
   useEffect(() => {
-    if (selectedSkillId && !availableSkills.some((skill) => skill.id === selectedSkillId)) {
-      setSelectedSkillId('');
+    if (
+      selectedSkillId &&
+      !availableSkills.some((skill) => skill.id === selectedSkillId)
+    ) {
+      setSelectedSkillId("");
     }
   }, [availableSkills, selectedSkillId]);
 
   const handleArgument = useCallback(() => {
     if (!selectedSkillId) return;
     onMakeArgument(selectedSkillId, approachText);
-    setApproachText('');
+    setApproachText("");
   }, [selectedSkillId, approachText, onMakeArgument]);
 
   return (
-    <Card className={cn('w-full', className)}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <MessageSquare className="size-4 text-purple-400" />
-          Make an Argument
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <div
+      className={cn(
+        "flex w-full flex-col gap-3 rounded-md border border-zinc-800 bg-zinc-900/70 p-4",
+        className,
+      )}
+    >
+      <p className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+        <MessageSquare className="size-4 text-purple-400" />
+        Make an Argument
+      </p>
+      <div className="flex flex-col gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-zinc-400">
             Hero Skill
@@ -291,7 +335,9 @@ export function NegotiationArgumentPanel({
             ))}
           </select>
           {availableSkillIds && availableSkills.length === 0 && (
-            <p className="mt-1 text-[11px] text-zinc-500">This hero has no trained skills available.</p>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              This hero has no trained skills available.
+            </p>
           )}
         </div>
 
@@ -316,8 +362,8 @@ export function NegotiationArgumentPanel({
           <Dice5 className="mr-1.5 size-4" />
           Make Argument
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -351,12 +397,12 @@ export function NegotiationStage({
   // Clamp values for display
   const displayInterest = NegotiationLogic.clampInterest(interest, maxInterest);
   const displayPatience = NegotiationLogic.clampPatience(patience, maxPatience);
-  const isActive = phase === 'active';
+  const isActive = phase === "active";
 
   // Get outcome text based on current interest
   const outcomeText = useMemo(() => {
     const level = Math.max(0, Math.min(5, Math.round(interest)));
-    return outcomes[level] ?? '';
+    return outcomes[level] ?? "";
   }, [interest, outcomes]);
 
   // Get interest level label
@@ -384,19 +430,24 @@ export function NegotiationStage({
   // Get initials for avatar fallback
   const initials = useMemo(() => {
     return npcName
-      .split(' ')
+      .split(" ")
       .map((w) => w[0])
       .slice(0, 2)
-      .join('')
+      .join("")
       .toUpperCase();
   }, [npcName]);
 
   const renderMotivationsPanel = (className?: string) => (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle className="text-purple-400">Motivations</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <div
+      className={cn(
+        "rounded-md border border-zinc-800 bg-zinc-900/70 p-4",
+        className,
+      )}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-purple-400">
+        Motivations
+      </p>
+      <div className="mt-3 flex flex-col gap-2">
         {motivations.length === 0 ? (
           <p className="text-sm text-zinc-500">No motivations configured</p>
         ) : (
@@ -409,16 +460,21 @@ export function NegotiationStage({
             />
           ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 
   const renderPitfallsPanel = (className?: string) => (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle className="text-red-400">Pitfalls</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <div
+      className={cn(
+        "rounded-md border border-zinc-800 bg-zinc-900/70 p-4",
+        className,
+      )}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-red-400">
+        Pitfalls
+      </p>
+      <div className="mt-3 flex flex-col gap-2">
         {pitfalls.length === 0 ? (
           <p className="text-sm text-zinc-500">No pitfalls configured</p>
         ) : (
@@ -431,36 +487,45 @@ export function NegotiationStage({
             />
           ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-auto p-5 lg:p-6">
-      <div className="grid w-full gap-5 md:grid-cols-[minmax(160px,1fr)_minmax(280px,360px)_minmax(160px,1fr)] md:items-start">
-        <div className="order-2 flex flex-col gap-5 md:order-1">
-          <TrackPanel>
-            <TrackDots
-              current={displayInterest}
-              max={maxInterest}
-              color="purple"
-              label="Interest"
-            />
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-400">Current outcome:</span>
-              <span
-                className={`rounded px-2 py-0.5 font-medium ${getInterestLevelColor(displayInterest)}`}
-              >
-                {interestLabel}
-              </span>
-            </div>
-          </TrackPanel>
-
-          {renderMotivationsPanel('hidden md:block')}
+    <div className="h-full overflow-auto p-8">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
+            Negotiation
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-white">
+            {npcName || "No target set"}
+          </p>
         </div>
 
-        <Card className="order-1 overflow-hidden md:order-2">
-          <CardContent className="p-0">
+        <div className="grid w-full gap-5 md:grid-cols-[minmax(160px,1fr)_minmax(280px,360px)_minmax(160px,1fr)] md:items-start">
+          <div className="order-2 flex flex-col gap-5 md:order-1">
+            <TrackPanel>
+              <TrackDots
+                current={displayInterest}
+                max={maxInterest}
+                color="purple"
+                label="Interest"
+              />
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-400">Current outcome:</span>
+                <span
+                  className={`rounded px-2 py-0.5 font-medium ${getInterestLevelColor(displayInterest)}`}
+                >
+                  {interestLabel}
+                </span>
+              </div>
+            </TrackPanel>
+
+            {renderMotivationsPanel("hidden md:block")}
+          </div>
+
+          <div className="order-1 overflow-hidden rounded-md border border-zinc-800 bg-zinc-900/70 md:order-2">
             <div className="relative aspect-[4/5] min-h-[300px] overflow-hidden bg-zinc-950 sm:min-h-[360px] md:min-h-[400px]">
               <TargetPortrait
                 initials={initials}
@@ -474,15 +539,17 @@ export function NegotiationStage({
                 <span className="mt-1 block text-sm capitalize text-zinc-300">
                   {npcAttitude}
                 </span>
-                {phase !== 'active' && (
+                {phase !== "active" && (
                   <span
                     className={`mt-3 inline-flex rounded px-3 py-1 text-sm font-medium ${
-                      phase === 'success'
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-red-500/20 text-red-300'
+                      phase === "success"
+                        ? "bg-emerald-500/20 text-emerald-300"
+                        : "bg-red-500/20 text-red-300"
                     }`}
                   >
-                    {phase === 'success' ? 'DEAL REACHED' : 'NEGOTIATION FAILED'}
+                    {phase === "success"
+                      ? "DEAL REACHED"
+                      : "NEGOTIATION FAILED"}
                   </span>
                 )}
               </div>
@@ -534,75 +601,77 @@ export function NegotiationStage({
                 </Button>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        <div className="order-3 flex flex-col gap-5">
-          <TrackPanel>
-            <TrackDots
-              current={displayPatience}
-              max={maxPatience}
-              color="amber"
-              label="Patience"
-            />
-            <p className="text-sm text-zinc-400">
-              {displayPatience === 0
-                ? 'NPC has lost patience - negotiation ends!'
-                : `${displayPatience} argument${displayPatience === 1 ? '' : 's'} remaining`}
-            </p>
-          </TrackPanel>
+          <div className="order-3 flex flex-col gap-5">
+            <TrackPanel>
+              <TrackDots
+                current={displayPatience}
+                max={maxPatience}
+                color="amber"
+                label="Patience"
+              />
+              <p className="text-sm text-zinc-400">
+                {displayPatience === 0
+                  ? "NPC has lost patience - negotiation ends!"
+                  : `${displayPatience} argument${displayPatience === 1 ? "" : "s"} remaining`}
+              </p>
+            </TrackPanel>
 
-          {renderPitfallsPanel('hidden md:block')}
-        </div>
-      </div>
-
-      <div className="grid gap-5 md:hidden">
-        {renderMotivationsPanel()}
-        {renderPitfallsPanel()}
-      </div>
-
-      {/* Player argument panel */}
-      {!isDirector && isActive && onMakeArgument && showPlayerArgumentPanel && (
-        <div className="mx-auto w-full max-w-xl">
-          <NegotiationArgumentPanel availableSkillIds={availableSkillIds} onMakeArgument={onMakeArgument} />
-        </div>
-      )}
-
-      {/* Argument log */}
-      {argumentLog.length > 0 && (
-        <div className="mx-auto w-full max-w-3xl">
-          <p className="mb-2 text-sm font-medium text-zinc-300">Argument Log</p>
-          <div className="flex flex-col gap-1">
-            {argumentLog
-              .slice()
-              .reverse()
-              .map((entry) => (
-                <ArgumentLogItem key={entry.id} entry={entry} />
-              ))}
+            {renderPitfallsPanel("hidden md:block")}
           </div>
         </div>
-      )}
 
-      {/* Outcome Display */}
-      {phase !== 'active' && outcomeText && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Outcome</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded bg-zinc-800 p-4">
-              <p className="mb-2">
-                <span
-                  className={`rounded px-2 py-0.5 text-sm font-medium ${getInterestLevelColor(displayInterest)}`}
-                >
-                  {interestLabel}
-                </span>
-              </p>
-              <p className="italic text-zinc-300">&ldquo;{outcomeText}&rdquo;</p>
+        <div className="grid gap-5 md:hidden">
+          {renderMotivationsPanel()}
+          {renderPitfallsPanel()}
+        </div>
+
+        {/* Player argument panel */}
+        {!isDirector &&
+          isActive &&
+          onMakeArgument &&
+          showPlayerArgumentPanel && (
+            <div className="mx-auto w-full max-w-xl">
+              <NegotiationArgumentPanel
+                availableSkillIds={availableSkillIds}
+                onMakeArgument={onMakeArgument}
+              />
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+
+        {/* Argument log */}
+        {argumentLog.length > 0 && (
+          <div className="mx-auto w-full max-w-3xl">
+            <p className="mb-2 text-sm font-medium text-white">Argument Log</p>
+            <div className="flex flex-col gap-1">
+              {argumentLog
+                .slice()
+                .reverse()
+                .map((entry) => (
+                  <ArgumentLogItem key={entry.id} entry={entry} />
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* Outcome Display */}
+        {phase !== "active" && outcomeText && (
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-4">
+            <p className="text-sm font-semibold text-zinc-200">Outcome</p>
+            <p className="mt-2">
+              <span
+                className={`rounded px-2 py-0.5 text-sm font-medium ${getInterestLevelColor(displayInterest)}`}
+              >
+                {interestLabel}
+              </span>
+            </p>
+            <p className="mt-2 italic text-zinc-300">
+              &ldquo;{outcomeText}&rdquo;
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -613,33 +682,33 @@ export function NegotiationStage({
 
 function formatMotivationType(type: string): string {
   const labels: Record<string, string> = {
-    benevolence: 'Benevolence',
-    discovery: 'Discovery',
-    freedom: 'Freedom',
-    greed: 'Greed',
-    higher_authority: 'Higher Authority',
-    justice: 'Justice',
-    legacy: 'Legacy',
-    peace: 'Peace',
-    power: 'Power',
-    protection: 'Protection',
-    revelry: 'Revelry',
-    vengeance: 'Vengeance',
+    benevolence: "Benevolence",
+    discovery: "Discovery",
+    freedom: "Freedom",
+    greed: "Greed",
+    higher_authority: "Higher Authority",
+    justice: "Justice",
+    legacy: "Legacy",
+    peace: "Peace",
+    power: "Power",
+    protection: "Protection",
+    revelry: "Revelry",
+    vengeance: "Vengeance",
   };
   return labels[type] ?? type;
 }
 
 function getInterestLevelColor(level: number): string {
-  if (level <= 1) return 'bg-red-500/20 text-red-400';
-  if (level === 2) return 'bg-orange-500/20 text-orange-400';
-  if (level === 3) return 'bg-yellow-500/20 text-yellow-400';
-  if (level === 4) return 'bg-emerald-500/20 text-emerald-400';
-  return 'bg-blue-500/20 text-blue-400';
+  if (level <= 1) return "bg-red-500/20 text-red-400";
+  if (level === 2) return "bg-orange-500/20 text-orange-400";
+  if (level === 3) return "bg-yellow-500/20 text-yellow-400";
+  if (level === 4) return "bg-emerald-500/20 text-emerald-400";
+  return "bg-blue-500/20 text-blue-400";
 }
 
 function resolveNegotiationSkills(availableSkillIds?: string[]) {
   if (!availableSkillIds) {
-    return skills.filter((skill) => skill.group === 'interpersonal');
+    return skills.filter((skill) => skill.group === "interpersonal");
   }
 
   const seen = new Set<string>();
