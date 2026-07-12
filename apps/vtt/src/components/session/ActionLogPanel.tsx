@@ -63,7 +63,11 @@ export function ActionLogPanel({
     <div className={cn('flex min-h-0 flex-col border-zinc-800 bg-zinc-900/60', className)}>
       {showDiceControls && send && (
         <div className="shrink-0 border-b border-zinc-800 p-2">
-          <DiceRollControls send={send} className="h-auto flex-wrap justify-start bg-transparent p-0 shadow-none" />
+          <DiceRollControls
+            send={send}
+            variant={currentSection === 'battle' ? 'full' : 'simple'}
+            className="h-auto flex-wrap justify-start bg-transparent p-0 shadow-none"
+          />
         </div>
       )}
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2 text-xs text-zinc-300">

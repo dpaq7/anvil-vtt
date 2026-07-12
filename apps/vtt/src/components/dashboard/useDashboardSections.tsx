@@ -16,7 +16,6 @@ import {
   Users,
 } from 'lucide-react';
 import type {
-  DashboardRoleKey,
   DashboardSectionConfig,
   DashboardState,
   LiveTable,
@@ -25,7 +24,7 @@ import type {
   StatConfig,
 } from './types.js';
 import { toTimestamp } from './format.js';
-import { SortableGrid } from './sortable.js';
+import { DashboardGrid } from './sections.js';
 import { EmptyState } from './SectionChrome.js';
 import { AssetCard, CampaignCard, CharacterCard, LiveTableCard, NoteCard } from './DashboardCards.js';
 
@@ -34,11 +33,9 @@ const MAX_LIST_ITEMS = 5;
 export function useDashboardSections({
   data,
   isDirector,
-  roleKey,
 }: {
   data: DashboardState;
   isDirector: boolean;
-  roleKey: DashboardRoleKey;
 }) {
   const liveTables = useMemo<LiveTable[]>(
     () =>
@@ -205,8 +202,7 @@ export function useDashboardSections({
       title: isDirector ? 'Sessions In Progress' : 'Available Sessions',
       to: '/app/live',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:live`}
+        <DashboardGrid
           items={liveTableItems}
           emptyState={
             <EmptyState
@@ -226,8 +222,7 @@ export function useDashboardSections({
       title: isDirector ? 'Campaign Activity' : 'Joined Tables',
       to: isDirector ? '/app/campaigns' : '/app/live',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:campaigns`}
+        <DashboardGrid
           items={recentCampaigns}
           emptyState={
             <EmptyState
@@ -251,8 +246,7 @@ export function useDashboardSections({
       title: 'Notebook Updates',
       to: '/app/notes',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:notes`}
+        <DashboardGrid
           items={data.notes.slice(0, MAX_LIST_ITEMS)}
           emptyState={
             <EmptyState
@@ -276,8 +270,7 @@ export function useDashboardSections({
       title: isDirector ? 'Player Roster' : 'Hero Roster',
       to: isDirector ? '/app/live' : '/app/heroes',
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:characters`}
+        <DashboardGrid
           items={recentCharacters}
           emptyState={
             <EmptyState
@@ -297,8 +290,7 @@ export function useDashboardSections({
       title: 'Uploads',
       to: isDirector ? '/app/assets' : undefined,
       body: (
-        <SortableGrid
-          storageKey={`anvil-dashboard:${roleKey}:cards:assets`}
+        <DashboardGrid
           items={data.assets.slice(0, MAX_LIST_ITEMS)}
           emptyState={
             <EmptyState
@@ -312,7 +304,7 @@ export function useDashboardSections({
         />
       ),
     },
-  ], [data.assets, data.notes, isDirector, liveTableItems, recentCampaigns, recentCharacters, roleKey]);
+  ], [data.assets, data.notes, isDirector, liveTableItems, recentCampaigns, recentCharacters]);
 
   return { dashboardSections, stats, quickActions };
 }

@@ -95,7 +95,8 @@ export function About() {
                 try Anvil - and do find fault or would like to make suggestions, please use the
                 contact page to send a respectful note through the right channel. My comittment is
                 that I will try to keep improving Anvil and my own skills as long as I have the
-                ability and time to do so. Thank you, Dan Paquin
+                ability and time to do so.
+                <span className="mt-4 block">Thank you, Dan Paquin</span>
               </p>
             </section>
           </div>

@@ -1,32 +1,5 @@
 import type { CampaignSession } from '../sessions/types.js';
 
-export function mergeOrder(savedOrder: string[], currentIds: string[]) {
-  const current = new Set(currentIds);
-  return [
-    ...savedOrder.filter((id) => current.has(id)),
-    ...currentIds.filter((id) => !savedOrder.includes(id)),
-  ];
-}
-
-export function readStoredOrder(storageKey: string) {
-  try {
-    const value = localStorage.getItem(storageKey);
-    if (!value) return [];
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-export function writeStoredOrder(storageKey: string, order: string[]) {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(order));
-  } catch {
-    /* noop */
-  }
-}
-
 export function toTimestamp(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Date.parse(value.replace(' ', 'T'));

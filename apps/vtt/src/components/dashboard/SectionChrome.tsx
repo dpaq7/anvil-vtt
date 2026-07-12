@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowRight } from 'lucide-react';
@@ -33,20 +32,15 @@ export function SectionHeader({
   title,
   eyebrow,
   to,
-  dragHandle,
 }: {
   title: string;
   eyebrow: string;
   to?: string;
-  dragHandle?: ReactNode;
 }) {
   return (
     <div className="mb-2.5 flex items-end justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{eyebrow}</p>
-          {dragHandle}
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{eyebrow}</p>
         <h2 className="mt-1 font-display text-base font-semibold text-zinc-100">{title}</h2>
       </div>
       {to && (
