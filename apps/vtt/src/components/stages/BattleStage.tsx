@@ -374,6 +374,8 @@ interface BattleStageProps {
   onSelectEntities?: (entityIds: string[]) => void;
   onRollInitiative?: () => void;
   send: (msg: ClientMessage) => void;
+  /** Hide the floating dice roller (e.g. read-only pop-out display). */
+  showDiceControls?: boolean;
 }
 
 export function BattleStage({
@@ -407,6 +409,7 @@ export function BattleStage({
   onSelectEntities,
   onRollInitiative,
   send,
+  showDiceControls = true,
 }: BattleStageProps) {
   // Tool state (director only)
   const [activeTool, setActiveTool] = useState<BattleTool>('select');
@@ -1058,9 +1061,11 @@ export function BattleStage({
         )}
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 right-4 z-30">
-        <DiceRollControls send={send} className="pointer-events-auto" />
-      </div>
+      {showDiceControls && (
+        <div className="pointer-events-none absolute bottom-4 right-4 z-30">
+          <DiceRollControls send={send} className="pointer-events-auto" />
+        </div>
+      )}
 
       {/* Floating toolbar — director only */}
       {isDirector && (

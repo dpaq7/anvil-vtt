@@ -184,6 +184,7 @@ function SceneDisplay({
           entityNames={entityNames}
           onSelectEntity={noop}
           send={noopSend}
+          showDiceControls={false}
         />
       );
     }
