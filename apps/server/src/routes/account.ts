@@ -9,6 +9,7 @@ import {
   MAX_ASSET_FILE_SIZE,
 } from '../lib/assets.js';
 import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES } from '../lib/quotas.js';
+import { accountRateLimits } from '../security/rate-limits.js';
 
 export const accountRoutes = new Hono<AppEnv>();
 
@@ -750,6 +751,8 @@ accountRoutes.get('/storage', async (c) => {
 
 accountRoutes.get('/backup', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await accountRateLimits.backup(c, user.id);
+  if (limited) return limited;
   const archive = await buildArchive(c, user);
   const body = JSON.stringify(archive);
   return new Response(body, {
@@ -763,6 +766,8 @@ accountRoutes.get('/backup', async (c) => {
 
 accountRoutes.post('/restore', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await accountRateLimits.restore(c, user.id);
+  if (limited) return limited;
   const form = await c.req.formData();
   const file = form.get('backup');
   if (!(file instanceof File)) return c.json({ error: 'Backup file is required' }, 400);

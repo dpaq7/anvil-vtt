@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { ensureMcdmDemoCampaignForUser } from '../lib/demo-campaigns.js';
+import { campaignRateLimits } from '../security/rate-limits.js';
 
 export const campaignRoutes = new Hono<AppEnv>();
 
@@ -197,6 +198,8 @@ campaignRoutes.get('/', async (c) => {
 // Create campaign
 campaignRoutes.post('/', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await campaignRateLimits.write(c, user.id);
+  if (limited) return limited;
   const body = await c.req.json<CampaignCreateBody>();
 
   if (!body.name?.trim()) {

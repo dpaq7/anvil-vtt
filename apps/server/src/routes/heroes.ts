@@ -8,6 +8,7 @@ import { HERO_LIMITS } from '../policy/limits.js';
 import { deleteOwnedAssetIfUnreferenced } from '../repositories/assets.js';
 import { validateOwnedImageAsset, validateOwnedPortraitAsset } from '../security/assets.js';
 import { jsonError, readJsonBody } from '../security/request.js';
+import { heroRateLimits } from '../security/rate-limits.js';
 import {
   calculateHeroVitals,
   normalizeExternalPortraitUrl,
@@ -371,6 +372,8 @@ heroRoutes.get('/:id', async (c) => {
 // Create hero
 heroRoutes.post('/', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await heroRateLimits.write(c, user.id);
+  if (limited) return limited;
   const raw = await readJsonBody<{
     name: string;
     ancestry?: string;
@@ -436,6 +439,8 @@ heroRoutes.post('/', async (c) => {
 // Advance hero by one level. XP and rule choices are validated server-side.
 heroRoutes.post('/:id/advance', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await heroRateLimits.write(c, user.id);
+  if (limited) return limited;
   const heroId = c.req.param('id');
   const row = await c.env.DB.prepare(
     `SELECT * FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
@@ -508,6 +513,8 @@ heroRoutes.post('/:id/advance', async (c) => {
 // Update hero
 heroRoutes.put('/:id', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await heroRateLimits.write(c, user.id);
+  if (limited) return limited;
   const heroId = c.req.param('id');
 
   const existing = await c.env.DB.prepare(
@@ -657,6 +664,8 @@ heroRoutes.put('/:id', async (c) => {
 // Delete hero (soft)
 heroRoutes.delete('/:id', async (c) => {
   const user = c.get('user') as AuthUser;
+  const limited = await heroRateLimits.write(c, user.id);
+  if (limited) return limited;
   const heroId = c.req.param('id');
   const existing = await c.env.DB.prepare(
     `SELECT id, portrait_asset_id FROM heroes WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,

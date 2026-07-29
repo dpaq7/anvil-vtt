@@ -67,4 +67,9 @@ export const RATE_LIMIT_PROFILES = {
   roomCodeJoin: { namespace: 'room-code-join', limit: 30, windowSeconds: 10 * 60 },
   noteWrite: { namespace: 'note-write', limit: 240, windowSeconds: 10 * 60 },
   sceneImport: { namespace: 'scene-import', limit: 20, windowSeconds: 60 * 60 },
+  heroWrite: { namespace: 'hero-write', limit: 120, windowSeconds: 10 * 60 },
+  campaignWrite: { namespace: 'campaign-write', limit: 60, windowSeconds: 10 * 60 },
+  sceneWrite: { namespace: 'scene-write', limit: 300, windowSeconds: 10 * 60 },
+  accountBackup: { namespace: 'account-backup', limit: 6, windowSeconds: 60 * 60 },
+  accountRestore: { namespace: 'account-restore', limit: 3, windowSeconds: 60 * 60 },
 } as const;

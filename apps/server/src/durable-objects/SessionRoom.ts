@@ -965,6 +965,36 @@ export class SessionRoom extends DurableObject<Env> {
   private hydratePromise: Promise<void> | null = null;
 
   /**
+   * Per-connection token-bucket throttle for inbound WebSocket messages.
+   * Capacity is the burst allowance (dragging a token streams positions);
+   * refill is the sustained rate. State is in-memory only and resets after
+   * hibernation, which is acceptable — a sustained flood keeps the DO awake.
+   */
+  private wsRateState = new WeakMap<WebSocket, { tokens: number; last: number; notified: boolean }>();
+  private static readonly WS_RATE_CAPACITY = 60;
+  private static readonly WS_RATE_REFILL_PER_SEC = 30;
+
+  /** Returns true if the message fits the rate budget, consuming one token. */
+  private allowWsMessage(ws: WebSocket): boolean {
+    const now = Date.now();
+    const state = this.wsRateState.get(ws) ?? { tokens: SessionRoom.WS_RATE_CAPACITY, last: now, notified: false };
+    const elapsedSeconds = Math.max(0, (now - state.last) / 1000);
+    state.tokens = Math.min(
+      SessionRoom.WS_RATE_CAPACITY,
+      state.tokens + elapsedSeconds * SessionRoom.WS_RATE_REFILL_PER_SEC,
+    );
+    state.last = now;
+    if (state.tokens < 1) {
+      this.wsRateState.set(ws, state);
+      return false;
+    }
+    state.tokens -= 1;
+    state.notified = false;
+    this.wsRateState.set(ws, state);
+    return true;
+  }
+
+  /**
    * Recover connection metadata from a WebSocket's hibernation tag.
    * This works both when the Map was populated in handleWebSocket (same tick)
    * and after hibernation wake (tag persists, Map is gone).
@@ -1118,6 +1148,19 @@ export class SessionRoom extends DurableObject<Env> {
 
     let meta = this.getMetaForSocket(ws);
     if (!meta) return;
+
+    // Per-connection flood protection. Drop over-budget messages, notifying the
+    // client at most once per throttled burst so the error cannot itself be
+    // used as an amplification vector.
+    if (!this.allowWsMessage(ws)) {
+      const state = this.wsRateState.get(ws);
+      if (state && !state.notified) {
+        state.notified = true;
+        this.wsRateState.set(ws, state);
+        this.sendTo(ws, { type: 'error', code: 'RATE_LIMITED', message: 'Too many messages — slow down' });
+      }
+      return;
+    }
 
     // Recover sessionId after hibernation wake (in-memory fields are lost)
     if (!this.sessionId) {
