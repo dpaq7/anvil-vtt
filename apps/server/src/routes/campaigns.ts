@@ -64,27 +64,33 @@ async function nextCampaignOrder(db: D1Database, table: 'modules' | 'game_sessio
   return (row?.max_idx ?? -1) + 1;
 }
 
-async function copySceneRows(db: D1Database, targetSessionId: string, scenes: SourceSceneRow[]): Promise<void> {
-  for (const [index, scene] of scenes.entries()) {
-    await db.prepare(
+function buildSceneInsertStatements(
+  db: D1Database,
+  targetSessionId: string,
+  scenes: SourceSceneRow[],
+): D1PreparedStatement[] {
+  return scenes.map((scene, index) =>
+    db.prepare(
       'INSERT INTO scenes (id, game_session_id, title, type, data, order_index) VALUES (?, ?, ?, ?, ?, ?)',
-    )
-      .bind(crypto.randomUUID(), targetSessionId, scene.title, scene.type, scene.data ?? '{}', index)
-      .run();
-  }
+    ).bind(crypto.randomUUID(), targetSessionId, scene.title, scene.type, scene.data ?? '{}', index),
+  );
 }
 
-async function copyExistingModulesAndScenes(
+// Gather the INSERT statements that clone the selected modules/scenes into a
+// new campaign. All reads happen up front; the returned statements are executed
+// together in one db.batch() so the clone is atomic.
+async function collectCopyStatements(
   db: D1Database,
   userId: string,
   targetCampaignId: string,
   sourceModuleIds: string[],
   sourceSceneIds: string[],
-): Promise<void> {
+): Promise<D1PreparedStatement[]> {
   const uniqueModuleIds = [...new Set(sourceModuleIds.filter(Boolean))];
   const uniqueSceneIds = [...new Set(sourceSceneIds.filter(Boolean))];
   let moduleOrder = await nextCampaignOrder(db, 'modules', targetCampaignId);
   let sessionOrder = await nextCampaignOrder(db, 'game_sessions', targetCampaignId);
+  const statements: D1PreparedStatement[] = [];
 
   for (const sourceModuleId of uniqueModuleIds) {
     const module = await db.prepare(
@@ -99,11 +105,11 @@ async function copyExistingModulesAndScenes(
     if (!module) continue;
 
     const newModuleId = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO modules (id, campaign_id, name, description, order_index) VALUES (?, ?, ?, ?, ?)',
-    )
-      .bind(newModuleId, targetCampaignId, module.name, module.description ?? '', moduleOrder)
-      .run();
+    statements.push(
+      db.prepare(
+        'INSERT INTO modules (id, campaign_id, name, description, order_index) VALUES (?, ?, ?, ?, ?)',
+      ).bind(newModuleId, targetCampaignId, module.name, module.description ?? '', moduleOrder),
+    );
     moduleOrder += 1;
 
     const sourceSessions = await db.prepare(
@@ -117,11 +123,11 @@ async function copyExistingModulesAndScenes(
 
     for (const sourceSession of sourceSessions.results) {
       const newSessionId = crypto.randomUUID();
-      await db.prepare(
-        'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
-      )
-        .bind(newSessionId, targetCampaignId, newModuleId, sourceSession.name, sourceSession.description ?? '', sessionOrder)
-        .run();
+      statements.push(
+        db.prepare(
+          'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
+        ).bind(newSessionId, targetCampaignId, newModuleId, sourceSession.name, sourceSession.description ?? '', sessionOrder),
+      );
       sessionOrder += 1;
 
       const sourceScenes = await db.prepare(
@@ -133,7 +139,7 @@ async function copyExistingModulesAndScenes(
       )
         .bind(sourceSession.id)
         .all<SourceSceneRow>();
-      await copySceneRows(db, newSessionId, sourceScenes.results);
+      statements.push(...buildSceneInsertStatements(db, newSessionId, sourceScenes.results));
     }
   }
 
@@ -156,13 +162,15 @@ async function copyExistingModulesAndScenes(
 
   if (standaloneScenes.length > 0) {
     const newSessionId = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
-    )
-      .bind(newSessionId, targetCampaignId, null, 'Selected Scenes', '', sessionOrder)
-      .run();
-    await copySceneRows(db, newSessionId, standaloneScenes);
+    statements.push(
+      db.prepare(
+        'INSERT INTO game_sessions (id, campaign_id, module_id, name, description, order_index) VALUES (?, ?, ?, ?, ?, ?)',
+      ).bind(newSessionId, targetCampaignId, null, 'Selected Scenes', '', sessionOrder),
+    );
+    statements.push(...buildSceneInsertStatements(db, newSessionId, standaloneScenes));
   }
+
+  return statements;
 }
 
 // List campaigns for current user (as director or member)
@@ -207,26 +215,26 @@ campaignRoutes.post('/', async (c) => {
   }
 
   const id = crypto.randomUUID();
-  await c.env.DB.prepare(
-    'INSERT INTO campaigns (id, director_id, name, description) VALUES (?, ?, ?, ?)',
-  )
-    .bind(id, user.id, body.name.trim(), body.description?.trim() ?? '')
-    .run();
+  const db = c.env.DB;
 
-  // Add director as campaign member
-  await c.env.DB.prepare(
-    'INSERT INTO campaign_members (campaign_id, user_id, role) VALUES (?, ?, ?)',
-  )
-    .bind(id, user.id, 'director')
-    .run();
-
-  await copyExistingModulesAndScenes(
-    c.env.DB,
+  // Membership-checked source lookups happen first, then every write runs in a
+  // single atomic batch: a failure part-way through the clone can no longer
+  // leave an orphaned, half-initialized campaign behind.
+  const copyStatements = await collectCopyStatements(
+    db,
     user.id,
     id,
     Array.isArray(body.sourceModuleIds) ? body.sourceModuleIds : [],
     Array.isArray(body.sourceSceneIds) ? body.sourceSceneIds : [],
   );
+
+  await db.batch([
+    db.prepare('INSERT INTO campaigns (id, director_id, name, description) VALUES (?, ?, ?, ?)')
+      .bind(id, user.id, body.name.trim(), body.description?.trim() ?? ''),
+    db.prepare('INSERT INTO campaign_members (campaign_id, user_id, role) VALUES (?, ?, ?)')
+      .bind(id, user.id, 'director'),
+    ...copyStatements,
+  ]);
 
   return c.json({ id }, 201);
 });

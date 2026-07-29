@@ -1735,11 +1735,21 @@ export class SessionRoom extends DurableObject<Env> {
         if (typeof s.data === 'string') {
           try { preparedData = JSON.parse(s.data) as Record<string, unknown>; } catch { /* ignore */ }
         }
-        preparedData = await this.hydrateSceneMedia(s.type, preparedData, session.campaign_id);
         const snapshot = this.parseSceneSnapshot(s.snapshot);
-        if (snapshot?.data) {
-          snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
-          snapshot.data = this.applyPreparedSceneMediaFallbacks(s.type, snapshot.data, preparedData);
+        // Media hydration can fail per scene (missing or corrupt asset
+        // metadata). Degrade to un-hydrated data so one bad scene cannot abort
+        // the whole session load.
+        try {
+          preparedData = await this.hydrateSceneMedia(s.type, preparedData, session.campaign_id);
+          if (snapshot?.data) {
+            snapshot.data = await this.hydrateSceneMedia(s.type, snapshot.data, session.campaign_id);
+            snapshot.data = this.applyPreparedSceneMediaFallbacks(s.type, snapshot.data, preparedData);
+          }
+        } catch (error) {
+          console.error('Scene media hydration failed; using un-hydrated scene data', {
+            sceneId: s.id,
+            error,
+          });
         }
         const ref = {
           id: s.id,
