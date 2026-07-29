@@ -7,6 +7,7 @@ import { requireCampaignMember } from '../security/authorization.js';
 import { NOTE_LIMITS } from '../policy/limits.js';
 import { jsonError, readJsonBody } from '../security/request.js';
 import { noteRateLimits } from '../security/rate-limits.js';
+import { escapeLikePattern } from '../security/validation.js';
 import {
   normalizeNoteSearchQuery,
   parseCreateNoteFolderInput,
@@ -278,10 +279,10 @@ function registerNoteHandlers(
 
     if (!q) return c.json({ notes: [] });
 
-    const term = `%${q}%`;
+    const term = `%${escapeLikePattern(q)}%`;
     const results = await c.env.DB.prepare(
       `SELECT * FROM ${noteTable(scope)}
-       WHERE ${noteScopeWhere(scope)} AND (title LIKE ? OR content LIKE ?)
+       WHERE ${noteScopeWhere(scope)} AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')
        ORDER BY updated_at DESC`,
     )
       .bind(...bindScope(scope, user.id, [term, term]))

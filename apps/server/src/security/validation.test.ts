@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { hasUnsafeObjectKey, exceedsJsonDepth } from './validation.js';
+import { hasUnsafeObjectKey, exceedsJsonDepth, escapeLikePattern } from './validation.js';
+
+describe('escapeLikePattern', () => {
+  it('leaves ordinary search terms untouched', () => {
+    expect(escapeLikePattern('goblin')).toBe('goblin');
+    expect(escapeLikePattern('Sir Reginald')).toBe('Sir Reginald');
+  });
+
+  it('escapes LIKE wildcards so they match literally', () => {
+    expect(escapeLikePattern('50%')).toBe('50\\%');
+    expect(escapeLikePattern('a_b')).toBe('a\\_b');
+    expect(escapeLikePattern('%_%')).toBe('\\%\\_\\%');
+  });
+
+  it('escapes the escape character itself', () => {
+    expect(escapeLikePattern('back\\slash')).toBe('back\\\\slash');
+  });
+});
 
 describe('hasUnsafeObjectKey', () => {
   it('accepts ordinary structures', () => {

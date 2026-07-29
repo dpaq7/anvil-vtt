@@ -349,6 +349,41 @@ campaignRoutes.put('/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// Remove a member from a campaign (director only). Revokes membership, drops
+// the user from this campaign's sessions, and invalidates any unused WebSocket
+// tokens so a removed player loses access immediately rather than keeping it
+// until their current token expires.
+campaignRoutes.delete('/:campaignId/members/:userId', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const campaignId = c.req.param('campaignId');
+  const targetUserId = c.req.param('userId');
+
+  const campaign = await c.env.DB.prepare(
+    'SELECT director_id FROM campaigns WHERE id = ? AND deleted_at IS NULL',
+  )
+    .bind(campaignId)
+    .first<{ director_id: string }>();
+  if (!campaign) return c.json({ error: 'Not found' }, 404);
+  if (campaign.director_id !== user.id) return c.json({ error: 'Forbidden' }, 403);
+  if (targetUserId === campaign.director_id) {
+    return c.json({ error: 'Cannot remove the campaign director' }, 400);
+  }
+
+  const db = c.env.DB;
+  await db.batch([
+    db.prepare('DELETE FROM campaign_members WHERE campaign_id = ? AND user_id = ?')
+      .bind(campaignId, targetUserId),
+    db.prepare(
+      `DELETE FROM session_participants
+       WHERE user_id = ? AND game_session_id IN (SELECT id FROM game_sessions WHERE campaign_id = ?)`,
+    ).bind(targetUserId, campaignId),
+    db.prepare('DELETE FROM ws_tokens WHERE user_id = ? AND campaign_id = ?')
+      .bind(targetUserId, campaignId),
+  ]);
+
+  return c.json({ ok: true });
+});
+
 // Soft delete campaign
 campaignRoutes.delete('/:id', async (c) => {
   const user = c.get('user') as AuthUser;

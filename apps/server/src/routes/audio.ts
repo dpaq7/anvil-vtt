@@ -3,6 +3,7 @@ import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
 import { assetDataUrl, validateOwnedAudioAsset } from '../security/assets.js';
+import { escapeLikePattern } from '../security/validation.js';
 import type { AudioAsset, CreateAudioInput, UpdateAudioInput } from '@anvil/types';
 
 export const audioRoutes = new Hono<AppEnv>();
@@ -71,7 +72,7 @@ audioRoutes.get('/:campaignId/audio', async (c) => {
   const binds: unknown[] = [campaignId];
   if (mood) { query += ' AND mood = ?'; binds.push(mood); }
   if (audioType) { query += ' AND audio_type = ?'; binds.push(audioType); }
-  if (q) { query += ' AND name LIKE ?'; binds.push(`%${q}%`); }
+  if (q) { query += " AND name LIKE ? ESCAPE '\\'"; binds.push(`%${escapeLikePattern(q)}%`); }
   if (sceneType) { query += ' AND id IN (SELECT audio_id FROM audio_scene_types WHERE scene_type = ?)'; binds.push(sceneType); }
   if (tag) { query += ' AND id IN (SELECT audio_id FROM audio_tags WHERE tag = ?)'; binds.push(tag); }
   query += ' ORDER BY created_at DESC';

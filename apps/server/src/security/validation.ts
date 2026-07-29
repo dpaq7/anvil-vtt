@@ -55,6 +55,15 @@ export function safeStringArray(value: unknown, maxItems: number, maxLength: num
     .slice(0, maxItems);
 }
 
+/**
+ * Escape LIKE wildcard metacharacters (`%`, `_`, and the escape character) in a
+ * user-supplied search term. Pair with `LIKE ? ESCAPE '\\'` so searching for
+ * "50%" matches a literal percent instead of acting as a wildcard.
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 /**

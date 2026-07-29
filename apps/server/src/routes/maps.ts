@@ -3,6 +3,7 @@ import type { AppEnv, AuthUser } from '../types.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireCampaignDirector, requireCampaignMember } from '../security/authorization.js';
 import { assetDataUrl, validateOwnedMapAsset } from '../security/assets.js';
+import { escapeLikePattern } from '../security/validation.js';
 import type { CreateMapInput, MapAsset, UpdateMapInput } from '@anvil/types';
 
 export const mapRoutes = new Hono<AppEnv>();
@@ -84,7 +85,7 @@ mapRoutes.get('/:campaignId/maps', async (c) => {
   if (sceneType) { query += ' AND scene_type = ?'; binds.push(sceneType); }
   if (gridType) { query += ' AND grid_type = ?'; binds.push(gridType); }
   if (size) { query += ' AND size = ?'; binds.push(size); }
-  if (q) { query += ' AND name LIKE ?'; binds.push(`%${q}%`); }
+  if (q) { query += " AND name LIKE ? ESCAPE '\\'"; binds.push(`%${escapeLikePattern(q)}%`); }
   if (terrain) { query += ' AND id IN (SELECT map_id FROM map_terrains WHERE terrain = ?)'; binds.push(terrain); }
   if (biome) { query += ' AND id IN (SELECT map_id FROM map_biomes WHERE biome = ?)'; binds.push(biome); }
   if (tag) { query += ' AND id IN (SELECT map_id FROM map_tags WHERE tag = ?)'; binds.push(tag); }
