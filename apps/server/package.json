@@ -18,7 +18,7 @@
   "dependencies": {
     "@anvil/data": "workspace:*",
     "@anvil/types": "workspace:*",
-    "hono": "^4.12.18"
+    "hono": "^4.12.25"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260131.0",
