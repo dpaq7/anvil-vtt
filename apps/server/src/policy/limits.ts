@@ -28,6 +28,7 @@ export const SCENE_IMPORT_LIMITS = {
   descriptionLength: 5_000,
   settingsBytes: 64 * 1024,
   sceneDataBytes: 256 * 1024,
+  maxNestingDepth: 24,
 } as const;
 
 export const HERO_LIMITS = {

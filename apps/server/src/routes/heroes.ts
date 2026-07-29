@@ -112,6 +112,22 @@ function normalizeLevelUpChoices(value: unknown): Record<number, LevelUpChoice[]
   return choices;
 }
 
+function normalizeTitles(value: unknown): CharacterInProgress['selectedTitles'] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): CharacterInProgress['selectedTitles'] => {
+    if (!isRecord(item)) return [];
+    const id = stringValue(item['id']);
+    const name = stringValue(item['name']);
+    if (!id || !name) return [];
+    const title: CharacterInProgress['selectedTitles'][number] = { id, name };
+    const description = stringValue(item['description']);
+    if (description) title.description = description;
+    const effect = stringValue(item['effect']);
+    if (effect) title.effect = effect;
+    return [title];
+  });
+}
+
 function unique(values: string[]): string[] {
   return values.filter((value, index, all) => value && all.indexOf(value) === index);
 }
@@ -180,7 +196,7 @@ function buildCharacterFromPayload(input: {
   character.careerPerk = stringValue(data['careerPerk']);
   character.selectedPerks = stringArray(data['selectedPerks']).filter((perkId) => perkId !== character.careerPerk);
   character.selectedLanguages = stringArray(data['selectedLanguages']);
-  character.selectedTitles = Array.isArray(data['selectedTitles']) ? data['selectedTitles'] as CharacterInProgress['selectedTitles'] : [];
+  character.selectedTitles = normalizeTitles(data['selectedTitles']);
   character.selectedAbilities = stringArray(data['selectedAbilities']);
   character.abilityChoices = isRecord(data['abilityChoices'])
     ? Object.fromEntries(Object.entries(data['abilityChoices']).filter(([, value]) => typeof value === 'string')) as Record<string, string>
@@ -209,9 +225,13 @@ function validateCreatedCharacter(character: CharacterInProgress): string | null
   return validateHeroCreationRules(character);
 }
 
-function sanitizeHeroDataForCreation(character: CharacterInProgress, rawData: Record<string, unknown>): Record<string, unknown> {
+// Build the persisted hero `data` blob from validated character fields only.
+// Never spread the raw request body here: doing so let a client smuggle
+// unvalidated fields (staminaCurrent, recoveriesCurrent, victories, xp, level,
+// heroicResourceCurrent, ...) straight into storage, where they are later read
+// back as authoritative values.
+function sanitizeHeroDataForCreation(character: CharacterInProgress): Record<string, unknown> {
   return {
-    ...rawData,
     heroClass: character.heroClass,
     subclass: character.subclass,
     culture: character.culture,
@@ -223,6 +243,7 @@ function sanitizeHeroDataForCreation(character: CharacterInProgress, rawData: Re
     ancestryTraits: character.ancestryTraits,
     incitingIncident: character.incitingIncident,
     careerPerk: character.careerPerk,
+    complication: character.complication,
     selectedLanguages: character.selectedLanguages,
     selectedPerks: WizardLogic.getSelectedPerkIds(character),
     selectedTitles: character.selectedTitles,
@@ -404,7 +425,7 @@ heroRoutes.post('/', async (c) => {
   if (portraitError) return portraitError;
   const portraitUrl = portraitAssetId ? portraitUrlForAsset(portraitAssetId) : normalizeExternalPortraitUrl(body.portraitUrl);
   if (!portraitAssetId && body.portraitUrl && !portraitUrl) return c.json({ error: 'Portrait URL must be a valid HTTPS URL' }, 400);
-  const heroData = sanitizeHeroDataForCreation(character, rawData);
+  const heroData = sanitizeHeroDataForCreation(character);
   const skills = WizardLogic.getSelectedSkillNames(character);
   const abilities = WizardLogic.getSelectedAbilityIds(character);
   const subclass = Array.isArray(character.subclass) ? character.subclass.join(',') : character.subclass;
