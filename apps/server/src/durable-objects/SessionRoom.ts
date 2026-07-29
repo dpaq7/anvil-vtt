@@ -62,6 +62,11 @@ import { WS_LIMITS } from '../policy/limits.js';
 import {
   redactStateForPlayer,
   redactNegotiationLive,
+  redactCombatForPlayer,
+  redactActionLogEntryForPlayer,
+  tokenActionTouchesHidden,
+  hiddenEntityIds,
+  hiddenEntityNames,
   parseFogZones,
   isInFog,
   isEntityHiddenFromPlayers,
@@ -1444,9 +1449,13 @@ export class SessionRoom extends DurableObject<Env> {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
           return;
         }
-        this.storeSceneFog(msg.fog);
-        // Don't exclude sender — Director needs to see their own fog
-        this.broadcast({ type: 'scene_fog_added', fog: msg.fog });
+        {
+          const hiddenBefore = this.getHiddenEntityIds();
+          this.storeSceneFog(msg.fog);
+          // Don't exclude sender — Director needs to see their own fog
+          this.broadcast({ type: 'scene_fog_added', fog: msg.fog });
+          this.syncFogVisibility(hiddenBefore);
+        }
         break;
 
       case 'scene_fog_remove':
@@ -1454,9 +1463,13 @@ export class SessionRoom extends DurableObject<Env> {
           this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
           return;
         }
-        this.removeSceneFog(msg.fogId);
-        // Don't exclude sender — Director needs to see their own removal
-        this.broadcast({ type: 'scene_fog_removed', fogId: msg.fogId });
+        {
+          const hiddenBefore = this.getHiddenEntityIds();
+          this.removeSceneFog(msg.fogId);
+          // Don't exclude sender — Director needs to see their own removal
+          this.broadcast({ type: 'scene_fog_removed', fogId: msg.fogId });
+          this.syncFogVisibility(hiddenBefore);
+        }
         break;
 
       case 'scene_terrain_add':
@@ -1666,6 +1679,62 @@ export class SessionRoom extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Broadcast combat state, filtering the roster for players.
+   *
+   * The Director's tracker always lists every combatant; players see the same
+   * order minus anything hidden by fog, so the tracker fills in as fog lifts.
+   */
+  private broadcastCombat(combat: CombatState | null): void {
+    if (!combat) return;
+    const hidden = this.getHiddenEntityIds();
+    if (hidden.size === 0) {
+      this.broadcastCombat(combat);
+      return;
+    }
+    const playerCombat = redactCombatForPlayer(combat, hidden);
+    for (const { ws, meta } of this.getConnections()) {
+      this.sendTo(ws, {
+        type: 'combat_updated',
+        combat: meta.role === 'director' ? combat : playerCombat,
+      });
+    }
+    if (this.shouldSnapshotAfterBroadcast({ type: 'combat_updated', combat })) {
+      this.scheduleActiveSceneSnapshot();
+    }
+  }
+
+  /**
+   * Reconcile player-visible entities after the hidden set changes (a fog rect
+   * was painted or erased). Entities revealed by the change are sent to players
+   * as if newly created; entities newly concealed are removed. The combat
+   * roster is re-sent so the initiative tracker fills in or empties to match.
+   */
+  private syncFogVisibility(before: Set<string>): void {
+    if (!this.sessionState) return;
+    const after = this.getHiddenEntityIds();
+
+    for (const entityId of before) {
+      if (after.has(entityId)) continue;
+      const entity = this.sessionState.entities.find((candidate) => String(candidate.id) === entityId);
+      if (entity) this.sendToRole('player', { type: 'entity_created', entity });
+    }
+
+    for (const entityId of after) {
+      if (!before.has(entityId)) this.sendToRole('player', { type: 'entity_deleted', entityId });
+    }
+
+    if (this.sessionState.combat && (before.size > 0 || after.size > 0)) {
+      this.broadcastCombat(this.sessionState.combat);
+    }
+  }
+
+  /** Ids of entities currently hidden from players by fog. */
+  private getHiddenEntityIds(): Set<string> {
+    if (!this.sessionState) return new Set();
+    return hiddenEntityIds(this.sessionState.entities, this.getActiveFogZones());
+  }
+
   /** Fog zones for the active scene, used for player-side entity visibility. */
   private getActiveFogZones(): FogZone[] {
     if (!this.sessionState) return [];
@@ -1832,7 +1901,7 @@ export class SessionRoom extends DurableObject<Env> {
         .map((entity) => entity.id);
       if (added.length > 0) {
         combat.heroEntities = [...combat.heroEntities, ...added];
-        this.broadcast({ type: 'combat_updated', combat });
+        this.broadcastCombat(combat);
       }
     }
   }
@@ -2585,7 +2654,7 @@ export class SessionRoom extends DurableObject<Env> {
       }
     }
 
-    this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });
+    this.broadcastCombat(this.sessionState.combat);
   }
 
   private canEntityAct(entityId: string): boolean {
@@ -2829,7 +2898,22 @@ export class SessionRoom extends DurableObject<Env> {
     const existing = this.sessionState.actionLog ?? [];
     if (existing.some((candidate) => candidate.id === loggedEntry.id)) return;
     this.sessionState.actionLog = [...existing, loggedEntry].slice(-MAX_ACTION_LOG_ENTRIES);
-    this.broadcast({ type: 'action_logged', entry: loggedEntry });
+
+    // Directors get the entry verbatim. Players get it with hidden entities
+    // masked, or not at all when a hidden entity authored it.
+    const hidden = this.getHiddenEntityIds();
+    if (hidden.size === 0) {
+      this.broadcast({ type: 'action_logged', entry: loggedEntry });
+      return;
+    }
+    const playerEntry = redactActionLogEntryForPlayer(
+      loggedEntry,
+      hidden,
+      hiddenEntityNames(this.sessionState.entities, hidden),
+    );
+    this.sendToRole('director', { type: 'action_logged', entry: loggedEntry });
+    if (playerEntry) this.sendToRole('player', { type: 'action_logged', entry: playerEntry });
+    this.scheduleActiveSceneSnapshot();
   }
 
   private clampLogText(value: unknown, maxLength: number): string | undefined {
@@ -3039,7 +3123,7 @@ export class SessionRoom extends DurableObject<Env> {
     if (isActiveTurn && combat) {
       turnState.moveRemaining = Math.max(0, turnState.moveRemaining - movePath.totalCost);
       combat.turnActions[entityId] = turnState;
-      this.broadcast({ type: 'combat_updated', combat });
+      this.broadcastCombat(combat);
     }
 
     const detailParts = [`Moved ${movePath.totalCost} square${movePath.totalCost === 1 ? '' : 's'}`];
@@ -3154,7 +3238,7 @@ export class SessionRoom extends DurableObject<Env> {
     const attackerActions = combat?.turnActions[trigger.attackerId];
     if (combat && attackerActions) {
       attackerActions.triggeredUsedThisRound = true;
-      this.broadcast({ type: 'combat_updated', combat });
+      this.broadcastCombat(combat);
     }
 
     this.finishTokenAction(
@@ -3596,10 +3680,23 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private finishTokenAction(result: TokenActionResult, legacyAbilityResult?: AbilityResult): void {
-    this.broadcast({ type: 'token_action_resolved', result });
+    // A result naming a hidden token (as source, target, or effect subject)
+    // also carries its stamina and conditions, so it goes to directors only.
+    // Players still see their own hero's stamina change via entity_updated,
+    // and the masked action-log line from logTokenAction below.
+    const hidden = this.getHiddenEntityIds();
+    if (tokenActionTouchesHidden(result, hidden)) {
+      this.sendToRole('director', { type: 'token_action_resolved', result });
+      if (legacyAbilityResult) {
+        this.sendToRole('director', { type: 'ability_resolved', result: legacyAbilityResult });
+      }
+      this.scheduleActiveSceneSnapshot();
+    } else {
+      this.broadcast({ type: 'token_action_resolved', result });
+      if (legacyAbilityResult) this.broadcast({ type: 'ability_resolved', result: legacyAbilityResult });
+    }
     this.logTokenAction(result);
-    if (legacyAbilityResult) this.broadcast({ type: 'ability_resolved', result: legacyAbilityResult });
-    if (this.sessionState) this.broadcast({ type: 'combat_updated', combat: this.sessionState.combat });
+    if (this.sessionState) this.broadcastCombat(this.sessionState.combat);
   }
 
   private toAbilityResult(
@@ -4262,9 +4359,11 @@ export class SessionRoom extends DurableObject<Env> {
     if (wasHidden && !nowHidden) {
       // Emerged from fog — players learn of the entity now.
       this.sendToRole('player', { type: 'entity_created', entity: entity as unknown as EntityData });
+      if (this.sessionState?.combat) this.broadcastCombat(this.sessionState.combat);
     } else if (!wasHidden && nowHidden) {
       // Entered fog — players lose sight of it.
       this.sendToRole('player', { type: 'entity_deleted', entityId });
+      if (this.sessionState?.combat) this.broadcastCombat(this.sessionState.combat);
     }
     // wasHidden && nowHidden: players never had it; nothing to send.
     this.scheduleActiveSceneSnapshot();

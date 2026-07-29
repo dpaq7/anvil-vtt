@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import type { SessionState, EntityData, NegotiationLiveState } from '../protocol.js';
+import type { SessionState, EntityData, CombatState, NegotiationLiveState } from '../protocol.js';
 import {
   parseFogZones,
   isInFog,
   isEntityHiddenFromPlayers,
+  hiddenEntityIds,
+  hiddenEntityNames,
+  redactCombatForPlayer,
+  redactActionLogEntryForPlayer,
+  tokenActionTouchesHidden,
   redactNegotiationLive,
   redactSceneDataNegotiation,
   redactStateForPlayer,
@@ -53,6 +58,141 @@ describe('isEntityHiddenFromPlayers', () => {
   it('hides nothing when there are no fog zones', () => {
     const monster: EntityData = { id: 'm3', name: 'Ogre', type: 'monster', x: 1, y: 1 };
     expect(isEntityHiddenFromPlayers(monster, [])).toBe(false);
+  });
+});
+
+describe('redactCombatForPlayer', () => {
+  const combat: CombatState = {
+    round: 2,
+    activeSide: 'villains',
+    firstSide: 'heroes',
+    initiativeRoll: 14,
+    heroEntities: ['hero-1'],
+    villainEntities: ['seen', 'hidden'],
+    villainGroups: [
+      { id: 'g1', name: 'Ogres', entityIds: ['seen', 'hidden'] },
+      { id: 'g2', name: 'Ambushers', entityIds: ['hidden'] },
+    ],
+    actedThisRound: ['hero-1', 'hidden'],
+    activeEntityId: 'hidden',
+    malice: 7,
+    turnActions: {
+      'hero-1': { mainActionUsed: true, maneuverUsed: false, moveRemaining: 3, triggeredUsedThisRound: false, mainConvertedTo: null },
+      hidden: { mainActionUsed: true, maneuverUsed: false, moveRemaining: 0, triggeredUsedThisRound: false, mainConvertedTo: null },
+    },
+  };
+  const hidden = new Set(['hidden']);
+
+  it('drops hidden combatants from the roster', () => {
+    const player = redactCombatForPlayer(combat, hidden);
+    expect(player.villainEntities).toEqual(['seen']);
+    expect(player.heroEntities).toEqual(['hero-1']);
+  });
+
+  it('prunes hidden ids from villain groups and removes groups left empty', () => {
+    const player = redactCombatForPlayer(combat, hidden);
+    expect(player.villainGroups).toHaveLength(1);
+    expect(player.villainGroups?.[0]).toMatchObject({ id: 'g1', entityIds: ['seen'] });
+  });
+
+  it('filters actedThisRound and turnActions so no raw id is left to render', () => {
+    const player = redactCombatForPlayer(combat, hidden);
+    expect(player.actedThisRound).toEqual(['hero-1']);
+    expect(Object.keys(player.turnActions)).toEqual(['hero-1']);
+  });
+
+  it('clears activeEntityId when a hidden combatant is acting', () => {
+    expect(redactCombatForPlayer(combat, hidden).activeEntityId).toBeNull();
+    // ...but keeps the side, so players still see the villains are up
+    expect(redactCombatForPlayer(combat, hidden).activeSide).toBe('villains');
+  });
+
+  it('keeps a visible activeEntityId', () => {
+    const visibleTurn = { ...combat, activeEntityId: 'seen' };
+    expect(redactCombatForPlayer(visibleTurn, hidden).activeEntityId).toBe('seen');
+  });
+
+  it('returns the original object when nothing is hidden', () => {
+    expect(redactCombatForPlayer(combat, new Set())).toBe(combat);
+  });
+
+  it('does not mutate the director copy', () => {
+    redactCombatForPlayer(combat, hidden);
+    expect(combat.villainEntities).toEqual(['seen', 'hidden']);
+    expect(combat.activeEntityId).toBe('hidden');
+  });
+});
+
+describe('tokenActionTouchesHidden', () => {
+  const hidden = new Set(['ogre']);
+
+  it('is true when the hidden entity is source, target, or an effect subject', () => {
+    expect(tokenActionTouchesHidden({ sourceId: 'ogre' }, hidden)).toBe(true);
+    expect(tokenActionTouchesHidden({ targetId: 'ogre' }, hidden)).toBe(true);
+    expect(tokenActionTouchesHidden({ effects: [{ entityId: 'ogre' }] }, hidden)).toBe(true);
+  });
+
+  it('is false for actions between visible entities', () => {
+    expect(tokenActionTouchesHidden({ sourceId: 'hero', targetId: 'goblin', effects: [] }, hidden)).toBe(false);
+  });
+
+  it('is false when nothing is hidden', () => {
+    expect(tokenActionTouchesHidden({ sourceId: 'ogre' }, new Set())).toBe(false);
+  });
+});
+
+describe('redactActionLogEntryForPlayer', () => {
+  const hidden = new Set(['ogre']);
+  const names = ['Cave Ogre'];
+
+  it('drops entries authored by a hidden entity', () => {
+    const entry = { actorId: 'ogre', actorName: 'Cave Ogre', title: 'Cave Ogre used Smash' };
+    expect(redactActionLogEntryForPlayer(entry, hidden, names)).toBeNull();
+  });
+
+  it('masks a hidden entity named inside a visible actor entry', () => {
+    const entry = {
+      actorId: 'hero-1',
+      actorName: 'Kira',
+      title: 'Kira used Strike on Cave Ogre',
+      detail: 'Cave Ogre took 8 damage',
+    };
+    const redacted = redactActionLogEntryForPlayer(entry, hidden, names);
+    expect(redacted?.title).toBe('Kira used Strike on Something');
+    expect(redacted?.detail).toBe('Something took 8 damage');
+    expect(redacted?.actorName).toBe('Kira');
+  });
+
+  it('leaves entries with no hidden reference untouched', () => {
+    const entry = { actorId: 'hero-1', actorName: 'Kira', title: 'Kira used Strike on Goblin' };
+    expect(redactActionLogEntryForPlayer(entry, hidden, names)).toBe(entry);
+  });
+
+  it('passes everything through when nothing is hidden', () => {
+    const entry = { actorId: 'ogre', title: 'Cave Ogre used Smash' };
+    expect(redactActionLogEntryForPlayer(entry, new Set(), [])).toBe(entry);
+  });
+});
+
+describe('hiddenEntityIds / hiddenEntityNames', () => {
+  const entities: EntityData[] = [
+    { id: 'hero-1', name: 'Kira', type: 'hero', x: 1, y: 1 },
+    { id: 'ogre', name: 'Cave Ogre', type: 'monster', x: 1, y: 1 },
+    { id: 'goblin', name: 'Goblin', type: 'monster', x: 9, y: 9 },
+  ];
+  const fog = [{ x: 0, y: 0, w: 3, h: 3 }];
+
+  it('collects only fog-hidden non-hero ids', () => {
+    expect([...hiddenEntityIds(entities, fog)]).toEqual(['ogre']);
+  });
+
+  it('resolves those ids to names for text masking', () => {
+    const hidden = hiddenEntityIds(entities, fog);
+    expect(hiddenEntityNames(entities, hidden)).toEqual(['Cave Ogre']);
+  });
+
+  it('is empty when there is no fog', () => {
+    expect(hiddenEntityIds(entities, []).size).toBe(0);
   });
 });
 
@@ -131,9 +271,23 @@ describe('redactStateForPlayer', () => {
         { id: 'mon-fog', name: 'Hidden Ogre', type: 'monster', x: 1, y: 1 },
         { id: 'mon-open', name: 'Visible Ogre', type: 'monster', x: 9, y: 9 },
       ],
-      combat: null,
+      combat: {
+        round: 1,
+        activeSide: 'villains',
+        firstSide: 'heroes',
+        initiativeRoll: 12,
+        heroEntities: ['hero'],
+        villainEntities: ['mon-open', 'mon-fog'],
+        actedThisRound: ['mon-fog'],
+        activeEntityId: 'mon-fog',
+        malice: 5,
+        turnActions: {},
+      },
       participants: [],
-      actionLog: [],
+      actionLog: [
+        { id: 'l1', sceneType: 'battle', actorId: 'mon-fog', actorName: 'Hidden Ogre', title: 'Hidden Ogre used Smash', timestamp: 1 },
+        { id: 'l2', sceneType: 'battle', actorId: 'hero', actorName: 'Hero', title: 'Hero used Strike on Hidden Ogre', timestamp: 2 },
+      ],
       negotiation: {
         interest: 1,
         patience: 3,
@@ -164,10 +318,25 @@ describe('redactStateForPlayer', () => {
     expect(template.motivations[0]?.description).toBe('');
   });
 
+  it('filters the combat roster to match the visible entities', () => {
+    const player = redactStateForPlayer(baseState());
+    expect(player.combat?.villainEntities).toEqual(['mon-open']);
+    expect(player.combat?.actedThisRound).toEqual([]);
+    expect(player.combat?.activeEntityId).toBeNull();
+  });
+
+  it('drops log entries authored by a hidden entity and masks its name elsewhere', () => {
+    const player = redactStateForPlayer(baseState());
+    expect(player.actionLog.map((e) => e.id)).toEqual(['l2']);
+    expect(player.actionLog[0]?.title).toBe('Hero used Strike on Something');
+  });
+
   it('does not mutate the original director state', () => {
     const state = baseState();
     redactStateForPlayer(state);
     expect(state.entities.map((e) => e.id)).toContain('mon-fog');
     expect(state.negotiation?.motivations[0]?.description).toBe('SECRET');
+    expect(state.combat?.villainEntities).toEqual(['mon-open', 'mon-fog']);
+    expect(state.actionLog).toHaveLength(2);
   });
 });
