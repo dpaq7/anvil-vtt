@@ -66,12 +66,14 @@ export interface DamageRollResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Calculate malice gained per round based on hero count.
+ * Simplified per-round base malice, used by battle templates and previews.
  *
- * Draw Steel rule: Director gains malice = hero count at start of each round.
+ * This is only the constant base component (hero count). The full Draw Steel
+ * rule grows each round — see {@link getMaliceGainForRound}, which is what the
+ * live session tracker applies during play.
  *
  * @param heroCount - Number of heroes in combat
- * @returns Malice per round
+ * @returns Base malice per round (floored at 1)
  */
 export function getMalicePerRound(heroCount: number): number {
   return Math.max(1, heroCount);
@@ -89,12 +91,15 @@ export function getStartingMalice(avgPartyVictories: number): number {
 }
 
 /**
- * Calculate total malice at start of round N.
- * Includes round-0 seeding from party victories.
+ * Calculate total accumulated malice at the start of round N.
+ *
+ * Round 0 is seeded from average party victories; each subsequent round adds
+ * `heroCount + roundNumber`, giving
+ * `floor(avgVictories) + heroCount * N + N(N + 1) / 2` at the start of round N.
  *
  * @param heroCount - Number of heroes
- * @param roundNumber - Current round (0-indexed for start, 1+ for later rounds)
- * @param avgPartyVictories - Average victories across party (for round-0 seeding)
+ * @param roundNumber - Current round (0 at encounter start, 1+ afterwards)
+ * @param avgPartyVictories - Average victories across party (round-0 seeding)
  * @returns Total accumulated malice
  */
 export function getMaliceAtRound(
@@ -102,8 +107,11 @@ export function getMaliceAtRound(
   roundNumber: number,
   avgPartyVictories: number = 0
 ): number {
-  const startingMalice = getStartingMalice(avgPartyVictories);
-  return startingMalice + getMalicePerRound(heroCount) * roundNumber;
+  let total = getStartingMalice(avgPartyVictories);
+  for (let round = 1; round <= roundNumber; round += 1) {
+    total += getMaliceGainForRound(heroCount, round);
+  }
+  return total;
 }
 
 /**
@@ -449,17 +457,20 @@ export function resolveEndTurn(
 }
 
 /**
- * Calculate malice gained at the start of a new round.
- * Draw Steel rule: malice += heroCount at start of each round (after round 1).
+ * Malice the Director gains at the start of a given combat round.
  *
- * @param heroCount - Number of heroes
- * @param roundNumber - The round that is starting
+ * Draw Steel rule: at the start of each round the Director gains malice equal
+ * to the number of heroes plus the current round number. Round 0 (encounter
+ * start) has no per-round gain; its seeding comes from
+ * {@link getStartingMalice}.
+ *
+ * @param heroCount - Number of heroes in combat
+ * @param roundNumber - The round that is starting (1-indexed)
  * @returns Malice to add
  */
 export function getMaliceGainForRound(heroCount: number, roundNumber: number): number {
-  // Round 1 already has starting malice, subsequent rounds gain heroCount
-  if (roundNumber <= 1) return 0;
-  return getMalicePerRound(heroCount);
+  if (roundNumber < 1) return 0;
+  return Math.max(0, heroCount) + roundNumber;
 }
 
 // ---------------------------------------------------------------------------

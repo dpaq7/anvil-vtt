@@ -11,6 +11,7 @@ import {
 } from '../lib/assets.js';
 import { MAX_USER_ASSETS, MAX_USER_STORAGE_BYTES, PENDING_UPLOAD_TTL_HOURS } from '../lib/quotas.js';
 import { assetRateLimits } from '../security/rate-limits.js';
+import { escapeLikePattern } from '../security/validation.js';
 
 export const assetRoutes = new Hono<AppEnv>();
 
@@ -62,7 +63,7 @@ async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: strin
     .first<{ id: string }>();
   if (row) return true;
 
-  const assetPattern = `%${assetId}%`;
+  const assetPattern = `%${escapeLikePattern(assetId)}%`;
   const linked = await c.env.DB.prepare(
     `SELECT 1
      FROM campaign_members cm
@@ -77,7 +78,7 @@ async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: strin
          FROM campaign_members hcm
          JOIN heroes h ON h.id = hcm.hero_id
          WHERE hcm.campaign_id = cm.campaign_id
-           AND (h.portrait_asset_id = ? OR h.data LIKE ?)
+           AND (h.portrait_asset_id = ? OR h.data LIKE ? ESCAPE '\\')
            AND h.deleted_at IS NULL
        )
        OR EXISTS (
@@ -86,7 +87,7 @@ async function canAccessAsset(c: Context<AppEnv>, assetId: string, userId: strin
          JOIN game_sessions gs ON gs.id = sp.game_session_id
          JOIN heroes h ON h.id = sp.hero_id
          WHERE gs.campaign_id = cm.campaign_id
-           AND (h.portrait_asset_id = ? OR h.data LIKE ?)
+           AND (h.portrait_asset_id = ? OR h.data LIKE ? ESCAPE '\\')
            AND h.deleted_at IS NULL
        )
      )
@@ -299,10 +300,10 @@ assetRoutes.delete('/:id', async (c) => {
       OR EXISTS (SELECT 1 FROM monster_portraits WHERE asset_id = ?)
       OR EXISTS (SELECT 1 FROM npcs WHERE portrait_asset_id = ?)
       OR EXISTS (SELECT 1 FROM heroes WHERE portrait_asset_id = ? AND deleted_at IS NULL)
-      OR EXISTS (SELECT 1 FROM heroes WHERE data LIKE ? AND deleted_at IS NULL)
+      OR EXISTS (SELECT 1 FROM heroes WHERE data LIKE ? ESCAPE '\\' AND deleted_at IS NULL)
      LIMIT 1`,
   )
-    .bind(assetId, assetId, assetId, assetId, assetId, assetId, `%${assetId}%`)
+    .bind(assetId, assetId, assetId, assetId, assetId, assetId, `%${escapeLikePattern(assetId)}%`)
     .first<{ 1: number }>();
   if (linked) return c.json({ error: 'Asset is in use' }, 409);
 

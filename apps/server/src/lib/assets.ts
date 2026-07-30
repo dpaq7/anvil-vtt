@@ -14,6 +14,17 @@ const ACTIVE_CONTENT_TYPES = new Set([
   'text/xml',
 ]);
 
+/**
+ * Active (script-capable) content must never be stored or served inline.
+ * Beyond the explicit list above, reject anything whose MIME hints at
+ * SVG/XML/HTML/script so near-misses such as `image/svg` (no `+xml`) cannot
+ * slip through the allowlist branches below.
+ */
+function isActiveContentType(normalized: string): boolean {
+  if (ACTIVE_CONTENT_TYPES.has(normalized)) return true;
+  return /svg|xml|html|script/.test(normalized);
+}
+
 const BROWSER_COMPATIBLE_AUDIO_CONTENT_TYPES = new Set([
   'audio/aac',
   'audio/m4a',
@@ -71,7 +82,7 @@ export function isAllowedAssetType(assetType: string): assetType is AssetType {
 
 export function isAllowedAssetContentType(assetType: string, contentType: string): boolean {
   const normalized = normalizeContentType(contentType);
-  if (!normalized || ACTIVE_CONTENT_TYPES.has(normalized)) return false;
+  if (!normalized || isActiveContentType(normalized)) return false;
   if (assetType === 'map' || assetType === 'token' || assetType === 'portrait') return normalized.startsWith('image/');
   if (assetType === 'audio') return BROWSER_COMPATIBLE_AUDIO_CONTENT_TYPES.has(normalized);
   if (assetType === 'handout') {

@@ -7,6 +7,7 @@ import {
   requireSessionDirector,
   requireSessionMember,
 } from '../lib/access.js';
+import { sceneRateLimits } from '../security/rate-limits.js';
 
 export const sceneRoutes = new Hono<AppEnv>();
 
@@ -31,6 +32,9 @@ sceneRoutes.get('/sessions/:sessionId/scenes', async (c) => {
 sceneRoutes.post('/sessions/:sessionId/scenes', async (c) => {
   const user = c.get('user') as AuthUser;
   const sessionId = c.req.param('sessionId');
+
+  const limited = await sceneRateLimits.write(c, user.id);
+  if (limited) return limited;
 
   const accessError = await requireSessionDirector(c, sessionId, user);
   if (accessError) return accessError;
@@ -75,6 +79,9 @@ sceneRoutes.get('/scenes/:id', async (c) => {
 sceneRoutes.put('/scenes/:id', async (c) => {
   const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('id');
+
+  const limited = await sceneRateLimits.write(c, user.id);
+  if (limited) return limited;
 
   const accessError = await requireSceneDirector(c, sceneId, user);
   if (accessError) return accessError;
@@ -132,6 +139,9 @@ sceneRoutes.put('/scenes/:id', async (c) => {
 sceneRoutes.delete('/scenes/:id', async (c) => {
   const user = c.get('user') as AuthUser;
   const sceneId = c.req.param('id');
+
+  const limited = await sceneRateLimits.write(c, user.id);
+  if (limited) return limited;
 
   const accessError = await requireSceneDirector(c, sceneId, user);
   if (accessError) return accessError;
