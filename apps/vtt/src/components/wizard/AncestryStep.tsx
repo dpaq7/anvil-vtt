@@ -5,7 +5,8 @@ import type { Ancestry } from '@anvil/types';
 import { CardContent, cn } from '@anvil/ui';
 import { SplitViewSelector, SelectionCard, DetailPanel } from '../creator/index.js';
 import { PhoneDecisionFlow } from '../creator/phone/index.js';
-import { TraitSelector, getRemainingTraitPoints } from './TraitSelector.js';
+import { TraitSelector } from './TraitSelector.js';
+import { getRemainingTraitPoints } from './trait-points.js';
 import { buildAncestryScreens } from './phone/AncestryScreens.js';
 import { Check } from 'lucide-react';
 

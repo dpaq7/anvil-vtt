@@ -67,11 +67,13 @@ import {
   LoadingPanel,
   SectionHeader,
   StatCard,
+} from './shared.js';
+import {
   formatBytes,
   formatDate,
   mobileContainerClass,
   titleCase,
-} from './shared.js';
+} from './shared-utils.js';
 
 export { MobileHeroDetail } from './MobileHeroDetail.js';
 

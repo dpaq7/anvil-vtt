@@ -42,19 +42,21 @@ export {
 // Sidebar
 export {
   SidebarProvider,
-  useSidebar,
   Sidebar,
   SidebarNav,
   SidebarNavItem,
   SidebarToggle,
 } from './components/Sidebar.js';
+export { useSidebar } from './components/sidebar-context.js';
 export type { SidebarNavItemProps, SidebarProviderProps } from './components/Sidebar.js';
 
 // Game UI
 export { StaminaBar } from './components/StaminaBar.js';
 export type { StaminaBarProps } from './components/StaminaBar.js';
-export { SceneTypeIcon, SCENE_COLORS, SCENE_BG_COLORS, SCENE_BORDER_COLORS } from './components/SceneTypeIcon.js';
-export type { SceneType, SceneTypeIconProps } from './components/SceneTypeIcon.js';
+export { SceneTypeIcon } from './components/SceneTypeIcon.js';
+export type { SceneTypeIconProps } from './components/SceneTypeIcon.js';
+export { SCENE_COLORS, SCENE_BG_COLORS, SCENE_BORDER_COLORS } from './components/scene-type.js';
+export type { SceneType } from './components/scene-type.js';
 
 // Role Toggle
 export { RoleToggle } from './components/RoleToggle.js';
