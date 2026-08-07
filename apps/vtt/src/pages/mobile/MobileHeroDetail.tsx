@@ -26,11 +26,13 @@ import {
   LoadingPanel,
   SectionHeader,
   StatCard,
+} from './shared.js';
+import {
   mobileContainerClass,
   parseJson,
   parseList,
   titleCase,
-} from './shared.js';
+} from './shared-utils.js';
 
 interface HeroRow {
   id: string;

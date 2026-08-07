@@ -49,10 +49,8 @@ import type {
 } from "../../lib/scene-data.js";
 import { DirectorFilmStrip } from "../../components/session/DirectorFilmStrip.js";
 import { ParticipantStatusBar } from "../../components/session/ParticipantStatusBar.js";
-import {
-  PlayerCharactersPanel,
-  getJoinedPlayerCharacters,
-} from "../../components/session/PlayerCharactersPanel.js";
+import { PlayerCharactersPanel } from "../../components/session/PlayerCharactersPanel.js";
+import { getJoinedPlayerCharacters } from "../../components/session/player-characters.js";
 import { CreatureTracker } from "../../components/session/CreatureTracker.js";
 import { CombatTracker } from "../../components/session/CombatTracker.js";
 import { DamageDialog } from "../../components/session/DamageDialog.js";
@@ -138,7 +136,7 @@ export function DirectorView({
     [send],
   );
 
-  const sceneData = activeScene?.data ?? {};
+  const sceneData = useMemo(() => activeScene?.data ?? {}, [activeScene?.data]);
 
   const [showHelp, setShowHelp] = useState(false);
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);

@@ -1,10 +1,8 @@
 'use client';
 
 import {
-  createContext,
   forwardRef,
   useCallback,
-  useContext,
   useEffect,
   useState,
   type HTMLAttributes,
@@ -12,22 +10,11 @@ import {
 } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './Tooltip.js';
 import { cn } from '../lib/utils.js';
+import { SidebarContext, useSidebar, type SidebarVariant } from './sidebar-context.js';
 
 /* ------------------------------------------------------------------ */
 /*  Context                                                           */
 /* ------------------------------------------------------------------ */
-
-type SidebarVariant = 'director' | 'player' | 'default';
-
-interface SidebarContextValue {
-  collapsed: boolean;
-  toggle: () => void;
-  expand: () => void;
-  variant: SidebarVariant;
-  setVariant: (v: SidebarVariant) => void;
-}
-
-const SidebarContext = createContext<SidebarContextValue | null>(null);
 
 const STORAGE_KEY = 'anvil-sidebar-collapsed:v2';
 
@@ -72,12 +59,6 @@ export function SidebarProvider({ children, labels = [] }: SidebarProviderProps)
       </div>
     </SidebarContext.Provider>
   );
-}
-
-export function useSidebar() {
-  const ctx = useContext(SidebarContext);
-  if (!ctx) throw new Error('useSidebar must be used within SidebarProvider');
-  return ctx;
 }
 
 /* ------------------------------------------------------------------ */

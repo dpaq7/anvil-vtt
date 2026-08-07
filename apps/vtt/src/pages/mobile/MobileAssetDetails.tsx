@@ -9,7 +9,7 @@ import {
   cn,
 } from '@anvil/ui';
 import { api } from '../../lib/api.js';
-import { formatBytes, titleCase } from './shared.js';
+import { formatBytes, titleCase } from './shared-utils.js';
 
 export interface EditableAsset {
   id: string;

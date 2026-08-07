@@ -1,28 +1,13 @@
 import type { Ancestry, AncestryFeature } from '@anvil/types';
 import { Button, cn } from '@anvil/ui';
 import { Check, Sparkles, X } from 'lucide-react';
+import { getRemainingTraitPoints } from './trait-points.js';
 
 interface Props {
   ancestry: Ancestry & { quickBuild?: string[] };
   selectedTraitIds: string[];
   onChange: (traitIds: string[]) => void;
   disabled?: boolean;
-}
-
-/**
- * Points left in the ancestry's trait budget after the given selections.
- * Shared by the selector's budget pill and the phone traits-screen helper.
- */
-export function getRemainingTraitPoints(
-  ancestry: Ancestry,
-  selectedTraitIds: string[]
-): number {
-  const traits = ancestry.purchasedTraits ?? [];
-  const spentPoints = selectedTraitIds.reduce((sum, id) => {
-    const trait = traits.find((t) => t.id === id);
-    return sum + (trait?.cost ?? 0);
-  }, 0);
-  return ancestry.ancestryPoints - spentPoints;
 }
 
 /**

@@ -15,7 +15,8 @@ import type {
   SessionState,
 } from '../../../types/protocol.js';
 import type { AbilityInfo } from '../../../components/session/AbilityCard.js';
-import { MetricPanel, PhoneButton, PhoneTabBar, num, str } from './phone-shared.js';
+import { MetricPanel, PhoneButton, PhoneTabBar } from './phone-shared.js';
+import { num, str } from './phone-utils.js';
 import { PhoneNotes } from './PhoneNotes.js';
 
 type PlayerTab = 'sheet' | 'actions' | 'trackers' | 'notes';

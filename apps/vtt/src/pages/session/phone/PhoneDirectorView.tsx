@@ -10,7 +10,8 @@ import type {
   SceneRef,
   SessionState,
 } from '../../../types/protocol.js';
-import { MetricMini, PhoneButton, PhoneTabBar, num } from './phone-shared.js';
+import { MetricMini, PhoneButton, PhoneTabBar } from './phone-shared.js';
+import { num } from './phone-utils.js';
 import { PhoneNotes } from './PhoneNotes.js';
 
 type DirectorTab = 'live' | 'initiative' | 'audio' | 'notes';
