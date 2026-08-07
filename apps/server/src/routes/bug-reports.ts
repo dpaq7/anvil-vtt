@@ -11,6 +11,9 @@ const MAX_MESSAGE_LENGTH = 800;
 const MAX_STACK_LENGTH = 8000;
 const MAX_CONTEXT_LENGTH = 12000;
 const TOKEN_PATH_SEGMENT = /^(?:[A-Z0-9]{8,}|(?=.*[0-9_-])[A-Za-z0-9_-]{6,})$/;
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>\\]+/g;
+const SECRET_PAIR =
+  /\b(token|code|state|session|auth|key|secret)=([^&\s"'<>\\]+)/gi;
 
 interface BugReportPayload {
   kind: string;
@@ -57,27 +60,47 @@ function redactUrl(value: string | null): string | null {
     url.hash = url.hash ? '#[redacted]' : '';
     return url.toString();
   } catch {
-    return value.replace(/([?&][^=]+)=([^&#]+)/g, '$1=[redacted]').replace(/#.+$/, '#[redacted]');
+    return value
+      .replace(/([?&][^=]+)=([^&#\s"'<>\\]+)/g, '$1=[redacted]')
+      .replace(/#.+$/, '#[redacted]');
   }
 }
 
 function redactText(value: string | null): string | null {
   if (!value) return null;
   return value
-    .replace(/https?:\/\/\S+/g, (url) => redactUrl(url) ?? '[redacted-url]')
-    .replace(/\b(token|code|state|session|auth|key|secret)=([^&\s]+)/gi, '$1=[redacted]');
+    .replace(URL_IN_TEXT, (url) => redactUrl(url) ?? '[redacted-url]')
+    .replace(SECRET_PAIR, '$1=[redacted]');
+}
+
+function redactedJsonStringify(value: unknown): string | null {
+  const seen = new WeakSet<object>();
+
+  try {
+    return JSON.stringify(value, (_key, nestedValue: unknown) => {
+      if (typeof nestedValue === 'string') return redactText(nestedValue);
+      if (typeof nestedValue === 'bigint') return nestedValue.toString();
+      if (!nestedValue || typeof nestedValue !== 'object') return nestedValue;
+
+      if (seen.has(nestedValue)) return '[Circular]';
+      seen.add(nestedValue);
+      return nestedValue;
+    }) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function contextToJson(value: unknown): string | null {
   if (value === undefined || value === null) return null;
 
-  try {
-    const json = redactText(JSON.stringify(value));
-    if (!json || json === 'null') return null;
-    return json.length > MAX_CONTEXT_LENGTH ? json.slice(0, MAX_CONTEXT_LENGTH) : json;
-  } catch {
-    return null;
-  }
+  const json = redactedJsonStringify(value);
+  if (!json || json === 'null') return null;
+  if (json.length <= MAX_CONTEXT_LENGTH) return json;
+  return JSON.stringify({
+    preview: json.slice(0, MAX_CONTEXT_LENGTH - 200),
+    truncated: true,
+  });
 }
 
 function parseBugReport(raw: unknown): { payload?: BugReportPayload; error?: string } {
