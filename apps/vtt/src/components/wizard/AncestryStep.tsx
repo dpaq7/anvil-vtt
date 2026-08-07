@@ -65,6 +65,10 @@ export function AncestryStep({ character, onChange }: Props) {
     if (ancestry.purchasedTraits?.length) {
       setPendingTraitScrollId(ancestry.id);
     }
+    // Re-selecting the current ancestry must not wipe purchased traits
+    if (ancestry.id === character.ancestry) {
+      return;
+    }
     onChange({ ancestry: ancestry.id, ancestryTraits: [] });
   };
 
