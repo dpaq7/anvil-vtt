@@ -7,6 +7,9 @@ const MAX_BREADCRUMB_DATA_LENGTH = 1200;
 const MAX_REPORT_CONTEXT_LENGTH = 11_000;
 const DUPLICATE_WINDOW_MS = 30_000;
 const TOKEN_PATH_SEGMENT = /^(?:[A-Z0-9]{8,}|(?=.*[0-9_-])[A-Za-z0-9_-]{6,})$/;
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>\\]+/g;
+const SECRET_PAIR =
+  /\b(token|code|state|session|auth|key|secret)=([^&\s"'<>\\]+)/gi;
 
 type BugReportContext = Record<string, unknown>;
 type BreadcrumbData = Record<string, unknown>;
@@ -37,6 +40,10 @@ let installed = false;
 let sentReports = 0;
 const breadcrumbs: BugReportBreadcrumb[] = [];
 const recentReports = new Map<string, number>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
 
 function errorParts(error: unknown): { message: string; stack: string | null } {
   if (error instanceof Error) {
@@ -84,29 +91,61 @@ function redactUrl(rawUrl: string): string {
     url.hash = url.hash ? '#[redacted]' : '';
     return url.toString();
   } catch {
-    return rawUrl.replace(/([?&][^=]+)=([^&#]+)/g, '$1=[redacted]').replace(/#.+$/, '#[redacted]');
+    return rawUrl
+      .replace(/([?&][^=]+)=([^&#\s"'<>\\]+)/g, '$1=[redacted]')
+      .replace(/#.+$/, '#[redacted]');
   }
 }
 
 function redactText(value: string | null | undefined): string | null {
   if (!value) return value ?? null;
   return value
-    .replace(/https?:\/\/\S+/g, (url) => redactUrl(url))
-    .replace(/\b(token|code|state|session|auth|key|secret)=([^&\s]+)/gi, '$1=[redacted]');
+    .replace(URL_IN_TEXT, (url) => redactUrl(url))
+    .replace(SECRET_PAIR, '$1=[redacted]');
+}
+
+function redactedJsonStringify(value: unknown): string | null {
+  const seen = new WeakSet<object>();
+
+  try {
+    return JSON.stringify(value, (_key, nestedValue: unknown) => {
+      if (typeof nestedValue === 'string') return redactText(nestedValue);
+      if (typeof nestedValue === 'bigint') return nestedValue.toString();
+      if (!nestedValue || typeof nestedValue !== 'object') return nestedValue;
+
+      if (seen.has(nestedValue)) return '[Circular]';
+      seen.add(nestedValue);
+      return nestedValue;
+    }) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function sanitizeBreadcrumbData(data: BreadcrumbData | undefined): BreadcrumbData | undefined {
   if (!data) return undefined;
 
   try {
-    const json = redactText(JSON.stringify(data));
+    const json = redactedJsonStringify(data);
     if (!json || json === 'null') return undefined;
     if (json.length > MAX_BREADCRUMB_DATA_LENGTH) {
       return { preview: json.slice(0, MAX_BREADCRUMB_DATA_LENGTH), truncated: true };
     }
-    return JSON.parse(json) as BreadcrumbData;
+    const parsed = JSON.parse(json) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function sanitizeContext(context: BugReportContext): BugReportContext {
+  try {
+    const json = redactedJsonStringify(context);
+    if (!json || json === 'null') return {};
+    const parsed = JSON.parse(json) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
   }
 }
 
@@ -134,10 +173,10 @@ export function getBugReportBreadcrumbs(): BugReportBreadcrumb[] {
 }
 
 function contextWithBreadcrumbs(inputContext: BugReportContext | undefined): BugReportContext {
-  const baseContext = {
+  const baseContext = sanitizeContext({
     ...pageContext(),
     ...inputContext,
-  };
+  });
   const reportBreadcrumbs = getBugReportBreadcrumbs();
   let context = { ...baseContext, breadcrumbs: reportBreadcrumbs };
 
