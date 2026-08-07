@@ -1,6 +1,7 @@
 import type { CharacterInProgress } from "@anvil/data";
 import { GameData, HeroLogic, WizardLogic } from "@anvil/data";
 import { PhoneDecisionFlow } from "../creator/phone/index.js";
+import { getEchelonName } from "../../lib/echelon.js";
 import { WizardPreview } from "./WizardPreview.js";
 import { resolveWizardSummary } from "./wizard-summary.js";
 import { buildReviewScreens } from "./phone/ReviewScreens.js";
@@ -23,14 +24,6 @@ const REQUIRED_STEP_LABELS: Record<number, string> = {
   [WizardLogic.WIZARD_STEPS.PERKS]: "Perks",
   [WizardLogic.WIZARD_STEPS.ABILITIES]: "Abilities",
   [WizardLogic.WIZARD_STEPS.PERSONAL]: "Personal",
-};
-
-// Mirrors LevelSelectStep's echelon naming (HeroLogic.getEchelon has no name lookup).
-const ECHELON_NAMES: Record<number, string> = {
-  1: "Adventurer",
-  2: "Veteran",
-  3: "Master",
-  4: "Legend",
 };
 
 // Sign convention for the compact characteristics line: zero and positive
@@ -70,8 +63,7 @@ export function ReviewStep({ character }: Props) {
   // render as muted dashes so gaps are visible without duplicating the
   // footer's Create Hero completion gate.
   const summary = resolveWizardSummary(character);
-  const echelon = HeroLogic.getEchelon(character.level || 1);
-  const echelonName = ECHELON_NAMES[echelon] ?? `Echelon ${echelon}`;
+  const echelonName = getEchelonName(HeroLogic.getEchelon(character.level || 1));
   const kitDisplay =
     [summary.kitName, summary.secondaryKitName].filter(Boolean).join(", ") || null;
   const selectableLanguages = GameData.getSelectableLanguages();

@@ -1,17 +1,11 @@
 import { HeroLogic } from "@anvil/data";
 import { cn } from "@anvil/ui";
+import { getEchelonName } from "../../../lib/echelon.js";
 import { useWizardStore } from "../../../stores/wizardStore.js";
 import { PhoneDecisionFlow } from "../phone/index.js";
 import { buildLevelScreens } from "../../wizard/phone/LevelScreens.js";
 
 const LEVEL_RANGE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
-
-const ECHELON_NAMES: Record<number, string> = {
-  1: "Adventurer",
-  2: "Veteran",
-  3: "Master",
-  4: "Legend",
-};
 
 const ECHELON_COLORS: Record<number, string> = {
   1: "border-creator-border bg-creator-card",
@@ -51,7 +45,7 @@ export function LevelSelectStep() {
       return {
         level,
         echelon,
-        echelonName: ECHELON_NAMES[echelon] ?? `Echelon ${echelon}`,
+        echelonName: getEchelonName(echelon),
       };
     }),
     selectedLevel,
@@ -68,7 +62,7 @@ export function LevelSelectStep() {
       <div className="space-y-4">
         {Object.entries(levelsByEchelon).map(([echelonStr, levels]) => {
           const echelon = parseInt(echelonStr, 10);
-          const echelonName = ECHELON_NAMES[echelon];
+          const echelonName = getEchelonName(echelon);
 
           return (
             <div key={echelon}>

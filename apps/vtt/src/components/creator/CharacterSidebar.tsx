@@ -1,6 +1,8 @@
 import type { CharacterInProgress, DerivedStats } from '@anvil/data';
-import { WizardLogic, GameData, HeroLogic } from '@anvil/data';
+import { WizardLogic, HeroLogic } from '@anvil/data';
 import { ScrollArea, cn } from '@anvil/ui';
+import { getEchelonName } from '../../lib/echelon.js';
+import { resolveWizardSummary } from '../wizard/wizard-summary.js';
 
 interface Props {
   character: CharacterInProgress;
@@ -27,74 +29,17 @@ function StatField({ label, value }: { label: string; value: string | number }) 
   );
 }
 
-function getCultureDisplay(character: CharacterInProgress): string | null {
-  const preset = character.culture.preset
-    ? GameData.getPrebuiltCulture(character.culture.preset)
-    : null;
-  const environment = character.culture.environment
-    ? GameData.getCulturesByType('environment').find((item) => item.id === character.culture.environment)?.name
-    : null;
-  const organization = character.culture.organization
-    ? GameData.getCulturesByType('organization').find((item) => item.id === character.culture.organization)?.name
-    : null;
-  const upbringing = character.culture.upbringing
-    ? GameData.getCulturesByType('upbringing').find((item) => item.id === character.culture.upbringing)?.name
-    : null;
-
-  const parts = [environment, organization, upbringing].filter(Boolean);
-  if (preset?.type === 'bespoke') {
-    return parts.length > 0 ? `${preset.name}: ${parts.join(' / ')}` : preset.name;
-  }
-  if (preset?.type === 'professional') return preset.name;
-  return parts.length > 0 ? parts.join(' / ') : null;
-}
-
 export function CharacterSidebar({ character, visible }: Props) {
-  // Get resolved names from IDs
-  const ancestryName = character.ancestry
-    ? GameData.getAncestry(character.ancestry)?.name ?? character.ancestry
-    : null;
+  const summary = resolveWizardSummary(character);
+  const kitDisplay =
+    [summary.kitName, summary.secondaryKitName].filter(Boolean).join(', ') || null;
 
-  const careerName = character.career
-    ? GameData.getCareer(character.career)?.name ?? character.career
-    : null;
+  const echelonName = getEchelonName(HeroLogic.getEchelon(character.level || 1));
 
-  const kitName = character.kit
-    ? GameData.getKit(character.kit)?.name ?? character.kit
-    : null;
-  const secondaryKitName = character.secondaryKit
-    ? GameData.getKit(character.secondaryKit)?.name ?? character.secondaryKit
-    : null;
-  const kitDisplay = [kitName, secondaryKitName].filter(Boolean).join(', ') || null;
-
-  const cultureDisplay = getCultureDisplay(character);
-  const complicationName = character.complication?.name ?? null;
-
-  // Format class name
-  const className = character.heroClass
-    ? character.heroClass.charAt(0).toUpperCase() + character.heroClass.slice(1)
-    : null;
-
-  // Format subclass
-  let subclassDisplay: string | null = null;
-  if (character.subclass && character.heroClass) {
-    const subclasses = Array.isArray(character.subclass)
-      ? character.subclass
-      : [character.subclass];
-    const subclassNames = subclasses.map((id) => {
-      const subclass = GameData.getSubclass(character.heroClass!, id);
-      return subclass?.name ?? id;
-    });
-    subclassDisplay = subclassNames.join(', ');
-  }
-
-  // Get echelon name
-  const echelon = HeroLogic.getEchelon(character.level || 1);
-  const echelonNames = ['', 'Adventurer', 'Veteran', 'Master', 'Legend'];
-  const echelonName = echelonNames[echelon] || '';
-
-  // Calculate derived stats
-  const derivedStats: DerivedStats = WizardLogic.calculateDerivedStats(character);
+  // summary.stats is null until a class is picked; the sidebar still shows
+  // baseline defaults then, which calculateDerivedStats returns directly.
+  const derivedStats: DerivedStats =
+    summary.stats ?? WizardLogic.calculateDerivedStats(character);
 
   // Format characteristics
   const chars = character.characteristics;
@@ -129,13 +74,13 @@ export function CharacterSidebar({ character, visible }: Props) {
                 label="Level"
                 value={`${character.level || 1} (${echelonName})`}
               />
-              <SidebarField label="Ancestry" value={ancestryName} />
-              <SidebarField label="Culture" value={cultureDisplay} />
-              <SidebarField label="Career" value={careerName} />
-              <SidebarField label="Class" value={className} />
-              <SidebarField label="Subclass" value={subclassDisplay} />
-              <SidebarField label="Complication" value={complicationName} />
-              <SidebarField label={secondaryKitName ? "Kits" : "Kit"} value={kitDisplay} />
+              <SidebarField label="Ancestry" value={summary.ancestryName} />
+              <SidebarField label="Culture" value={summary.cultureDisplay} />
+              <SidebarField label="Career" value={summary.careerName} />
+              <SidebarField label="Class" value={summary.className} />
+              <SidebarField label="Subclass" value={summary.subclassName} />
+              <SidebarField label="Complication" value={summary.complicationName} />
+              <SidebarField label={summary.secondaryKitName ? "Kits" : "Kit"} value={kitDisplay} />
             </div>
           </div>
 

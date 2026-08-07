@@ -1,7 +1,7 @@
 import type { CharacterInProgress, DerivedStats } from '@anvil/data';
 import { GameData, PERKS, WizardLogic } from '@anvil/data';
 
-export function getCultureDisplay(character: CharacterInProgress): string | null {
+function getCultureDisplay(character: CharacterInProgress): string | null {
   const preset = character.culture.preset
     ? GameData.getPrebuiltCulture(character.culture.preset)
     : null;
