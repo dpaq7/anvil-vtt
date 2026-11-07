@@ -84,6 +84,32 @@ describe('Forge Steel hero compatibility', () => {
     expect(result.skills).toEqual(['Short Skill']);
   });
 
+  it('ignores ability names over the import text limit', () => {
+    const source = hero();
+    const name = `Unquiet Ground${'!'.repeat(HERO_LIMITS.forgeSteelTextLength)}`;
+    source.features = [{ type: 'Ability', data: { ability: { name } } }];
+    expect(normalizeForgeSteelHero(source).abilities).toEqual([]);
+  });
+
+  it('de-duplicates abilities before capping them', () => {
+    const source = hero();
+    const repeats = Array.from({ length: HERO_LIMITS.forgeSteelListItems + 5 }, () => 'repeated-id');
+    source.features = [{ type: 'Class Ability', data: { selectedIDs: [...repeats, 'last-id'] } }];
+    expect(normalizeForgeSteelHero(source).abilities).toEqual(['repeated-id', 'last-id']);
+  });
+
+  it('still matches abilities by normalized name', () => {
+    const source = hero();
+    source.features = [{ type: 'Ability', data: { ability: { id: 'forge-only-id', name: 'unquiet  ground' } } }];
+    expect(normalizeForgeSteelHero(source).abilities).toEqual(['unquiet-ground']);
+  });
+
+  it('ignores ancestry names over the import text limit', () => {
+    const source = hero();
+    source.ancestry = { name: `Dwarf${'!'.repeat(HERO_LIMITS.forgeSteelTextLength)}` };
+    expect(normalizeForgeSteelHero(source).ancestry).toBeNull();
+  });
+
   it('caps imported lists', () => {
     const source = hero();
     const selected = Array.from({ length: HERO_LIMITS.forgeSteelListItems + 5 }, (_, index) => `Skill ${index}`);

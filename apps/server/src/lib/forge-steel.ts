@@ -23,6 +23,11 @@ export interface NormalizedForgeSteelHero {
   warnings: string[];
 }
 
+interface AbilitySource {
+  id: string | null;
+  name: string | null;
+}
+
 function record(value: unknown): JsonRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null;
 }
@@ -46,7 +51,7 @@ function normalized(value: string): string {
 
 function resolveNamed<T extends { id: string; name: string }>(source: JsonRecord | null, choices: T[]): T | null {
   const id = text(source?.['id']);
-  const name = text(source?.['name']);
+  const name = shortText(source?.['name']);
   return choices.find((choice) => choice.id === id)
     ?? choices.find((choice) => name && normalized(choice.name) === normalized(name))
     ?? null;
@@ -101,6 +106,15 @@ function unique(values: string[]): string[] {
   return [...new Set(kept)].slice(0, HERO_LIMITS.forgeSteelListItems);
 }
 
+function uniqueAbilitySources(sources: AbilitySource[]): AbilitySource[] {
+  const byKey = new Map<string, AbilitySource>();
+  for (const source of sources) {
+    const key = source.id ?? source.name;
+    if (key && !byKey.has(key)) byKey.set(key, source);
+  }
+  return [...byKey.values()].slice(0, HERO_LIMITS.forgeSteelListItems);
+}
+
 function inventoryFromState(state: JsonRecord): Record<string, unknown>[] {
   if (!Array.isArray(state['inventory'])) return [];
   return state['inventory'].flatMap((raw, index) => {
@@ -144,22 +158,28 @@ export function normalizeForgeSteelHero(hero: ForgeSteelHeroFile): NormalizedFor
     ? classSource['subclasses'].map(record).find((item) => item?.['selected'] === true)
     : null;
   const selections = featureSelections(hero);
-  const kit = selections.kitNames
+  const kit = unique(selections.kitNames)
     .map((name) => GameData.getKitByName(name))
     .find((choice) => !!choice) ?? null;
 
   const idNames = new Map<string, string>();
-  walk(hero, (item) => { const id = text(item['id']); const name = text(item['name']); if (id && name) idNames.set(id, name); });
-  const sourceAbilities = [
-    ...selections.directAbilities.map((ability) => ({ id: text(ability['id']), name: text(ability['name']) })),
-    ...selections.abilityIds.map((id) => ({ id, name: idNames.get(id) ?? null })),
-  ].slice(0, HERO_LIMITS.forgeSteelListItems);
-  const anvilAbilities = GameData.getAllAbilities();
-  const abilities = unique(sourceAbilities.flatMap((source) => {
-    const match = anvilAbilities.find((ability) => ability.metadata.item_id === source.id)
-      ?? anvilAbilities.find((ability) => source.name && normalized(ability.name) === normalized(source.name));
-    return match?.metadata.item_id ?? source.id ?? [];
-  }));
+  walk(hero, (item) => { const id = shortText(item['id']); const name = shortText(item['name']); if (id && name) idNames.set(id, name); });
+  const sourceAbilities = uniqueAbilitySources([
+    ...selections.directAbilities.map((ability) => ({ id: shortText(ability['id']), name: shortText(ability['name']) })),
+    ...selections.abilityIds.map((id) => ({ id: shortText(id), name: idNames.get(id) ?? null })),
+  ]);
+  const abilitiesById = new Map<string, string>();
+  const abilitiesByName = new Map<string, string>();
+  for (const { name, metadata: { item_id: id } } of GameData.getAllAbilities()) {
+    if (!abilitiesById.has(id)) abilitiesById.set(id, id);
+    if (!abilitiesByName.has(normalized(name))) abilitiesByName.set(normalized(name), id);
+  }
+  const abilities = unique(sourceAbilities.flatMap((source) => (
+    (source.id ? abilitiesById.get(source.id) : undefined)
+      ?? (source.name ? abilitiesByName.get(normalized(source.name)) : undefined)
+      ?? source.id
+      ?? []
+  )));
   const state = record(hero.state) ?? {};
   const culture = record(hero.culture);
   const picture = text(hero.picture);
