@@ -406,7 +406,7 @@ async function main() {
 
     await player.request(`/api/sessions/${sessionId}/join`, {
       method: 'POST',
-      body: { hero_id: hero.id },
+      body: { hero_id: hero.id, room_code: roomCode },
     });
 
     const directorSocket = await openSessionSocket(director, sessionId, 'director');
@@ -835,7 +835,8 @@ function hasBattleSnapshotState(sceneId, villainId) {
   return (message) => {
     if (!hasActiveScene(sceneId, 'battle')(message)) return false;
     const villain = message.state.entities.find((entity) => entity.id === villainId);
-    return Array.isArray(villain?.conditions) && villain.conditions.includes('prone');
+    return Array.isArray(villain?.conditions) &&
+      villain.conditions.some((condition) => (condition?.name ?? condition) === 'prone');
   };
 }
 
