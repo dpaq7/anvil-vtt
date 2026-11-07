@@ -1,0 +1,768 @@
+{
+  "_note": "Names, stats, conditions, turn state and positions only. No rules text, ability text or art. Built 2026-11-07 from live session; see design/redesign/HARNESS.md.",
+  "scene": {
+    "name": "Get the Sword!",
+    "type": "battle",
+    "gridCols": 17,
+    "gridRows": 22,
+    "heroStart": {
+      "x": 4,
+      "y": 19,
+      "width": 3,
+      "height": 2
+    },
+    "fogZones": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      }
+    ]
+  },
+  "combat": {
+    "round": 1,
+    "activeSide": "heroes",
+    "firstSide": "heroes",
+    "initiativeRoll": 7,
+    "malice": 8,
+    "heroEntities": [
+      "65f91b0f-3d4d-4f5a-b75f-16a5655b23df",
+      "hero-ilsabet-corvane",
+      "hero-dovrin-ashgrove",
+      "hero-wren-halloway",
+      "hero-torvald-brightmantle",
+      "hero-ysolde-fennimore",
+      "hero-pip-underbough"
+    ],
+    "villainEntities": [
+      "rts-cicero",
+      "rts-ratcrobat-red",
+      "rts-ratcrobat-blue",
+      "rts-ratcrobat-yellow",
+      "rts-scrapper-1",
+      "rts-scrapper-2",
+      "rts-scrapper-3",
+      "rts-scrapper-4",
+      "rts-scrapper-5",
+      "rts-scrapper-6",
+      "rts-scrapper-7",
+      "rts-scrapper-8",
+      "rts-scrapper-9",
+      "rts-scrapper-10",
+      "rts-scrapper-11",
+      "rts-scrapper-12",
+      "1794071929866-0-wz0ska9",
+      "1794071942596-0-avhvvqh",
+      "1794071943671-0-on9klwa",
+      "1794071945040-0-jjl9ihg",
+      "1794071946455-0-j8mrues",
+      "1794072042688-0-s4rpylj",
+      "1794072044115-0-af8qjvn",
+      "1794072045639-0-8182yfy",
+      "1794072047140-0-6hpc400"
+    ],
+    "actedThisRound": [
+      "hero-dovrin-ashgrove"
+    ],
+    "activeEntityId": "hero-ilsabet-corvane"
+  },
+  "turnActions": {
+    "hero-ilsabet-corvane": {
+      "mainActionUsed": false,
+      "maneuverUsed": false,
+      "moveRemaining": 6,
+      "triggeredUsedThisRound": false,
+      "mainConvertedTo": null
+    }
+  },
+  "entities": [
+    {
+      "id": "65f91b0f-3d4d-4f5a-b75f-16a5655b23df",
+      "name": "Smoke Beastheart 20261107171055",
+      "type": "hero",
+      "x": 15,
+      "y": 14,
+      "level": 1,
+      "stamina": {
+        "current": 27,
+        "max": 27
+      },
+      "state": "healthy",
+      "conditions": [],
+      "ancestry": "human",
+      "heroClass": "beastheart",
+      "subclass": "guardian",
+      "heroicResourceName": "Ferocity",
+      "heroicResource": 0,
+      "recoveriesCurrent": 12,
+      "recoveriesMax": 12,
+      "victories": 0,
+      "speed": 6
+    },
+    {
+      "id": "rts-cicero",
+      "name": "Cicero",
+      "type": "monster",
+      "x": 15,
+      "y": 13,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "platoon",
+        "support"
+      ],
+      "stamina": {
+        "current": 36,
+        "max": 40
+      },
+      "state": "healthy",
+      "conditions": [
+        "prone"
+      ],
+      "monsterName": "Radenwight Piper"
+    },
+    {
+      "id": "rts-ratcrobat-red",
+      "name": "Radenwight Ratcrobat 1",
+      "type": "monster",
+      "x": 1,
+      "y": 16,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "platoon",
+        "harrier"
+      ],
+      "stamina": {
+        "current": 30,
+        "max": 30
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Ratcrobat"
+    },
+    {
+      "id": "rts-ratcrobat-blue",
+      "name": "Radenwight Ratcrobat 2",
+      "type": "monster",
+      "x": 6,
+      "y": 15,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "platoon",
+        "harrier"
+      ],
+      "stamina": {
+        "current": 30,
+        "max": 30
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Ratcrobat"
+    },
+    {
+      "id": "rts-ratcrobat-yellow",
+      "name": "Radenwight Ratcrobat 3",
+      "type": "monster",
+      "x": 9,
+      "y": 18,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "platoon",
+        "harrier"
+      ],
+      "stamina": {
+        "current": 30,
+        "max": 30
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Ratcrobat"
+    },
+    {
+      "id": "rts-scrapper-1",
+      "name": "Radenwight Scrapper 1",
+      "type": "monster",
+      "x": 1,
+      "y": 18,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-red",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-2",
+      "name": "Radenwight Scrapper 2",
+      "type": "monster",
+      "x": 2,
+      "y": 17,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-red",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-3",
+      "name": "Radenwight Scrapper 3",
+      "type": "monster",
+      "x": 4,
+      "y": 16,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-red",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-4",
+      "name": "Radenwight Scrapper 4",
+      "type": "monster",
+      "x": 5,
+      "y": 16,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-red",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-5",
+      "name": "Radenwight Scrapper 5",
+      "type": "monster",
+      "x": 4,
+      "y": 14,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-blue",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-6",
+      "name": "Radenwight Scrapper 6",
+      "type": "monster",
+      "x": 5,
+      "y": 13,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-blue",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-7",
+      "name": "Radenwight Scrapper 7",
+      "type": "monster",
+      "x": 7,
+      "y": 14,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-blue",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-8",
+      "name": "Radenwight Scrapper 8",
+      "type": "monster",
+      "x": 9,
+      "y": 13,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-blue",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-9",
+      "name": "Radenwight Scrapper 9",
+      "type": "monster",
+      "x": 8,
+      "y": 16,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-yellow",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-10",
+      "name": "Radenwight Scrapper 10",
+      "type": "monster",
+      "x": 10,
+      "y": 16,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-yellow",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-11",
+      "name": "Radenwight Scrapper 11",
+      "type": "monster",
+      "x": 9,
+      "y": 20,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-yellow",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "rts-scrapper-12",
+      "name": "Radenwight Scrapper 12",
+      "type": "monster",
+      "x": 11,
+      "y": 19,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "minion",
+        "defender"
+      ],
+      "squadId": "rts-scrappers-yellow",
+      "squadSize": 4,
+      "stamina": {
+        "current": 5,
+        "max": 5
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Radenwight Scrapper"
+    },
+    {
+      "id": "1794071929866-0-wz0ska9",
+      "name": "Angulotl Daybringer",
+      "type": "monster",
+      "x": 10,
+      "y": 9,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "Leader"
+      ],
+      "stamina": {
+        "current": 49,
+        "max": 80
+      },
+      "state": "healthy",
+      "conditions": []
+    },
+    {
+      "id": "1794071942596-0-avhvvqh",
+      "name": "Angulotl Hopper",
+      "type": "monster",
+      "x": 12,
+      "y": 12,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "Harrier"
+      ],
+      "stamina": {
+        "current": 21,
+        "max": 21
+      },
+      "state": "healthy",
+      "conditions": [
+        "taunted"
+      ]
+    },
+    {
+      "id": "1794071943671-0-on9klwa",
+      "name": "Angulotl Needler",
+      "type": "monster",
+      "x": 13,
+      "y": 8,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "Horde Artillery"
+      ],
+      "stamina": {
+        "current": 10,
+        "max": 10
+      },
+      "state": "healthy",
+      "conditions": []
+    },
+    {
+      "id": "1794071945040-0-jjl9ihg",
+      "name": "Angulotl Slink",
+      "type": "monster",
+      "x": 3,
+      "y": 10,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "Horde Ambusher"
+      ],
+      "stamina": {
+        "current": 15,
+        "max": 15
+      },
+      "state": "healthy",
+      "conditions": [
+        "grabbed"
+      ]
+    },
+    {
+      "id": "1794071946455-0-j8mrues",
+      "name": "Angulotl Wave",
+      "type": "monster",
+      "x": 7,
+      "y": 7,
+      "size": 1,
+      "level": 1,
+      "roles": [
+        "Horde Controller"
+      ],
+      "stamina": {
+        "current": 10,
+        "max": 10
+      },
+      "state": "healthy",
+      "conditions": []
+    },
+    {
+      "id": "1794072042688-0-s4rpylj",
+      "name": "Aeolyxria the Uncanny, Warden of the Seven Sunken Bells of Old Marrowmere",
+      "type": "monster",
+      "x": 9,
+      "y": 4,
+      "size": 2,
+      "level": 6,
+      "roles": [
+        "Elite Controller"
+      ],
+      "stamina": {
+        "current": 140,
+        "max": 140
+      },
+      "state": "healthy",
+      "conditions": [],
+      "monsterName": "Aeolyxria the Uncanny"
+    },
+    {
+      "id": "1794072044115-0-af8qjvn",
+      "name": "Ajax the Invincible",
+      "type": "monster",
+      "x": 5,
+      "y": 3,
+      "size": 2,
+      "level": 11,
+      "roles": [
+        "Solo"
+      ],
+      "stamina": {
+        "current": 520,
+        "max": 700
+      },
+      "state": "healthy",
+      "conditions": [
+        "weakened"
+      ]
+    },
+    {
+      "id": "1794072045639-0-8182yfy",
+      "name": "Arixx",
+      "type": "monster",
+      "x": 14,
+      "y": 5,
+      "size": 2,
+      "level": 1,
+      "roles": [
+        "Solo"
+      ],
+      "stamina": {
+        "current": 140,
+        "max": 200
+      },
+      "state": "healthy",
+      "conditions": [
+        "restrained"
+      ]
+    },
+    {
+      "id": "1794072047140-0-6hpc400",
+      "name": "Ashen Hoarder",
+      "type": "monster",
+      "x": 2,
+      "y": 6,
+      "size": 2,
+      "level": 4,
+      "roles": [
+        "Solo"
+      ],
+      "stamina": {
+        "current": 210,
+        "max": 350
+      },
+      "state": "healthy",
+      "conditions": []
+    },
+    {
+      "id": "hero-ilsabet-corvane",
+      "name": "Ilsabet Corvane",
+      "type": "hero",
+      "x": 4,
+      "y": 19,
+      "level": 1,
+      "stamina": {
+        "current": 28,
+        "max": 34
+      },
+      "state": "healthy",
+      "conditions": [
+        "dazed"
+      ],
+      "ancestry": "human",
+      "heroClass": "tactician",
+      "subclass": "marshal",
+      "heroicResourceName": "Focus",
+      "heroicResource": 0,
+      "recoveriesCurrent": 8,
+      "recoveriesMax": 8,
+      "victories": 0,
+      "speed": 6
+    },
+    {
+      "id": "hero-dovrin-ashgrove",
+      "name": "Dovrin Ashgrove",
+      "type": "hero",
+      "x": 5,
+      "y": 19,
+      "level": 1,
+      "stamina": {
+        "current": 30,
+        "max": 30
+      },
+      "state": "healthy",
+      "conditions": [],
+      "ancestry": "dwarf",
+      "heroClass": "conduit",
+      "subclass": "air",
+      "heroicResourceName": "Piety",
+      "heroicResource": 0,
+      "recoveriesCurrent": 8,
+      "recoveriesMax": 8,
+      "victories": 0,
+      "speed": 5
+    },
+    {
+      "id": "hero-wren-halloway",
+      "name": "Wren Halloway",
+      "type": "hero",
+      "x": 6,
+      "y": 19,
+      "level": 1,
+      "stamina": {
+        "current": 11,
+        "max": 26
+      },
+      "state": "winded",
+      "conditions": [
+        "bleeding",
+        "weakened"
+      ],
+      "ancestry": "polder",
+      "heroClass": "shadow",
+      "subclass": "black ash",
+      "heroicResourceName": "Insight",
+      "heroicResource": 0,
+      "recoveriesCurrent": 8,
+      "recoveriesMax": 8,
+      "victories": 0,
+      "speed": 7
+    },
+    {
+      "id": "hero-torvald-brightmantle",
+      "name": "Torvald Brightmantle",
+      "type": "hero",
+      "x": 4,
+      "y": 20,
+      "level": 1,
+      "stamina": {
+        "current": 27,
+        "max": 36
+      },
+      "state": "healthy",
+      "conditions": [
+        "frightened"
+      ],
+      "ancestry": "devil",
+      "heroClass": "censor",
+      "subclass": "paragon",
+      "heroicResourceName": "Wrath",
+      "heroicResource": 0,
+      "recoveriesCurrent": 8,
+      "recoveriesMax": 8,
+      "victories": 0,
+      "speed": 5
+    },
+    {
+      "id": "hero-ysolde-fennimore",
+      "name": "Ysolde Fennimore",
+      "type": "hero",
+      "x": 5,
+      "y": 20,
+      "level": 1,
+      "stamina": {
+        "current": 24,
+        "max": 24
+      },
+      "state": "healthy",
+      "conditions": [
+        "slowed"
+      ],
+      "ancestry": "high elf",
+      "heroClass": "elementalist",
+      "subclass": "fire",
+      "heroicResourceName": "Essence",
+      "heroicResource": 0,
+      "recoveriesCurrent": 8,
+      "recoveriesMax": 8,
+      "victories": 0,
+      "speed": 6
+    },
+    {
+      "id": "hero-pip-underbough",
+      "name": "Pip Underbough",
+      "type": "hero",
+      "x": 6,
+      "y": 20,
+      "level": 1,
+      "stamina": {
+        "current": 0,
+        "max": 28
+      },
+      "state": "dying",
+      "conditions": [],
+      "ancestry": "hakaan",
+      "heroClass": "troubadour",
+      "subclass": "duelist",
+      "heroicResourceName": "Drama",
+      "heroicResource": 0,
+      "recoveriesCurrent": 8,
+      "recoveriesMax": 8,
+      "victories": 0,
+      "speed": 6
+    }
+  ]
+}
