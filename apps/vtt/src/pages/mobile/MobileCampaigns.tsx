@@ -8,6 +8,7 @@ import type { CampaignData } from '../../components/sessions/types.js';
 import { EmptyState, LoadingPanel } from './shared.js';
 import { SceneCreateSheet } from './MobileSceneCreate.js';
 import type { SceneCreateTarget } from './MobileSceneCreate.js';
+import { CampaignPackageImportDialog } from '../../components/import/CampaignPackageImportDialog.js';
 
 function InlineNameForm({
   placeholder,
@@ -339,10 +340,13 @@ export function MobileCampaigns() {
           <p className="mt-1 text-xs text-zinc-500">{campaigns.length} directed</p>
         </div>
         {!creating && (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            New
-          </Button>
+          <div className="flex items-center gap-2">
+            <CampaignPackageImportDialog compact onImported={async () => { await load(); }} />
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              New
+            </Button>
+          </div>
         )}
       </div>
 
