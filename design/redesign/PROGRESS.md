@@ -4,7 +4,9 @@ Plan: `docs/plans/2026-11-07-demo-led-redesign.md`. Work happens in the worktree
 
 ## Current state
 
-- Tasks 1 to 3 done. Next: Task 4.
+- Tasks 1 to 4 done. Next: Task 5.
+- `redesign/demo-led` is pushed to `origin` as a backup. Push after each task.
+- The live session no longer matches `battle-dense.json` exactly: capturing the Player's turn moved it on. Scene switches restored the extra heroes from the snapshot on return to Battle.
 - The six extra heroes in the dense battle live only in session state, so a scene switch drops them. Capture Battle before changing scene, or rebuild from `HARNESS.md`.
 - PR #73 (combat crash and smoke script fix) is open and needs Dan's merge. It is merged into `redesign/demo-led`.
 - PR #72 (imports) is open and needs Dan's merge. It has three open security findings, listed in its description.
@@ -23,4 +25,4 @@ Plan: `docs/plans/2026-11-07-demo-led-redesign.md`. Work happens in the worktree
 
 ## Repo incident (2026-11-07)
 
-Commit 57ba67d and two blobs vanished from the local object store around 12:27, when packs were rewritten. Likely an automatic `git gc` running alongside other sessions, not proven. Restored with a fetch from `origin` into a temporary ref. `git fsck` was clean afterwards. If git reports `invalid sha1 pointer`, check `git fsck --full` and refetch: do not delete refs.
+Commit 57ba67d and two blobs vanished from the local object store around 12:27, when packs were rewritten. It happened again around 12:30, with commit 9c383a88. A `git maintenance run --auto` cruft repack was seen running, set off by `gc.auto=250` in Dan's global `.gitconfig`. It is the likely cause, not proven. Run git with `GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=gc.auto GIT_CONFIG_VALUE_0=0 GIT_CONFIG_KEY_1=maintenance.auto GIT_CONFIG_VALUE_1=false`. Restored with a fetch from `origin` into a temporary ref. `git fsck` was clean afterwards. If git reports `invalid sha1 pointer`, check `git fsck --full` and refetch: do not delete refs.
