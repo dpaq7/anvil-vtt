@@ -12,14 +12,13 @@ export const BASE = process.env.AUDIT_BASE ?? 'http://localhost:5173';
 export const API_WS = process.env.AUDIT_WS ?? 'ws://localhost:8797';
 export const SESSION = process.env.AUDIT_SESSION ?? '964a442a-80fe-4f07-9dd2-68bd47af6eae';
 
-// playwright-core is not a repo dependency. Set PLAYWRIGHT_CORE to any copy of
-// it, or install one with `npm i --no-save` under design/redesign (gitignored).
+// playwright-core is a devDependency of design/redesign (npm install there).
+// PLAYWRIGHT_CORE may point at another copy.
 export function loadPlaywright() {
   const require = createRequire(import.meta.url);
   const candidates = [
     process.env.PLAYWRIGHT_CORE,
     'playwright-core',
-    resolve(here, '../../../../../../tmp/forge-steel-session-three-reference/node_modules/playwright-core'),
   ].filter(Boolean);
   for (const c of candidates) {
     try { return require(c); } catch { /* next */ }

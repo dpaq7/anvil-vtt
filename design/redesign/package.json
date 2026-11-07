@@ -1,0 +1,25 @@
+{
+  "name": "anvil-redesign-demos",
+  "private": true,
+  "type": "module",
+  "description": "Standalone demo project for the Anvil v2 visual redesign. Not part of the pnpm workspace: use npm here.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "tokens": "node tokens/build-look.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "playwright-core": "~1.48.2",
+    "typescript": "^5.6.3",
+    "vite": "^6.4.5"
+  }
+}
