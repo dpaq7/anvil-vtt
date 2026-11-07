@@ -1,48 +1,88 @@
 {
-  "_source": "packages/ui/src/globals.css (dark :root and [data-theme=light]). Edit here, then run: npm run tokens",
+  "_source": "Storyboard, the direction chosen at Gate 1 (tokens/direction-c.json), extended at Gate 2 with the quiet rule, the hard-shadow colour and the art tokens. Edit here, then run: npm run tokens",
+  "_rule": "Heavy ink carries meaning: the map frame, the active scene, whoever is acting, dying, the primary action, anything floating over the map. Everything inside a rail uses the quiet rule. Anything drawn on the map uses art tokens, so it reads the same in both themes and on any uploaded map.",
   "fonts": {
-    "display": "\"Fraunces Variable\", Georgia, \"Times New Roman\", serif",
-    "body": "\"Inter Variable\", \"Inter\", system-ui, -apple-system, sans-serif",
+    "display": "\"Bricolage Grotesque Variable\", sans-serif",
+    "body": "\"Atkinson Hyperlegible\", system-ui, sans-serif",
     "mono": "ui-monospace, SFMono-Regular, Menlo, monospace"
   },
-  "shape": { "card": "16px", "chip": "9999px" },
-  "shadow": {
-    "paper": "0 1px 2px rgb(36 36 35 / 0.08), 0 4px 16px rgb(36 36 35 / 0.1)",
-    "paperLift": "0 2px 4px rgb(36 36 35 / 0.1), 0 12px 32px rgb(36 36 35 / 0.16)"
-  },
-  "brand": {
-    "accent": "#efea5a",
-    "ink": "#242423",
-    "paper": "#f7f2ea",
-    "parchment": { "50": "#fbf7ef", "100": "#f7f2ea", "200": "#efe6d6", "300": "#e2d5bf" },
-    "ember": { "400": "#e8703d", "500": "#d45a2a", "600": "#b34a20" },
-    "inkSoft": "#4a4238"
+  "type": { "min": "13px", "body": "14px", "name": "14px", "heading": "16px", "wordmark": "32px" },
+  "shape": {
+    "radius": "0",
+    "frame": "3px",
+    "frameQuiet": "1.5px",
+    "hardShadow": "4px 4px 0",
+    "hardShadowSmall": "3px 3px 0",
+    "railLeft": "304px",
+    "railRight": "294px"
   },
   "scene": {
-    "battle": "#ef4444",
-    "story": "#a855f7",
-    "montage": "#f59e0b",
-    "negotiation": "#3b82f6",
-    "respite": "#22c55e"
+    "story": "#8b3fe0",
+    "montage": "#e38a00",
+    "negotiation": "#2b6fe6",
+    "battle": "#cf2a20",
+    "respite": "#1f9d55"
+  },
+  "onScene": {
+    "story": "#ffffff",
+    "montage": "#15171c",
+    "negotiation": "#ffffff",
+    "battle": "#ffffff",
+    "respite": "#15171c"
+  },
+  "art": {
+    "ink": "#15171c",
+    "plate": "#ffffff",
+    "onPlate": "#15171c",
+    "heroPlate": "#15171c",
+    "onHeroPlate": "#ffffff",
+    "activePlate": "#2348c9",
+    "onActivePlate": "#ffffff",
+    "hazard": "#ffd21f",
+    "onHazard": "#15171c",
+    "fog": "#15171c",
+    "fogHatch": "#2c3038"
   },
   "themes": {
-    "dark": {
-      "zinc": { "950": "#242423", "900": "#2d2d2c", "800": "#363635", "700": "#4a4a49", "600": "#5a5a58", "500": "#7a9998", "400": "#8ab0af", "300": "#a0c4c3", "200": "#b7d5d4", "100": "#c8e0df", "50": "#d4e8e7" },
-      "highlight": "#9a7197",
-      "flowDirector": "#fecdd3",
-      "flowPlayer": "#a5f3fc",
-      "success": "#22c55e",
-      "danger": "#ef4444",
-      "warning": "#f59e0b"
-    },
     "light": {
-      "zinc": { "950": "#f6f1e8", "900": "#fffdf9", "800": "#eee7dd", "700": "#d7cec2", "600": "#b9afa4", "500": "#6c7d78", "400": "#586d68", "300": "#435a54", "200": "#30433e", "100": "#202c29", "50": "#111816" },
-      "highlight": "#8a5d87",
-      "flowDirector": "#9f1239",
-      "flowPlayer": "#155e75",
-      "success": "#15803d",
-      "danger": "#b91c1c",
-      "warning": "#b45309"
+      "canvas": "#8fa6ab",
+      "onCanvas": "#15171c",
+      "surface": "#f1f3ee",
+      "well": "#e2e6e1",
+      "raised": "#ffffff",
+      "text": "#15171c",
+      "textSoft": "#3f4650",
+      "line": "#15171c",
+      "lineQuiet": "#c3cac6",
+      "shadow": "#15171c",
+      "active": "#2348c9",
+      "onActive": "#ffffff",
+      "activeSoft": "#dbe3ff",
+      "alert": "#b3241b",
+      "danger": "#ffd21f",
+      "onDanger": "#15171c",
+      "success": "#1a7a43",
+      "mapDim": "1"
+    },
+    "dark": {
+      "canvas": "#46565b",
+      "onCanvas": "#f1f3ee",
+      "surface": "#1d2024",
+      "well": "#2a2e34",
+      "raised": "#30353c",
+      "text": "#f1f3ee",
+      "textSoft": "#c3cbd0",
+      "line": "#d3dad8",
+      "lineQuiet": "#464d54",
+      "shadow": "#0d0e11",
+      "active": "#9db4ff",
+      "onActive": "#15171c",
+      "activeSoft": "#2b3560",
+      "alert": "#ff9d92",
+      "danger": "#ffd21f",
+      "onDanger": "#15171c",
+      "success": "#6fd39b",
+      "mapDim": "0.86"
     }
   }
 }

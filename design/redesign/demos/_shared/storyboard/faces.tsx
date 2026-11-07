@@ -65,7 +65,7 @@ export function HeroFace({ who, out, size = 44 }: { who: string; out?: boolean; 
       {out ? <path {...line} strokeWidth="3" fill="#ff7a7a" d="M27 54q5-5 10 0-5 7-10 0Z" /> : <path {...line} strokeWidth="3" fill="none" d="M27 52q5 3 10 0" />}
     </>,
   };
-  return <svg width={size} height={size} viewBox="-5 -5 74 74" aria-hidden>{art[who]}</svg>;
+  return <svg width={size} height={size} viewBox="-7 -7 78 78" aria-hidden>{art[who]}</svg>;
 }
 
 export function FoeFace({ family, rank, size = 40 }: { family: 'rat' | 'frog' | 'boss' | 'cicero'; rank?: 'ratcrobat'; size?: number }) {
@@ -92,5 +92,5 @@ export function FoeFace({ family, rank, size = 40 }: { family: 'rat' | 'frog' | 
       <path {...line} fill={INK} d="M28 52h8l-4 5Z" /><Eyes y={38} gap={9} />
     </>,
   };
-  return <svg width={size} height={size} viewBox="-5 -5 74 74" aria-hidden>{art[family]}</svg>;
+  return <svg width={size} height={size} viewBox="-7 -7 78 78" aria-hidden>{art[family]}</svg>;
 }

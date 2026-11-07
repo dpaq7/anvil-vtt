@@ -10,7 +10,7 @@ import {
   placeLabels, rightTabs, scene, scenes, spline, terrain, tools, turn, type Hero, type Monster, type Slot, type Unit,
 } from '../_shared/battle';
 import { MiniMap, conditionIcon } from '../_shared/parts';
-import { FoeFace, HeroFace } from './faces';
+import { FoeFace, HeroFace } from '../_shared/storyboard/faces';
 import './storyboard.css';
 
 const CELL = 46;

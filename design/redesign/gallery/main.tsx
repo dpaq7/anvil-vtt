@@ -31,11 +31,11 @@ function App() {
     const ids = gates[gate] ?? [];
     if (!ids.length) return <p className="g-miss">Gate {gate} has no demos yet.</p>;
     return (
-      <div className="g-gate" style={{ display: 'flex', gap: 24, flexWrap: 'wrap', padding: 24, alignItems: 'flex-start' }}>
+      <div className="g-gate" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 720px), 1fr))', gap: 24, padding: 16, boxSizing: 'border-box', width: '100%' }}>
         {ids.map((id) => (
-          <figure key={id} id={`demo-${id}`} style={{ margin: 0 }}>
+          <figure key={id} id={`demo-${id}`} style={{ margin: 0, minWidth: 0 }}>
             <Demo id={id} />
-            <figcaption style={{ font: '12px system-ui', color: '#888', marginTop: 8 }}>{id}</figcaption>
+            <figcaption style={{ font: '14px system-ui', color: '#555', marginTop: 8 }}><a href={`?demo=${id}`}>{id}</a></figcaption>
           </figure>
         ))}
       </div>
