@@ -4,8 +4,35 @@
     {
       "name": "vtt",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@anvil/vtt", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@anvil/vtt",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "vtt-smoke",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ANVIL_API_PROXY=http://localhost:8797",
+        "pnpm",
+        "--filter",
+        "@anvil/vtt",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "redesign-demos",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "design/redesign",
+        "run",
+        "dev"
+      ],
+      "port": 5199
     }
   ]
 }

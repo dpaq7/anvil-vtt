@@ -25,3 +25,8 @@ docs/testing/
 docs/rules_references/
 docs/Draw Steel v101/Draw_Steel_Heroes*.pdf
 docs/Draw Steel v101/Draw_Steel_Monsters*.pdf
+
+# Demo-led redesign
+design/redesign/captures/
+design/redesign/node_modules/
+.superpowers/
