@@ -1,0 +1,2 @@
+/* A direction still fills the page, so 1440 of viewport is 1440 of design. */
+body:has(#demo-root) { margin: 0; }

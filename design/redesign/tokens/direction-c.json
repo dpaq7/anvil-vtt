@@ -1,0 +1,13 @@
+{
+  "_direction": "C, Storyboard. Inked frames on a marker-grey ground, heavy outlines, and token faces whose silhouettes read before colour does.",
+  "lead": "light",
+  "leadNote": "A mid-tone ground, shown in the light theme slot.",
+  "fonts": { "display": "\"Bricolage Grotesque Variable\", sans-serif", "body": "\"Atkinson Hyperlegible\", system-ui, sans-serif", "numbers": "tabular-nums" },
+  "type": { "min": "13px", "body": "14px", "name": "14px", "wordmark": "34px" },
+  "shape": { "radius": "0", "frame": "3.5px", "hardShadow": "4px 4px 0", "railLeft": "304px", "railRight": "294px" },
+  "scene": { "story": "#8b3fe0", "montage": "#e38a00", "negotiation": "#2b6fe6", "battle": "#cf2a20", "respite": "#1f9d55" },
+  "themes": {
+    "light": { "canvas": "#8fa6ab", "surface": "#f1f3ee", "raised": "#ffffff", "text": "#15171c", "textSoft": "#3f4650", "line": "#15171c", "active": "#2348c9", "onActive": "#ffffff", "danger": "#ffd21f", "onDanger": "#15171c" },
+    "dark": { "canvas": "#46565b", "surface": "#1d2024", "raised": "#2a2e34", "text": "#f1f3ee", "textSoft": "#c3cbd0", "line": "#f1f3ee", "active": "#9db4ff", "onActive": "#15171c", "danger": "#ffd21f", "onDanger": "#15171c" }
+  }
+}

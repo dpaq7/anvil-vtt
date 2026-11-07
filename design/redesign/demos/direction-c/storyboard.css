@@ -1,0 +1,142 @@
+.dir-c .ss-stage, .dir-c.ss-stage {
+  --c-ground: #8fa6ab; --c-panel: #f1f3ee; --c-well: #dfe4df; --c-ink: #15171c; --c-soft: #3f4650; --c-blue: #2348c9; --c-red: #cf2a20; --c-hazard: #ffd21f;
+  --c-story: #8b3fe0; --c-montage: #e38a00; --c-negotiation: #2b6fe6; --c-battle: #e5352b; --c-respite: #1f9d55;
+}
+.c-app { width: 1440px; height: 900px; background: var(--c-ground); color: var(--c-ink); display: grid; grid-template-rows: 78px 1fr 28px; gap: 8px; padding: 8px 12px 2px; box-sizing: border-box;
+  font: 400 14px/1.3 "Atkinson Hyperlegible", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.c-app button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.c-app strong, .c-app b { font-weight: 700; }
+.c-frame { background: var(--c-panel); border: 3.5px solid var(--c-ink); box-shadow: 4px 4px 0 var(--c-ink); box-sizing: border-box; }
+
+/* Top */
+.c-top { display: grid; grid-template-columns: 92px 1fr 128px; gap: 10px; align-items: center; }
+.c-word { padding-left: 3px; font: 800 34px/1 "Bricolage Grotesque Variable", sans-serif; letter-spacing: -.02em; }
+.c-strip { display: grid; grid-template-columns: repeat(4, 1fr) .8fr; gap: 0; height: 66px; }
+.c-cell { position: relative; display: flex; align-items: center; min-width: 0; }
+.c-board { flex: 1; min-width: 0; height: 64px; margin-right: 20px; display: flex; align-items: stretch; text-align: left; background: var(--c-panel) !important; border: 3.5px solid var(--c-ink) !important; box-shadow: 3px 3px 0 var(--c-ink); box-sizing: border-box; }
+.c-cell:last-child .c-board { margin-right: 0; }
+.c-board i { flex: none; width: 38px; display: grid; place-items: center; color: #fff; border-right: 3.5px solid var(--c-ink); }
+.c-board[data-mode=story] i { background: var(--c-story); } .c-board[data-mode=montage] i { background: var(--c-montage); color: var(--c-ink); }
+.c-board[data-mode=negotiation] i { background: var(--c-negotiation); } .c-board[data-mode=battle] i { background: var(--c-battle); }
+.c-board[data-mode=respite] i { background: var(--c-respite); }
+.c-board span { display: flex; flex-direction: column; gap: 2px; justify-content: center; padding: 0 6px; min-width: 0; line-height: 1.18; }
+.c-board b { font: 700 14px/1.15 "Bricolage Grotesque Variable", sans-serif; white-space: nowrap; }
+.c-board small { font-size: 13px; color: var(--c-soft); }
+.c-board[data-on] { transform: translateY(-1px) rotate(-.6deg); background: var(--c-red) !important; color: #fff; box-shadow: 5px 5px 0 var(--c-ink); }
+.c-board[data-on] small { color: #fff; } .c-board[data-on] i { background: var(--c-ink); }
+.c-arrow { position: absolute; right: 2px; top: 23px; color: var(--c-ink); }
+.c-endsession { height: 44px; justify-self: end; width: 128px; font-weight: 700 !important; background: var(--c-panel) !important; color: var(--c-red) !important; border: 3px dashed var(--c-red) !important; }
+
+.c-mid { display: grid; grid-template-columns: 304px 798px 294px; gap: 10px; min-height: 0; }
+.c-left, .c-right { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.c-tabs { display: flex; flex: none; height: 36px; border-bottom: 3.5px solid var(--c-ink); }
+.c-tabs span { flex: 1 1 auto; display: flex; justify-content: center; align-items: center; gap: 4px; font-weight: 700; font-size: 13px; border-right: 2px solid var(--c-ink); white-space: nowrap; padding: 0 3px; }
+.c-tabs span:last-child { border-right: 0; }
+.c-tabs em { font-style: normal; font-weight: 400; }
+.c-tabs span[data-on] { background: var(--c-ink); color: #fff; }
+.c-sub { display: flex; justify-content: space-between; align-items: center; height: 28px; padding: 0 10px; flex: none; }
+.c-sub b { font: 800 16px/1 "Bricolage Grotesque Variable", sans-serif; }
+.c-sub span { font-size: 13px; }
+.c-sub--dir { border-top: 3.5px solid var(--c-ink); height: 32px; }
+.c-malice { display: flex; align-items: center; gap: 7px; }
+.c-malice strong { font: 800 20px/1 "Bricolage Grotesque Variable", sans-serif; min-width: 13px; text-align: center; }
+.c-malice button { width: 22px; height: 22px; display: grid; place-items: center; border: 2.5px solid var(--c-ink) !important; background: #fff !important; }
+
+.c-row { display: grid; grid-template-columns: 36px 1fr 70px; gap: 8px; align-items: center; height: 46px; padding: 0 10px; flex: none; }
+.c-row + .c-row { border-top: 2px solid var(--c-well); }
+.c-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.2; }
+.c-who strong { font: 700 14px/1.2 "Bricolage Grotesque Variable", sans-serif; white-space: nowrap; display: flex; align-items: center; }
+.c-who small { font-size: 13px; color: var(--c-soft); white-space: nowrap; }
+.c-st { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 14px; }
+.c-meter { display: flex; gap: 1px; height: 9px; padding: 1px; border: 2px solid var(--c-ink); background: #fff; width: 100%; box-sizing: border-box; }
+.c-meter u { flex: 1; display: block; }
+.c-meter u[data-on] { background: var(--c-ink); }
+.c-meter[data-winded] u[data-on] { background: repeating-linear-gradient(135deg, var(--c-ink) 0 2px, #fff 2px 4px); }
+.c-row[data-active] { background: var(--c-blue); color: #fff; }
+.c-row[data-active] small { color: #fff; font-weight: 700; }
+.c-row[data-active] .c-meter { border-color: #fff; background: var(--c-blue); } .c-row[data-active] .c-meter u[data-on] { background: #fff; }
+.c-row[data-done] { background: var(--c-well); }
+.c-dying { display: grid; grid-template-columns: 54px 1fr auto; gap: 8px; align-items: center; height: 68px; padding: 0 10px 0 8px; flex: none; color: var(--c-ink); border-block: 3.5px solid var(--c-ink);
+  background: repeating-linear-gradient(135deg, var(--c-hazard) 0 14px, var(--c-ink) 14px 28px); position: relative; }
+.c-dying__f { width: 54px; height: 54px; background: #fff; border: 3px solid var(--c-ink); border-radius: 50%; display: grid; place-items: center; transform: rotate(-9deg); box-sizing: border-box; overflow: hidden; }
+.c-dying .c-who { background: var(--c-hazard); border: 2.5px solid var(--c-ink); padding: 3px 7px; gap: 4px; }
+.c-dying__w { font: 800 19px/1 "Bricolage Grotesque Variable", sans-serif; color: var(--c-ink); text-transform: uppercase; }
+.c-dying__n { background: var(--c-ink); color: #fff; font-size: 16px; padding: 3px 7px; }
+.c-units { flex: 1; min-height: 0; overflow: hidden; padding: 2px 0; }
+.c-unit { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; height: 30px; padding: 0 10px; font-size: 13px; }
+.c-foot { flex: none; display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; padding: 8px 10px; border-top: 3.5px solid var(--c-ink); }
+.c-end { height: 42px; background: var(--c-blue) !important; color: #fff !important; font: 700 15px/1 "Bricolage Grotesque Variable", sans-serif !important; border: 3px solid var(--c-ink) !important; box-shadow: 3px 3px 0 var(--c-ink); }
+.c-link { font-size: 13px !important; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Screen */
+.c-centre { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.c-screen { border-width: 4px; }
+.c-map { position: relative; overflow: hidden; }
+.c-art { position: absolute; inset: 0; }
+.c-tok { position: absolute; width: 46px; height: 46px; }
+.c-head { position: relative; width: 46px; height: 46px; filter: drop-shadow(1.5px 2px 0 rgb(21 23 28 / .9)); }
+.c-tok[data-active] .c-head { background: #fff; border-radius: 50%; box-shadow: 0 0 0 3.5px var(--c-blue), 0 0 0 6px var(--c-ink); }
+.c-tok[data-active] { z-index: 3; }
+.c-tok[data-done] .c-head { opacity: 1; }
+.c-tok[data-dying] { z-index: 3; }
+.c-tok[data-dying] .c-head { transform: rotate(-14deg); }
+.c-burst { position: absolute; }
+.c-winded { font: 700 13px/1 "Atkinson Hyperlegible", sans-serif; margin-left: 6px; padding: 1px 4px; border: 2px solid var(--c-ink); background: var(--c-hazard); }
+.c-badge { position: absolute; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: var(--c-ink); box-shadow: 0 0 0 2px var(--c-ink); z-index: 4; }
+.c-badge--done { background: var(--c-ink); color: #fff; }
+.c-badge--foe { right: -5px; top: -5px; }
+.c-foe { position: absolute; }
+.c-foe b { position: absolute; right: -6px; bottom: -4px; min-width: 18px; height: 18px; padding: 0 2px; box-sizing: border-box; background: #fff; border: 2px solid var(--c-ink); display: grid; place-items: center; font-size: 13px; line-height: 1; }
+.c-label { position: absolute; height: 22px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; background: #fff; border: 2px solid var(--c-ink); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.c-label[data-hero] { font-family: "Bricolage Grotesque Variable", sans-serif; background: var(--c-ink); color: #fff; }
+.c-label[data-active] { background: var(--c-blue); }
+.c-shout { position: absolute; z-index: 4; padding: 4px 9px; background: var(--c-hazard); border: 3px solid var(--c-ink); box-shadow: 3px 3px 0 var(--c-ink); font: 800 16px/1.1 "Bricolage Grotesque Variable", sans-serif; white-space: nowrap; transform: rotate(-3deg); }
+.c-side { position: absolute; right: 0; top: 0; display: flex; background: var(--c-panel); border: solid var(--c-ink); border-width: 0 0 3.5px 3.5px; z-index: 4; }
+.c-side > div { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px; border-left: 2px solid var(--c-ink); }
+.c-side > div:first-child { border-left: 0; }
+.c-side > div[data-on] { background: #dbe3ff; }
+.c-side b { font: 800 15px/1 "Bricolage Grotesque Variable", sans-serif; }
+.c-side i { display: flex; gap: 6px; }
+.c-side u { width: 10px; height: 10px; box-sizing: border-box; border: 2px solid var(--c-ink); background: #fff; border-radius: 50%; display: block; }
+.c-side u[data-s=active] { background: var(--c-blue); } .c-side u[data-s=done] { background: var(--c-ink); }
+.c-side u[data-s=dying] { background: var(--c-hazard); border-radius: 0; transform: rotate(45deg); }
+.c-nav { position: absolute; right: 0; bottom: 0; width: 126px; padding: 6px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; align-items: center; background: var(--c-panel); border: solid var(--c-ink); border-width: 3.5px 0 0 3.5px; z-index: 4; }
+.c-nav small { font-size: 13px; }
+.c-nav > svg { outline: 2px solid var(--c-ink); }
+.c-nav__z { display: flex; width: 100%; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; }
+.c-all { width: 100%; height: 28px; display: flex; align-items: center; justify-content: center; gap: 5px; font-weight: 700 !important; font-size: 13px !important; background: #fff !important; border: 2.5px solid var(--c-ink) !important; }
+.c-pop { position: absolute; z-index: 5; box-sizing: border-box; padding: 8px 10px 4px; background: var(--c-panel); border: 3.5px solid var(--c-ink); box-shadow: 4px 4px 0 var(--c-ink); }
+.c-pop strong { display: block; font: 800 14px/1.25 "Bricolage Grotesque Variable", sans-serif; white-space: nowrap; }
+.c-pop__st { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+.c-pop ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.c-pop li { display: flex; justify-content: space-between; align-items: center; height: 26px; border-top: 2px solid var(--c-well); font-weight: 700; font-size: 14px; }
+
+.c-bar { flex: 1; min-height: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 8px; font-size: 13px; }
+.c-tools, .c-roll { display: flex; gap: 2px; align-items: center; }
+.c-tools span, .c-roll span { display: flex; align-items: center; gap: 4px; height: 32px; padding: 0 6px; font-weight: 700; white-space: nowrap; }
+.c-tools span[data-on], .c-roll span[data-on] { background: var(--c-ink); color: #fff; }
+.c-roll { border-left: 3.5px solid var(--c-ink); padding-left: 8px; height: 100%; }
+
+/* Right */
+.c-sec { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: none; border-bottom: 3.5px solid var(--c-ink); }
+.c-seg { display: flex; border: 3px solid var(--c-ink); height: 32px; box-sizing: border-box; }
+.c-seg span { flex: 1; display: grid; place-items: center; font-weight: 700; }
+.c-seg span[data-on] { background: var(--c-red); color: #fff; border-right: 3px solid var(--c-ink); }
+.c-input { height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; background: #fff; border: 2.5px solid var(--c-ink); box-sizing: border-box; }
+.c-amt { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.c-amt .c-input { color: var(--c-soft); }
+.c-amt button { height: 36px; background: var(--c-ink) !important; color: #fff !important; font-weight: 700 !important; }
+.c-now__h { display: grid; grid-template-columns: 52px 1fr; gap: 8px; align-items: center; }
+.c-now__h div { display: flex; flex-direction: column; gap: 2px; line-height: 1.2; }
+.c-now__h strong { font: 800 17px/1.15 "Bricolage Grotesque Variable", sans-serif; } .c-now__h small { font-size: 13px; }
+.c-now { background: #dbe3ff; }
+.c-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.c-acts span { height: 32px; display: grid; place-items: center; font-weight: 700; background: #fff; border: 2.5px solid var(--c-ink); box-shadow: 2px 2px 0 var(--c-ink); }
+.c-stats { display: flex; justify-content: space-between; font-size: 13px; }
+.c-log { flex: 1; min-height: 0; gap: 0; border-bottom: 0; overflow: hidden; }
+.c-sub--flat { padding: 0; }
+.c-log > div:not(.c-sub) { display: flex; flex-direction: column; padding: 4px 0 5px; font-size: 13px; line-height: 1.25; border-top: 2px solid var(--c-well); }
+.c-log time { color: var(--c-soft); }
+
+.c-status { display: flex; align-items: center; gap: 16px; font-size: 13px; font-weight: 700; padding: 0 2px; }
+.c-status div { margin-left: auto; display: flex; gap: 16px; }

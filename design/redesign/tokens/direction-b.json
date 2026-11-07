@@ -1,0 +1,13 @@
+{
+  "_direction": "B, Projection Booth. The map is the lit screen; everything else sits in the dark around it. The scene mode colour works as a gel on the frame.",
+  "lead": "dark",
+  "fonts": { "display": "\"Big Shoulders Display Variable\", sans-serif", "body": "\"Hanken Grotesk Variable\", system-ui, sans-serif", "numbers": "tabular-nums" },
+  "type": { "min": "13px", "body": "14px", "name": "14px", "number": "21px", "wordmark": "25px" },
+  "shape": { "panelRadius": "14px", "controlRadius": "7px", "railLeft": "300px", "railRight": "300px" },
+  "scene": { "story": "#a855f7", "montage": "#f59e0b", "negotiation": "#3b82f6", "battle": "#ef4444", "respite": "#22c55e" },
+  "gel": { "battle": "#ff3b2f", "spillNear": "rgb(255 59 47 / 0.24)", "spillFar": "rgb(255 59 47 / 0.12)" },
+  "themes": {
+    "dark": { "canvas": "#070605", "surface": "#151210", "raised": "#221d19", "text": "#f6eee2", "textSoft": "#c4b6a4", "line": "#453b33", "active": "#ffd98f", "onActive": "#1b1206", "danger": "#b4170f", "onDanger": "#ffffff" },
+    "light": { "canvas": "#d9d3c9", "surface": "#f7f3ec", "raised": "#ffffff", "text": "#1c1713", "textSoft": "#5b5045", "line": "#a79a8a", "active": "#8a5a00", "onActive": "#ffffff", "danger": "#b4170f", "onDanger": "#ffffff" }
+  }
+}

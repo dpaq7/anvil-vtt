@@ -1,0 +1,12 @@
+{
+  "_direction": "A, Call Sheet. A film production's paperwork: buff revision paper, one ink, a highlighter for who is on, rules instead of boxes.",
+  "lead": "light",
+  "fonts": { "display": "\"Courier Prime\", monospace", "body": "\"Archivo Variable\", Arial, sans-serif", "numbers": "tabular-nums lining-nums" },
+  "type": { "min": "13px", "body": "13px", "name": "14px", "wordmark": "26px" },
+  "shape": { "radius": "0", "rule": "2px", "hairline": "1px", "railLeft": "316px", "railRight": "308px" },
+  "scene": { "story": "#6d3bb0", "montage": "#a35a00", "negotiation": "#1f58b5", "battle": "#a81e16", "respite": "#1c7a3c" },
+  "themes": {
+    "light": { "canvas": "#e9dcc0", "surface": "#f5edda", "raised": "#fbf6ea", "text": "#1f1b14", "textSoft": "#554c3b", "line": "#1f1b14", "lineFaint": "#b9a988", "active": "#f6d32c", "onActive": "#1f1b14", "danger": "#a81e16", "onDanger": "#ffffff" },
+    "dark": { "canvas": "#16130e", "surface": "#201c15", "raised": "#2b261d", "text": "#f2e8d2", "textSoft": "#c8bb9f", "line": "#f2e8d2", "lineFaint": "#5a5140", "active": "#f6d32c", "onActive": "#1f1b14", "danger": "#ff8f85", "onDanger": "#16130e" }
+  }
+}
