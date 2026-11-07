@@ -1,6 +1,8 @@
 import { GameData, HeroLogic } from '@anvil/data';
 import type { Characteristics, HeroClass } from '@anvil/data';
 import type { ForgeSteelHeroFile } from '@anvil/types';
+import { HERO_LIMITS } from '../policy/limits.js';
+import { normalizeExternalPortraitUrl } from '../services/hero-rules.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -27,6 +29,11 @@ function record(value: unknown): JsonRecord | null {
 
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function shortText(value: unknown): string | null {
+  const result = text(value);
+  return result && result.length <= HERO_LIMITS.forgeSteelTextLength ? result : null;
 }
 
 function finite(value: unknown, fallback = 0): number {
@@ -90,7 +97,8 @@ function featureSelections(hero: ForgeSteelHeroFile): {
 }
 
 function unique(values: string[]): string[] {
-  return values.filter((value, index) => value && values.indexOf(value) === index);
+  const kept = values.filter((value) => value && value.length <= HERO_LIMITS.forgeSteelTextLength);
+  return [...new Set(kept)].slice(0, HERO_LIMITS.forgeSteelListItems);
 }
 
 function inventoryFromState(state: JsonRecord): Record<string, unknown>[] {
@@ -107,7 +115,6 @@ function inventoryFromState(state: JsonRecord): Record<string, unknown>[] {
       quantity: Math.max(1, Math.round(finite(item['quantity'], 1))),
       description: text(item['description']) ?? '',
       notes: 'Imported from Forge Steel',
-      forgeSteelItem: item,
     }];
   });
 }
@@ -146,7 +153,7 @@ export function normalizeForgeSteelHero(hero: ForgeSteelHeroFile): NormalizedFor
   const sourceAbilities = [
     ...selections.directAbilities.map((ability) => ({ id: text(ability['id']), name: text(ability['name']) })),
     ...selections.abilityIds.map((id) => ({ id, name: idNames.get(id) ?? null })),
-  ];
+  ].slice(0, HERO_LIMITS.forgeSteelListItems);
   const anvilAbilities = GameData.getAllAbilities();
   const abilities = unique(sourceAbilities.flatMap((source) => {
     const match = anvilAbilities.find((ability) => ability.metadata.item_id === source.id)
@@ -156,25 +163,28 @@ export function normalizeForgeSteelHero(hero: ForgeSteelHeroFile): NormalizedFor
   const state = record(hero.state) ?? {};
   const culture = record(hero.culture);
   const picture = text(hero.picture);
+  const pictureUrl = normalizeExternalPortraitUrl(picture);
   const warnings: string[] = [];
-  if (hero.ancestry && !ancestry) warnings.push(`Unknown ancestry: ${text(record(hero.ancestry)?.['name']) ?? 'unnamed'}`);
-  if (hero.career && !career) warnings.push(`Unknown career: ${text(record(hero.career)?.['name']) ?? 'unnamed'}`);
-  if (hero.class && !heroClass) warnings.push(`Unknown class: ${text(classSource?.['name']) ?? 'unnamed'}`);
-  if (selections.kitNames.length && !kit) warnings.push(`Unknown kit: ${selections.kitNames[0]}`);
+  if (hero.ancestry && !ancestry) warnings.push(`Unknown ancestry: ${shortText(record(hero.ancestry)?.['name']) ?? 'unnamed'}`);
+  if (hero.career && !career) warnings.push(`Unknown career: ${shortText(record(hero.career)?.['name']) ?? 'unnamed'}`);
+  if (hero.class && !heroClass) warnings.push(`Unknown class: ${shortText(classSource?.['name']) ?? 'unnamed'}`);
+  if (selections.kitNames.length && !kit) warnings.push(`Unknown kit: ${shortText(selections.kitNames[0]) ?? 'unnamed'}`);
+  // An embedded data: picture is not a URL to keep: the client uploads it as an asset.
+  if (picture && !pictureUrl && !picture.startsWith('data:')) warnings.push('Picture URL was not imported');
 
   return {
-    name: hero.name.trim().slice(0, 160),
-    ancestry: ancestry?.id ?? text(record(hero.ancestry)?.['id']),
-    culture: JSON.stringify(culture ? { preset: text(culture['id']), forgeSteel: culture } : null),
-    career: career?.id ?? text(record(hero.career)?.['id']),
+    name: hero.name.trim(),
+    ancestry: ancestry?.id ?? shortText(record(hero.ancestry)?.['id']),
+    culture: JSON.stringify(culture ? { preset: shortText(culture['id']) } : null),
+    career: career?.id ?? shortText(record(hero.career)?.['id']),
     heroClass,
-    subclass: text(selectedSubclass?.['name']) ?? text(selectedSubclass?.['id']),
+    subclass: shortText(selectedSubclass?.['name']) ?? shortText(selectedSubclass?.['id']),
     level,
     characteristics,
     kit: kit?.id ?? null,
     skills: unique(selections.skills),
     abilities,
-    pictureUrl: picture?.startsWith('https://') ? picture : null,
+    pictureUrl,
     data: {
       selectedLanguages: unique(selections.languages),
       inventory: inventoryFromState(state),
@@ -188,7 +198,7 @@ export function normalizeForgeSteelHero(hero: ForgeSteelHeroFile): NormalizedFor
       renown: Math.max(0, finite(state['renown'])),
       wealth: Math.max(0, finite(state['wealth'])),
       projectPoints: Math.max(0, finite(state['projectPoints'])),
-      forgeSteel: { format: 'forge-steel.ds-hero', hero },
+      forgeSteel: { format: 'forge-steel.ds-hero' },
     },
     warnings,
   };

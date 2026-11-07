@@ -8,7 +8,7 @@ import { importRateLimits } from '../security/rate-limits.js';
 import { jsonError, readJsonBody } from '../security/request.js';
 import { requireCampaignDirector } from '../security/authorization.js';
 import { parseCampaignPackageImport } from '../contracts/campaign-package.js';
-import { importCampaignPackage } from '../lib/campaign-package.js';
+import { CampaignPackageImportError, importCampaignPackage } from '../lib/campaign-package.js';
 
 export const sceneImportRoutes = new Hono<AppEnv>();
 
@@ -38,8 +38,9 @@ sceneImportRoutes.post('/import-package', async (c) => {
   try {
     return c.json(await importCampaignPackage(c.env.DB, user.id, parsed.value.manifest, parsed.value.uploadedAssets), 201);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Campaign package import failed';
-    return c.json({ error: message }, 400);
+    if (error instanceof CampaignPackageImportError) return c.json({ error: error.message }, 400);
+    console.error('Campaign package import failed', error);
+    return c.json({ error: 'Campaign package import failed' }, 500);
   }
 });
 

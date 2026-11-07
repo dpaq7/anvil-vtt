@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { HeroLogic, GameData, WizardLogic, PERKS, classPerkAtLevel, getAvailablePerkCategories } from '@anvil/data';
 import type { CharacterInProgress, Characteristics, LevelUpChoice } from '@anvil/data';
 import type { HeroSummary } from '@anvil/types';
-import type { ForgeSteelHeroFile, ForgeSteelHeroImportResult } from '@anvil/types';
+import type { ForgeSteelHeroImportResult } from '@anvil/types';
 import { HERO_LIMITS } from '../policy/limits.js';
 import { deleteOwnedAssetIfUnreferenced } from '../repositories/assets.js';
 import { validateOwnedImageAsset, validateOwnedPortraitAsset } from '../security/assets.js';
@@ -16,7 +16,7 @@ import {
   portraitUrlForAsset,
   validateHeroCreationRules,
 } from '../services/hero-rules.js';
-import { isForgeSteelHero, normalizeForgeSteelHero } from '../lib/forge-steel.js';
+import { parseForgeSteelHeroImport } from '../contracts/forge-steel.js';
 
 export const heroRoutes = new Hono<AppEnv>();
 
@@ -31,13 +31,11 @@ heroRoutes.post('/import/forge-steel', async (c) => {
   if (limited) return limited;
   const raw = await readJsonBody<unknown>(c, { maxBytes: HERO_LIMITS.forgeSteelJsonBytes, label: 'Forge Steel hero' });
   if (!raw.ok) return jsonError(c, raw);
-  const envelope = isRecord(raw.value) && isRecord(raw.value['hero']) ? raw.value : null;
-  const source = envelope?.['hero'] ?? raw.value;
-  if (!isForgeSteelHero(source)) return c.json({ error: 'File is not a Forge Steel hero export' }, 400);
-  const portraitAssetId = envelope ? stringValue(envelope['portraitAssetId']) : null;
+  const parsed = parseForgeSteelHeroImport(raw.value);
+  if (!parsed.ok) return jsonError(c, parsed);
+  const { hero: imported, portraitAssetId } = parsed.value;
   const portraitError = await validateOwnedPortraitAsset(c, portraitAssetId, user);
   if (portraitError) return portraitError;
-  const imported = normalizeForgeSteelHero(source as ForgeSteelHeroFile);
   const vitals = calculateHeroVitals({ heroClass: imported.heroClass, level: imported.level, kit: imported.kit, data: imported.data });
   const data = {
     ...imported.data,

@@ -7,6 +7,11 @@ import type {
 import { CAMPAIGN_ASSET_SCHEME } from '@anvil/types';
 import { createImportedCampaign } from './scene-import.js';
 
+/** An expected import failure whose message is safe to show the client. */
+export class CampaignPackageImportError extends Error {
+  override name = 'CampaignPackageImportError';
+}
+
 interface UploadedAssetRow {
   id: string;
   type: string;
@@ -19,7 +24,7 @@ function replaceAssetRefs(value: unknown, uploaded: Record<string, string>): unk
   if (typeof value === 'string' && value.startsWith(CAMPAIGN_ASSET_SCHEME)) {
     const ref = value.slice(CAMPAIGN_ASSET_SCHEME.length);
     const assetId = uploaded[ref];
-    if (!assetId) throw new Error(`Unresolved campaign asset reference: ${ref}`);
+    if (!assetId) throw new CampaignPackageImportError(`Unresolved campaign asset reference: ${ref}`);
     return `/api/assets/${assetId}/data`;
   }
   if (Array.isArray(value)) return value.map((item) => replaceAssetRefs(item, uploaded));
@@ -39,9 +44,9 @@ async function validateUploadedAssets(
     const row = await db.prepare(
       'SELECT id, type, content_type, file_size, uploaded_at FROM assets WHERE id = ? AND user_id = ?',
     ).bind(uploaded[descriptor.ref], userId).first<UploadedAssetRow>();
-    if (!row || !row.uploaded_at) throw new Error(`Asset ${descriptor.ref} was not uploaded by this account`);
+    if (!row || !row.uploaded_at) throw new CampaignPackageImportError(`Asset ${descriptor.ref} was not uploaded by this account`);
     if (row.type !== descriptor.type || row.content_type !== descriptor.contentType || row.file_size !== descriptor.size) {
-      throw new Error(`Uploaded asset metadata does not match manifest: ${descriptor.ref}`);
+      throw new CampaignPackageImportError(`Uploaded asset metadata does not match manifest: ${descriptor.ref}`);
     }
   }
 }
@@ -100,7 +105,7 @@ async function registerAssets(
   }
   for (const terrain of manifest.content?.terrain ?? []) {
     const assetId = terrain.assetRef ? uploaded[terrain.assetRef] : null;
-    if (terrain.assetRef && !assetId) throw new Error(`Unresolved terrain asset reference: ${terrain.assetRef}`);
+    if (terrain.assetRef && !assetId) throw new CampaignPackageImportError(`Unresolved terrain asset reference: ${terrain.assetRef}`);
     await db.prepare(`INSERT INTO custom_terrain (id, campaign_id, name, asset_id, category, grid_width, grid_height, material)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
       crypto.randomUUID(), campaignId, terrain.name, assetId, terrain.category,
@@ -110,7 +115,7 @@ async function registerAssets(
   }
   for (const npc of manifest.content?.npcs ?? []) {
     const portraitId = npc.portraitRef ? uploaded[npc.portraitRef] : null;
-    if (npc.portraitRef && !portraitId) throw new Error(`Unresolved NPC portrait reference: ${npc.portraitRef}`);
+    if (npc.portraitRef && !portraitId) throw new CampaignPackageImportError(`Unresolved NPC portrait reference: ${npc.portraitRef}`);
     await db.prepare('INSERT INTO npcs (id, campaign_id, name, portrait_asset_id, location, notes) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), campaignId, npc.name, portraitId, npc.location ?? null, npc.notes ?? null).run();
     counts.npcs += 1;

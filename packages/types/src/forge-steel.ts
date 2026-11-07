@@ -2,7 +2,7 @@
  * The on-disk Forge Steel character format is the raw Hero JSON object exported
  * by Forge Steel as .ds-hero (legacy .drawsteel-hero is also accepted).
  * Nested rules objects intentionally remain open: Forge Steel embeds sourcebook
- * definitions and adds fields over time, and Anvil preserves the full payload.
+ * definitions and adds fields over time. Anvil keeps only the mapped fields.
  */
 export interface ForgeSteelHeroFile {
   id: string;

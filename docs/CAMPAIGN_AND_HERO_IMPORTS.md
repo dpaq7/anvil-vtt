@@ -48,6 +48,8 @@ Directors can start this flow with **Import Campaign** on the desktop Campaigns 
 
 Anvil accepts Forge Steel's native on-disk shape unchanged: a raw JSON `Hero` object, without an Anvil wrapper. Players and Directors can choose either Forge Steel extension from the first screen of the hero creation wizard. The desktop Heroes page also retains a direct upload shortcut.
 
-Anvil maps known identity, ancestry, career, class, subclass, level, characteristics, kit, skills, abilities, resource trackers, and inventory into native hero columns. The complete source object is retained at `hero.data.forgeSteel.hero`, so fields that do not yet have an Anvil equivalent are not lost. A base64 image in `picture` is uploaded as an Anvil portrait asset; an HTTPS picture URL remains an external portrait.
+Anvil maps known identity, ancestry, career, class, subclass, level, characteristics, kit, skills, abilities, resource trackers, and inventory into native hero columns. Only these mapped fields are stored: the source file is not retained, so fields without an Anvil equivalent are dropped, and `hero.data.forgeSteel` records only the source format. A base64 image in `picture` is uploaded as an Anvil portrait asset. An HTTPS picture URL remains an external portrait if it passes the same validation as other portrait URLs; otherwise it is dropped with a warning.
+
+The import is rejected if the name is over 160 characters, the inventory is over 128 KB, the stored hero is over 256 KB, the file nests more than 64 levels deep, or any object has a `__proto__`, `prototype` or `constructor` key.
 
 The server endpoint is `POST /api/heroes/import/forge-steel`. It accepts either the raw Forge Steel object or the UI transport envelope `{ "hero": <raw object>, "portraitAssetId": "..." }`.

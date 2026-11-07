@@ -34,6 +34,10 @@ export const SCENE_IMPORT_LIMITS = {
 export const HERO_LIMITS = {
   jsonBodyBytes: 256 * 1024,
   forgeSteelJsonBytes: 2 * 1024 * 1024,
+  // Matches the traversal cap in hasUnsafeObjectKey, so nothing deeper goes unchecked.
+  forgeSteelNestingDepth: 64,
+  forgeSteelTextLength: 220,
+  forgeSteelListItems: 500,
   nameLength: 160,
   portraitUrlLength: 2_048,
   inventoryBytes: 128 * 1024,
