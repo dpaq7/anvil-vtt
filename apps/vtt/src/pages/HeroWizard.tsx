@@ -22,6 +22,8 @@ import { PersonalStep } from '../components/wizard/PersonalStep.js';
 import { ReviewStep } from '../components/wizard/ReviewStep.js';
 import { api } from '../lib/api.js';
 import { uploadFile } from '../stores/assetsStore.js';
+import { ForgeSteelHeroImport } from '../components/import/ForgeSteelHeroImport.js';
+import type { ForgeSteelHeroImportResult } from '@anvil/types';
 
 const MAX_PORTRAIT_UPLOAD_BYTES = 2 * 1024 * 1024;
 const ALLOWED_PORTRAIT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -130,6 +132,17 @@ export function HeroWizard() {
     }
   };
 
+  const handleImportedHero = async (result: ForgeSteelHeroImportResult) => {
+    await clearWizardState();
+    reset();
+    toast.success(`${result.name} imported`);
+    if (result.warnings.length > 0) toast.warning(result.warnings.join(' '));
+    navigate(
+      isMobileRoute ? `/app/mobile/heroes/${result.id}` : `/app/heroes/${result.id}`,
+      { replace: true },
+    );
+  };
+
   // Wait for IndexedDB load before rendering
   if (!loaded) {
     return (
@@ -188,6 +201,9 @@ export function HeroWizard() {
 
   return (
     <HeroCreatorLayout onSave={handleSave} saving={saving}>
+      {currentStepId === WizardLogic.WIZARD_STEP_IDS.LEVEL && (
+        <ForgeSteelHeroImport presentation="wizard" onImported={handleImportedHero} />
+      )}
       {renderStep()}
     </HeroCreatorLayout>
   );

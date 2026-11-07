@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { HeroLogic, GameData, WizardLogic, PERKS, classPerkAtLevel, getAvailablePerkCategories } from '@anvil/data';
 import type { CharacterInProgress, Characteristics, LevelUpChoice } from '@anvil/data';
 import type { HeroSummary } from '@anvil/types';
+import type { ForgeSteelHeroFile, ForgeSteelHeroImportResult } from '@anvil/types';
 import { HERO_LIMITS } from '../policy/limits.js';
 import { deleteOwnedAssetIfUnreferenced } from '../repositories/assets.js';
 import { validateOwnedImageAsset, validateOwnedPortraitAsset } from '../security/assets.js';
@@ -15,10 +16,46 @@ import {
   portraitUrlForAsset,
   validateHeroCreationRules,
 } from '../services/hero-rules.js';
+import { isForgeSteelHero, normalizeForgeSteelHero } from '../lib/forge-steel.js';
 
 export const heroRoutes = new Hono<AppEnv>();
 
 heroRoutes.use('/*', authMiddleware);
+
+// Import the raw JSON shape exported by Forge Steel (.ds-hero and legacy
+// .drawsteel-hero). This deliberately bypasses Anvil's new-character wizard:
+// Forge Steel has already made and validated those rule choices.
+heroRoutes.post('/import/forge-steel', async (c) => {
+  const user = c.get('user') as AuthUser;
+  const limited = await heroRateLimits.write(c, user.id);
+  if (limited) return limited;
+  const raw = await readJsonBody<unknown>(c, { maxBytes: HERO_LIMITS.forgeSteelJsonBytes, label: 'Forge Steel hero' });
+  if (!raw.ok) return jsonError(c, raw);
+  const envelope = isRecord(raw.value) && isRecord(raw.value['hero']) ? raw.value : null;
+  const source = envelope?.['hero'] ?? raw.value;
+  if (!isForgeSteelHero(source)) return c.json({ error: 'File is not a Forge Steel hero export' }, 400);
+  const portraitAssetId = envelope ? stringValue(envelope['portraitAssetId']) : null;
+  const portraitError = await validateOwnedPortraitAsset(c, portraitAssetId, user);
+  if (portraitError) return portraitError;
+  const imported = normalizeForgeSteelHero(source as ForgeSteelHeroFile);
+  const vitals = calculateHeroVitals({ heroClass: imported.heroClass, level: imported.level, kit: imported.kit, data: imported.data });
+  const data = {
+    ...imported.data,
+    staminaCurrent: vitals.staminaMax === null ? null : Math.max(0, vitals.staminaMax + Number(imported.data['staminaTemp'] ?? 0) - Number(imported.data['staminaDamage'] ?? 0)),
+    recoveriesCurrent: vitals.recoveriesMax === null ? null : Math.max(0, vitals.recoveriesMax - Number(imported.data['recoveriesUsed'] ?? 0)),
+  };
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(`INSERT INTO heroes
+    (id, user_id, name, ancestry, culture, career, hero_class, subclass, level, characteristics, kit, skills, abilities, portrait_asset_id, portrait_url, data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    id, user.id, imported.name, imported.ancestry, imported.culture, imported.career, imported.heroClass,
+    imported.subclass, imported.level, JSON.stringify(imported.characteristics), imported.kit,
+    JSON.stringify(imported.skills), JSON.stringify(imported.abilities), portraitAssetId,
+    portraitAssetId ? portraitUrlForAsset(portraitAssetId) : imported.pictureUrl, JSON.stringify(data),
+  ).run();
+  const result: ForgeSteelHeroImportResult = { id, name: imported.name, warnings: imported.warnings };
+  return c.json(result, 201);
+});
 
 // Tracker fields players may update out of session (in session, SessionRoom
 // applies the same clamping via hero_tracker_update).

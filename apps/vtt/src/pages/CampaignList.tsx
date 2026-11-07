@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent, Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose, Input } from '@anvil/ui';
-import type { SceneImportDocument, SceneImportResult } from '@anvil/types';
+import type { CampaignPackageImportResult, SceneImportDocument, SceneImportResult } from '@anvil/types';
 import { api } from '../lib/api.js';
 import { SceneImportDialog } from '../components/import/SceneImportDialog.js';
+import { CampaignPackageImportDialog } from '../components/import/CampaignPackageImportDialog.js';
 
 interface Campaign {
   id: string;
@@ -93,11 +94,17 @@ export function CampaignList() {
     navigate(`/app/campaigns/${result.campaignId}`);
   };
 
+  const importedCampaignPackage = async (result: CampaignPackageImportResult) => {
+    await load();
+    navigate(`/app/campaigns/${result.campaignId}`);
+  };
+
   return (
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Campaigns</h1>
         <div className="flex items-center gap-2">
+          <CampaignPackageImportDialog onImported={importedCampaignPackage} />
           <SceneImportDialog onImport={importCampaign} />
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>

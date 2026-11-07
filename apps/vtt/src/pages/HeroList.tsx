@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, Dialog, DialogContent, DialogTitle, DialogClose } from '@anvil/ui';
 import { api } from '../lib/api.js';
-import type { HeroSummary } from '@anvil/types';
+import type { ForgeSteelHeroImportResult, HeroSummary } from '@anvil/types';
+import { ForgeSteelHeroImport } from '../components/import/ForgeSteelHeroImport.js';
 
 export function HeroList() {
+  const navigate = useNavigate();
   const [heroes, setHeroes] = useState<HeroSummary[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<HeroSummary | null>(null);
 
@@ -22,13 +24,21 @@ export function HeroList() {
     await load();
   };
 
+  const importedHero = async (result: ForgeSteelHeroImportResult) => {
+    await load();
+    navigate(`/app/heroes/${result.id}`);
+  };
+
   return (
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Heroes</h1>
-        <Link to="/app/heroes/new">
-          <Button>Create Hero</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ForgeSteelHeroImport onImported={importedHero} />
+          <Link to="/app/heroes/new">
+            <Button>Create Hero</Button>
+          </Link>
+        </div>
       </div>
 
       {heroes.length === 0 ? (

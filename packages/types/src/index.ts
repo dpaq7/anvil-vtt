@@ -30,3 +30,5 @@ export * from './hydration.js';
 export * from './assets.js';
 export * from './notes.js';
 export * from './scene-import.js';
+export * from './campaign-package.js';
+export * from './forge-steel.js';

@@ -33,6 +33,7 @@ export const SCENE_IMPORT_LIMITS = {
 
 export const HERO_LIMITS = {
   jsonBodyBytes: 256 * 1024,
+  forgeSteelJsonBytes: 2 * 1024 * 1024,
   nameLength: 160,
   portraitUrlLength: 2_048,
   inventoryBytes: 128 * 1024,
