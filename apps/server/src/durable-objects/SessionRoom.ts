@@ -1689,7 +1689,7 @@ export class SessionRoom extends DurableObject<Env> {
     if (!combat) return;
     const hidden = this.getHiddenEntityIds();
     if (hidden.size === 0) {
-      this.broadcastCombat(combat);
+      this.broadcast({ type: 'combat_updated', combat });
       return;
     }
     const playerCombat = redactCombatForPlayer(combat, hidden);
