@@ -24,3 +24,11 @@ Approved changes to behaviour, which the plan allows only through a gate:
 - End session asks for confirmation (client-side only).
 - The Player gets a full-width "Your turn" banner with "Take my turn" in view.
 - Uploaded portraits sit inside the same inked token frame as drawn faces.
+
+## 2026-11-07: Gate 3, the other four modes
+
+Dan approved all four: `story-*`, `montage-*`, `negotiation-*`, `respite-*` (Director and Player), and `scene-change-motion`.
+
+Approved changes to behaviour, all client-side:
+- The Director reads Negotiation motivations and pitfalls privately before revealing them. Players see them hidden.
+- Dan chose to keep all three new controls: Smaller/Larger text buttons, a Respite filter (All, Open, Done), and the Player's own volume slider in Story. Phase 3 builds them as client-side features.
