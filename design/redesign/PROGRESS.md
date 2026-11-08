@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-07-demo-led-redesign.md`. Work happens in the worktree
 
 ## Current state
 
-- Tasks 1 to 11 done. All five design gates approved; `DESIGN.md` is the build spec. Next: Task 12, Wave 1 (foundation).
+- Tasks 1 to 12 done; Wave 1 signed off. Next: Task 13, Wave 2 (session shell). Each wave: implement, quality gate + smoke, task review, then Dan's sign-off.
 - Task 10 built: the app pages and the public site, 12 stills, waiting for Gate 5 (`?gate=5`). Report: `.superpowers/sdd/2026-11-07-demo-led-redesign/task-10-report.md`.
 - `redesign/demo-led` is pushed to `origin` as a backup. Push after each task.
 - The live session no longer matches `battle-dense.json` exactly: capturing the Player's turn moved it on. Scene switches restored the extra heroes from the snapshot on return to Battle.

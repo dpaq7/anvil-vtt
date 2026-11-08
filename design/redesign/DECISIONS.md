@@ -53,3 +53,7 @@ Layout calls approved with it:
 - The landing has new copy. "Draw Steel by MCDM" and the footer attribution stay: Claude restored them as attribution, not a design choice.
 
 Not shown and designed by rule during the build: dark theme and 1280 for these pages, the Player's home, the other three Builder workspaces, the landing below the fold, About and Contact.
+
+## 2026-11-08: Wave 1 sign-off (foundation)
+
+Dan signed off Wave 1 (commits 4a8a43b..a61abd1): tokens, fonts, base components and `CANVAS_THEME`. Layouts follow in Waves 2 to 6.
