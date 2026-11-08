@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { RefreshCw, Unplug, WifiOff } from 'lucide-react';
+import { LogIn, RefreshCw, Unplug, WifiOff } from 'lucide-react';
 import { TooltipProvider } from '@anvil/ui';
 import { useSessionSocket } from '../../hooks/useSessionSocket.js';
 import { useAuthStore } from '../../stores/authStore.js';
@@ -8,7 +8,7 @@ import { ErrorBoundary } from '../../components/ErrorBoundary.js';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton.js';
 import { StateMessage, StatePage } from '../../components/StateMessage.js';
 import { SessionConnectionProvider } from '../../components/session/shell/connection.js';
-import { RECONNECT_GIVE_UP_SECONDS } from '../../lib/reconnect.js';
+import { RECONNECT_GIVE_UP_SECONDS, isBadSessionLink, isSignedOut } from '../../lib/reconnect.js';
 import { DirectorView } from './DirectorView.js';
 import { PlayerView } from './PlayerView.js';
 import { PhoneSessionPage } from './PhoneSessionPage.js';
@@ -22,16 +22,14 @@ export function SessionPage() {
   return usePhoneCompanion ? <PhoneSessionPage /> : <DesktopSessionPage />;
 }
 
-/** A refusal from the server (4xx) means the link is bad or the session is over. */
-const isRefusal = (status: number | null) => status !== null && status > 0 && status < 500;
-
 function DesktopSessionPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
 
   const { state, status, error, failureStatus, retry, send, combatLog } = useSessionSocket(id ?? null);
 
-  if ((error && !state) || (state && status === 'disconnected' && isRefusal(failureStatus))) {
+  const refused = isBadSessionLink(failureStatus) || isSignedOut(failureStatus);
+  if ((error && !state) || (state && status === 'disconnected' && refused)) {
     return <SessionProblem failureStatus={failureStatus} error={error} onRetry={retry} />;
   }
 
@@ -79,7 +77,21 @@ function SessionProblem({
     : { label: 'Your campaigns', onClick: () => navigate('/app/campaigns') };
   const roomCode = { label: 'Use a room code', onClick: () => navigate('/app/join') };
 
-  if (!isRefusal(failureStatus)) {
+  // An expired login is not a bad link: the table is fine, and signing in is the way back.
+  if (isSignedOut(failureStatus)) {
+    return (
+      <StatePage>
+        <StateMessage
+          icon={<LogIn size={30} strokeWidth={2.4} />}
+          title="Sign in to get back to the table"
+          body="Your login ended while the table was away. The session is saved on the server."
+          go={{ label: 'Sign in', onClick: () => navigate('/auth') }}
+        />
+      </StatePage>
+    );
+  }
+
+  if (!isBadSessionLink(failureStatus)) {
     return (
       <StatePage>
         <StateMessage

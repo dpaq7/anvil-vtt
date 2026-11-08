@@ -178,6 +178,30 @@ function styleForPanelPlacement(
   }
 }
 
+interface StagePanelFit {
+  stageWidth: number;
+  stageHeight: number;
+  panelWidth: number;
+  panelHeight: number;
+}
+
+/** Move a docked panel's offset along its edge so the whole panel stays on the stage. */
+function fitPlacement(
+  placement: StagePanelPlacement,
+  fit: StagePanelFit | null,
+  inset: number,
+): StagePanelPlacement {
+  if (!fit) return placement;
+  const alongX = placement.edge === 'top' || placement.edge === 'bottom';
+  const length = alongX ? fit.stageWidth : fit.stageHeight;
+  const size = alongX ? fit.panelWidth : fit.panelHeight;
+  if (length <= 0) return placement;
+  const min = (size / 2 + inset) / length;
+  // A panel taller than the stage keeps its start in view.
+  if (min >= 0.5) return { ...placement, offset: min };
+  return { ...placement, offset: clamp(placement.offset, min, 1 - min) };
+}
+
 interface FloatingStagePanelProps {
   children: ReactNode;
   storageKey: string;
@@ -286,9 +310,31 @@ function FloatingStagePanel({
     [snapToNearestEdge, stageRef, storageKey],
   );
 
+  // Keep the docked panel inside the stage at any size, including a saved placement. The
+  // stage can be small: at 1280 x 720 it is about 640 x 570 between the fixed rails.
+  const [panelFit, setPanelFit] = useState<StagePanelFit | null>(null);
+  // A passive effect: a parent's ref is not attached yet when a child's layout effect runs.
+  useEffect(() => {
+    const panel = panelRef.current;
+    const stage = stageRef.current;
+    if (!panel || !stage) return;
+    const measure = () =>
+      setPanelFit({
+        stageWidth: stage.clientWidth,
+        stageHeight: stage.clientHeight,
+        panelWidth: panel.offsetWidth,
+        panelHeight: panel.offsetHeight,
+      });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [stageRef]);
+
   const style = dragPosition
     ? { left: dragPosition.x, top: dragPosition.y, transform: 'none' }
-    : styleForPanelPlacement(placement, inset);
+    : styleForPanelPlacement(fitPlacement(placement, panelFit, inset), inset);
 
   return (
     <div
@@ -1063,7 +1109,10 @@ export function BattleStage({
       </div>
 
       {showDiceControls && (
-        <div className="pointer-events-none absolute bottom-4 right-4 z-30">
+        // The Player's zoom panel docks on the right edge, so the Player's dice sit on the left.
+        <div
+          className={`pointer-events-none absolute bottom-4 z-30 ${isDirector ? 'right-4' : 'left-4'}`}
+        >
           <DiceRollControls send={send} className="pointer-events-auto" />
         </div>
       )}

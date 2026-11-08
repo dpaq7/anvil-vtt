@@ -4,7 +4,12 @@ import type { ClientMessage, ServerMessage } from '../types/protocol.js';
 import { csrfHeaders } from '../lib/csrf.js';
 import { addBreadcrumb } from '../lib/bug-reporting.js';
 import { useSessionStore } from '../stores/sessionStore.js';
-import { RECONNECT_GIVE_UP_MS } from '../lib/reconnect.js';
+import {
+  RECONNECT_ATTEMPT_TIMEOUT_MS,
+  RECONNECT_GIVE_UP_MS,
+  isBadSessionLink,
+  isSignedOut,
+} from '../lib/reconnect.js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 export type SessionClientKind = 'desktop' | 'phone';
@@ -48,6 +53,12 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** When the current drop began; null while connected or before the first try. */
   const dropStartedRef = useRef<number | null>(null);
+  /** The clock from the drop: declares the table lost at RECONNECT_GIVE_UP_MS. */
+  const giveUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  /** Bumped by each try, so a try that was replaced or aborted cannot act afterwards. */
+  const attemptRef = useRef(0);
   /** Tracks whether the owning effect is still mounted (survives Strict Mode double-mount). */
   const mountedRef = useRef(false);
 
@@ -103,8 +114,53 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     applyServerMessage(msg);
   }, [applyServerMessage, clientKind]);
 
+  /** Stop the try in flight, whether it is waiting on the token or on the socket. */
+  const abandonAttempt = useCallback(() => {
+    attemptRef.current++;
+    if (attemptTimerRef.current) clearTimeout(attemptTimerRef.current);
+    attemptTimerRef.current = null;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, []);
+
+  const stopDropClock = useCallback(() => {
+    if (giveUpTimerRef.current) clearTimeout(giveUpTimerRef.current);
+    giveUpTimerRef.current = null;
+    dropStartedRef.current = null;
+  }, []);
+
+  const declareLost = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    abandonAttempt();
+    stopDropClock();
+    addBreadcrumb({ category: 'session', message: 'WebSocket disconnected' });
+    setFailureStatus(0);
+    setStatus('disconnected');
+    setError('Connection lost. Please refresh.');
+    toast.error('Connection lost. Please refresh the page.');
+  }, [abandonAttempt, stopDropClock]);
+
+  /** Start the give-up clock, unless this drop already has one running. */
+  const startDropClock = useCallback(() => {
+    if (dropStartedRef.current !== null) return;
+    dropStartedRef.current = Date.now();
+    giveUpTimerRef.current = setTimeout(declareLost, RECONNECT_GIVE_UP_MS);
+  }, [declareLost]);
+
   const connect = useCallback(async () => {
     if (!sessionId || !mountedRef.current) return;
+
+    const attempt = ++attemptRef.current;
+    if (attemptTimerRef.current) clearTimeout(attemptTimerRef.current);
+    attemptTimerRef.current = null;
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
 
     // Close any previous connection to prevent duplicates (e.g. React strict mode double-mount)
     if (wsRef.current) {
@@ -119,14 +175,23 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
 
     // Try again after a backoff while the drop is inside the give-up window.
     const scheduleRetry = (retryable: boolean): boolean => {
-      const started = dropStartedRef.current;
-      if (!retryable || started === null || Date.now() - started >= RECONNECT_GIVE_UP_MS) return false;
+      if (!retryable || dropStartedRef.current === null) return false;
       const delay = Math.min(MAX_DELAY, BASE_DELAY * Math.pow(2, retriesRef.current));
       retriesRef.current++;
       setStatus('reconnecting');
       timerRef.current = setTimeout(() => { void connect(); }, delay);
       return true;
     };
+
+    // During a drop one hung try must not use up the whole window. A first connect has no
+    // limit: nothing has been lost yet, and it may simply be slow.
+    if (dropStartedRef.current !== null) {
+      attemptTimerRef.current = setTimeout(() => {
+        if (attempt !== attemptRef.current) return;
+        abandonAttempt();
+        scheduleRetry(true);
+      }, RECONNECT_ATTEMPT_TIMEOUT_MS);
+    }
 
     const apiBase = import.meta.env['VITE_API_BASE'] ?? '';
 
@@ -138,6 +203,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...csrfHeaders('POST') },
         body: JSON.stringify({ clientKind }),
+        signal: abort.signal,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -146,7 +212,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
       const data = await res.json() as { token: string };
       token = data.token;
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || attempt !== attemptRef.current) return;
       console.error('[WS] failed to get token:', err);
       addBreadcrumb({
         category: 'session',
@@ -154,16 +220,18 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         data: { message: err instanceof Error ? err.message : 'Failed to authenticate' },
       });
       const httpStatus = err instanceof TokenRequestError ? err.status : 0;
-      // During a drop, a server that cannot be reached is tried again until the give-up
-      // window closes. A refusal (4xx) is final.
-      if (scheduleRetry(httpStatus === 0 || httpStatus >= 500)) return;
+      // During a drop, anything but a final answer is tried again until the give-up clock
+      // ends it. A bad link or an expired login will not fix itself.
+      if (scheduleRetry(!isBadSessionLink(httpStatus) && !isSignedOut(httpStatus))) return;
+      if (attemptTimerRef.current) clearTimeout(attemptTimerRef.current);
+      stopDropClock();
       setFailureStatus(httpStatus);
       setError(err instanceof Error ? err.message : 'Failed to authenticate');
       setStatus('disconnected');
       return;
     }
 
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || attempt !== attemptRef.current) return;
 
     const apiUrl = apiBase ? new URL(apiBase) : null;
     const protocol = apiUrl
@@ -183,7 +251,8 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
       addBreadcrumb({ category: 'session', message: 'WebSocket connected' });
       setStatus('connected');
       retriesRef.current = 0;
-      dropStartedRef.current = null;
+      if (attemptTimerRef.current) clearTimeout(attemptTimerRef.current);
+      stopDropClock();
       ws.send(JSON.stringify({ type: 'request_state' } satisfies ClientMessage));
     };
 
@@ -199,32 +268,22 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     ws.onclose = (event) => {
       wsRef.current = null;
       if (!mountedRef.current) return;
-      dropStartedRef.current ??= Date.now();
-      if (scheduleRetry(true)) {
-        addBreadcrumb({
-          category: 'session',
-          message: 'WebSocket closed, reconnecting',
-          data: { code: event.code, retry: retriesRef.current },
-        });
-        toast.warning('Connection lost. Reconnecting...');
-      } else {
-        addBreadcrumb({
-          category: 'session',
-          message: 'WebSocket disconnected',
-          data: { code: event.code, retries: retriesRef.current },
-        });
-        setFailureStatus(0);
-        setStatus('disconnected');
-        setError('Connection lost. Please refresh.');
-        toast.error('Connection lost. Please refresh the page.');
-      }
+      if (attemptTimerRef.current) clearTimeout(attemptTimerRef.current);
+      startDropClock();
+      scheduleRetry(true);
+      addBreadcrumb({
+        category: 'session',
+        message: 'WebSocket closed, reconnecting',
+        data: { code: event.code, retry: retriesRef.current },
+      });
+      toast.warning('Connection lost. Reconnecting...');
     };
 
     ws.onerror = () => {
       addBreadcrumb({ category: 'session', message: 'WebSocket error' });
       ws.close();
     };
-  }, [sessionId, handleMessage, clientKind]);
+  }, [sessionId, handleMessage, clientKind, abandonAttempt, startDropClock, stopDropClock]);
 
   const send = useCallback((msg: ClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -244,9 +303,10 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
   const retry = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     retriesRef.current = 0;
-    dropStartedRef.current = Date.now();
+    stopDropClock();
+    startDropClock();
     void connect();
-  }, [connect]);
+  }, [connect, startDropClock, stopDropClock]);
 
   useEffect(() => {
     resetSessionRuntime();
@@ -254,12 +314,12 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     setError(null);
     setFailureStatus(null);
     retriesRef.current = 0;
-    dropStartedRef.current = null;
+    stopDropClock();
 
     return () => {
       resetSessionRuntime();
     };
-  }, [resetSessionRuntime, sessionId]);
+  }, [resetSessionRuntime, sessionId, stopDropClock]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -267,10 +327,10 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     return () => {
       mountedRef.current = false;
       if (timerRef.current) clearTimeout(timerRef.current);
-      wsRef.current?.close();
-      wsRef.current = null;
+      stopDropClock();
+      abandonAttempt();
     };
-  }, [connect]);
+  }, [connect, abandonAttempt, stopDropClock]);
 
   // Ping every 30s to keep alive
   useEffect(() => {

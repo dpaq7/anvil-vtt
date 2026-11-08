@@ -148,6 +148,8 @@
 .sc-swap--screen { position: absolute; inset: 0; }
 /* A mode screen taller than the frame scrolls inside it, as the old stage panel did. */
 .sc-swap--screen > .sc-layer { overflow-y: auto; }
+/* The map pans inside its canvas: its floating panels must never make the screen scroll. */
+.sc-swap--screen > .sc-layer:has(canvas) { overflow: hidden; }
 .sb-bar-swap { flex: none; }
 .sc-swap--screen > .sc-layer[data-k="old"] { z-index: 2; background: var(--art-ink); }
 

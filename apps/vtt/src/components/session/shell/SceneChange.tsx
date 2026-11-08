@@ -125,7 +125,7 @@ interface Layer {
  * layer and renders its children as they are.
  */
 export function SceneSwap({ children, delay = 0, rise = false, screen = false, className = '' }: SceneSwapProps) {
-  const { epoch, startedAt } = useContext(SceneChangeContext);
+  const { epoch, startedAt, card } = useContext(SceneChangeContext);
   const committed = useRef<ReactNode>(children);
   const [seenEpoch, setSeenEpoch] = useState(epoch);
   const [old, setOld] = useState<Layer | null>(null);
@@ -157,6 +157,11 @@ export function SceneSwap({ children, delay = 0, rise = false, screen = false, c
     };
   }, [old, startedAt, delay, rise, screen]);
 
+  // Nothing unseen takes a click or focus. The rails wait until their layer is fading in. The
+  // screen waits for the old layer to go and for the card to leave. Timers end each of these,
+  // and a second change restarts them, so a layer never stays inert after a run.
+  const waiting = screen ? old !== null || card !== 'off' : stage !== 'on';
+
   return (
     <div className={`sc-swap ${screen ? 'sc-swap--screen' : ''} ${className}`}>
       {old && (
@@ -164,7 +169,7 @@ export function SceneSwap({ children, delay = 0, rise = false, screen = false, c
           {old.node}
         </div>
       )}
-      <div className="sc-layer" data-k="new" data-s={stage} key={`e${epoch}`}>
+      <div className="sc-layer" data-k="new" data-s={stage} key={`e${epoch}`} inert={waiting}>
         {children}
       </div>
     </div>
