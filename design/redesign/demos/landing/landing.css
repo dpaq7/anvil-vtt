@@ -1,11 +1,30 @@
 .ld-hero { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--art-hazard); color: var(--art-on-hazard); border-top: var(--shape-frame) solid var(--art-ink); }
-.ld-copy { position: absolute; left: 56px; top: 50%; transform: translateY(-50%); width: 520px; display: flex; flex-direction: column; align-items: flex-start; gap: 22px; }
+.ld-copy { position: absolute; left: 56px; top: 50%; transform: translateY(-50%); width: 512px; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
 .ld-copy h1 { font: 800 52px/1.04 var(--font-display); letter-spacing: -.03em; }
-.ld-copy p { font-size: 19px; line-height: 1.5; max-width: 25em; }
-.ld-copy .ap-oauth { margin-top: 6px; flex-wrap: nowrap; }
+.ld-copy p { font-size: 19px; line-height: 1.5; }
+.ld-copy .ap-oauth { margin-top: 8px; flex-wrap: nowrap; }
 .ld-copy .ap-oauth button { padding: 0 14px !important; gap: 10px; font-size: 16px !important; }
 .ld-copy small { font-size: 16px; font-weight: 700; }
 .ld-win { position: absolute; border: var(--shape-frame) solid var(--art-ink) !important; border-radius: 0 !important; box-shadow: 8px 8px 0 var(--art-ink) !important; overflow: hidden; }
-.ld-main { left: 640px; top: 56px; width: 1260px; }
-.ld-sat { left: 590px; top: 396px; width: 400px; z-index: 2; }
-.ld-crop { width: 1260px; margin-left: -330px; }
+.ld-main { left: 640px; top: 56px; width: 1446px; }
+.ld-crop { width: 1440px; margin-left: -470px; }
+
+/* The satellite: a Player's Negotiation board at its own size */
+.ld-sat { position: absolute; left: 560px; bottom: 138px; width: 300px; z-index: 2; display: flex; flex-direction: column; color: var(--color-text); background: var(--color-surface); border: var(--shape-frame) solid var(--art-ink); box-shadow: 8px 8px 0 var(--art-ink); transform: rotate(1.2deg); }
+.ld-sat header { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: stretch; color: #fff; background: var(--color-scene-negotiation); border-bottom: var(--shape-frame) solid var(--art-ink); }
+.ld-sat header i { display: grid; place-items: center; background: var(--art-ink); }
+.ld-sat header span { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
+.ld-sat header b { font: 800 16px/1.15 var(--font-display); }
+.ld-sat header small { font-size: 13px; line-height: 1.3; }
+.ld-npc { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px; border-bottom: var(--shape-frame-quiet) solid var(--color-line-quiet); }
+.ld-face { width: 64px; height: 64px; display: grid; place-items: center; box-sizing: border-box; background: #fff; border: 2.5px solid var(--art-ink); border-radius: 50%; overflow: hidden; }
+.ld-npc > span:last-child { display: flex; flex-direction: column; gap: 4px; }
+.ld-npc b { font: 800 18px/1.15 var(--font-display); }
+.ld-npc small { font-size: 13px; line-height: 1.3; color: var(--color-text-soft); }
+.ld-meter { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 0; font-weight: 700; }
+.ld-meter ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
+.ld-meter li { width: 28px; height: 28px; display: grid; place-items: center; box-sizing: border-box; font: 800 14px/1 var(--font-display); color: var(--color-text-soft); border: 2px dashed var(--color-text-soft); }
+.ld-meter li[data-on] { color: #fff; background: var(--color-scene-negotiation); border: 2px solid var(--art-ink); }
+.ld-glass { display: flex; gap: 4px; color: var(--color-line-quiet); }
+.ld-glass svg[data-on] { color: var(--color-text); }
+.ld-argue { margin: 14px 12px 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; font: 800 16px/1 var(--font-display) !important; color: var(--color-on-active) !important; background: var(--color-active) !important; border: var(--shape-frame) solid var(--art-ink) !important; box-shadow: var(--shape-hard-shadow-small) var(--art-ink); }
