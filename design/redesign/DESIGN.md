@@ -596,6 +596,8 @@ Display-only items carried by the approved demos. These change how existing stat
 
 ---
 
+Rail controls, Dan's ruling at Wave 2: rails are fixed widths and drag-to-resize is removed, but each rail in a live session has a collapse button. The collapsed state is a client preference. Collapsing changes nothing else: no action, tracker or turn control may become unreachable without the user seeing how to reopen the rail.
+
 ## 10. Surface to demo map
 
 Each real file in Phase 3 (plan Tasks 12 to 17) and the demo it must match. "Rule" means the file has no drawn demo; build it from the named section.

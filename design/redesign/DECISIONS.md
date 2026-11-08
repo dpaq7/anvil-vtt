@@ -57,3 +57,11 @@ Not shown and designed by rule during the build: dark theme and 1280 for these p
 ## 2026-11-08: Wave 1 sign-off (foundation)
 
 Dan signed off Wave 1 (commits 4a8a43b..a61abd1): tokens, fonts, base components and `CANVAS_THEME`. Layouts follow in Waves 2 to 6.
+
+## 2026-11-08: Wave 2 sign-off (session shell)
+
+Dan signed off Wave 2 (commits be7ca1e..c50d4e9).
+
+Rail controls: rails stay at fixed widths and drag-to-resize stays removed, but Dan chose to bring back a collapse button on each rail in live sessions, so the map can be widened without Fullscreen. Wave 3 builds it.
+
+Dan was asked to watch one scene change into Battle on a real GPU, because the title card's timing could not be confirmed under test.
