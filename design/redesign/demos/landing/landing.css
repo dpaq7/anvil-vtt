@@ -1,0 +1,11 @@
+.ld-hero { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--art-hazard); color: var(--art-on-hazard); border-top: var(--shape-frame) solid var(--art-ink); }
+.ld-copy { position: absolute; left: 56px; top: 50%; transform: translateY(-50%); width: 520px; display: flex; flex-direction: column; align-items: flex-start; gap: 22px; }
+.ld-copy h1 { font: 800 52px/1.04 var(--font-display); letter-spacing: -.03em; }
+.ld-copy p { font-size: 19px; line-height: 1.5; max-width: 25em; }
+.ld-copy .ap-oauth { margin-top: 6px; flex-wrap: nowrap; }
+.ld-copy .ap-oauth button { padding: 0 14px !important; gap: 10px; font-size: 16px !important; }
+.ld-copy small { font-size: 16px; font-weight: 700; }
+.ld-win { position: absolute; border: var(--shape-frame) solid var(--art-ink) !important; border-radius: 0 !important; box-shadow: 8px 8px 0 var(--art-ink) !important; overflow: hidden; }
+.ld-main { left: 640px; top: 56px; width: 1260px; }
+.ld-sat { left: 590px; top: 396px; width: 400px; z-index: 2; }
+.ld-crop { width: 1260px; margin-left: -330px; }

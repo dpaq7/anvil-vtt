@@ -128,9 +128,13 @@ function Scene({ s }: { s: S }) {
   );
 }
 
-export default function SceneChangeMotion() {
+// The title card crossing the story screen, the Battle board already raised. The landing
+// page uses it as this demo's still frame, so it does not repeat battle-turn-motion's.
+export const TITLE_CARD: S = { strip: 'battle', card: 'in', screen: 'story', shell: 'story', live: false, wipe: 'off' };
+
+export default function SceneChangeMotion({ poster = PAYOFF }: { poster?: S } = {}) {
   return (
-    <Stage width={1440} height={900} theme="light" unframed className="look-anvil" initial={START} poster={PAYOFF} script={script} cursor={{ at: REST, idle: false }}>
+    <Stage width={1440} height={900} theme="light" unframed className="look-anvil" initial={START} poster={poster} script={script} cursor={{ at: REST, idle: false }}>
       {(s) => <Scene s={s} />}
     </Stage>
   );

@@ -26,21 +26,23 @@ function Lane({ kind, n, of }: { kind: 'ok' | 'fail'; n: number; of: number }) {
 
 const stateWord = { cleared: 'Cleared', now: 'Now', ahead: 'Ahead' } as const;
 
-export function MontageScreen({ w, h }: { w: number; h: number }) {
+// prep: the Builder's Original state, before anyone has tested.
+export function MontageScreen({ w, h, prep }: { w: number; h: number; prep?: boolean }) {
   return (
     <>
       <MontageArt w={w} h={h} />
-      <Side items={[{ label: `Round ${montage.round}`, value: `of ${montage.rounds}` }, { label: 'Tested', value: '4 of 7', on: true }]} />
+      <Side items={prep ? [{ label: `${montage.rounds} rounds` }, { label: 'Heroes', value: '7' }]
+        : [{ label: `Round ${montage.round}`, value: `of ${montage.rounds}` }, { label: 'Tested', value: '4 of 7', on: true }]} />
       <div className="md-stack">
         <div className="md-plate md-goal"><small>Goal</small><strong>{montage.goal}</strong></div>
         <div className="md-course">
-          <Lane kind="ok" n={montage.successes} of={montage.successLimit} />
-          <Lane kind="fail" n={montage.failures} of={montage.failureLimit} />
+          <Lane kind="ok" n={prep ? 0 : montage.successes} of={montage.successLimit} />
+          <Lane kind="fail" n={prep ? 0 : montage.failures} of={montage.failureLimit} />
         </div>
         <div className="md-chs">
           {montage.challenges.map((c, i) => (
-            <section key={c.name} className="md-ch" data-state={c.state}>
-              <div className="md-ch__top"><ChallengeArt i={i} /><em>{c.state === 'cleared' ? <Check size={13} strokeWidth={3.5} /> : c.state === 'now' ? <ArrowRight size={13} strokeWidth={3.5} /> : null}{stateWord[c.state]}</em></div>
+            <section key={c.name} className="md-ch" data-state={prep ? undefined : c.state}>
+              <div className="md-ch__top"><ChallengeArt i={i} />{!prep && <em>{c.state === 'cleared' ? <Check size={13} strokeWidth={3.5} /> : c.state === 'now' ? <ArrowRight size={13} strokeWidth={3.5} /> : null}{stateWord[c.state]}</em>}</div>
               <div className="md-ch__b">
                 <strong>{c.name}</strong>
                 <p>{c.text}</p>

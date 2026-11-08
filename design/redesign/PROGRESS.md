@@ -4,8 +4,8 @@ Plan: `docs/plans/2026-11-07-demo-led-redesign.md`. Work happens in the worktree
 
 ## Current state
 
-- Tasks 1 to 9 done. Gates 1 to 4 approved (Storyboard; Battle; four modes; phone, Display and states). Next: Task 10, Gate 5.
-- Task 9 built: phone, Display and the states sheet, waiting for Gate 4 (`?gate=4`).
+- Tasks 1 to 9 done. Gates 1 to 4 approved (Storyboard; Battle; four modes; phone, Display and states).
+- Task 10 built: the app pages and the public site, 12 stills, waiting for Gate 5 (`?gate=5`). Report: `.superpowers/sdd/2026-11-07-demo-led-redesign/task-10-report.md`.
 - `redesign/demo-led` is pushed to `origin` as a backup. Push after each task.
 - The live session no longer matches `battle-dense.json` exactly: capturing the Player's turn moved it on. Scene switches restored the extra heroes from the snapshot on return to Battle.
 - The six extra heroes in the dense battle live only in session state, so a scene switch drops them. Capture Battle before changing scene, or rebuild from `HARNESS.md`.

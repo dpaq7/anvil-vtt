@@ -1,0 +1,92 @@
+/* The app outside a session. Same ground, ink, type and two line weights as the session
+   shell (storyboard.css). Heavy frames hold panels; quiet lines divide inside them.
+   Hard shadows only on the one primary action and on things that float. */
+.ap-app { width: 1440px; height: 900px; display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 12px; padding: 12px 0 0 12px; box-sizing: border-box; overflow: hidden;
+  background: var(--color-canvas); color: var(--color-text); font: 400 var(--type-body)/1.35 var(--font-body); font-variant-numeric: tabular-nums; }
+.ap-app button, .ap-pub button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.ap-app a, .ap-pub a { color: inherit; text-decoration: none; }
+.ap-app h1, .ap-app h2, .ap-app h3, .ap-app p, .ap-pub h1, .ap-pub h2, .ap-pub h3, .ap-pub p { margin: 0; }
+
+/* Side: the wordmark on the ground, then one framed rail */
+.ap-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding-bottom: 12px; }
+.ap-word { height: 62px; display: flex; align-items: center; align-self: flex-start; padding-left: 6px; }
+.ap-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ap-me { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; height: 64px; padding: 0 12px; border-bottom: var(--shape-frame-quiet) solid var(--color-line); }
+.ap-me__t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ap-me__t b { font: 700 var(--type-name)/1.15 var(--font-display); white-space: nowrap; }
+.ap-me__t small { font-size: var(--type-min); color: var(--color-text-soft); }
+.ap-me[data-on] { background: var(--color-active-soft); }
+.ap-av { flex: none; display: grid; place-items: center; box-sizing: border-box; border-radius: 50%; background: var(--art-hazard); color: var(--art-on-hazard); border: 2.5px solid var(--art-ink); font-family: var(--font-display); font-weight: 800; }
+.ap-flow { display: grid; grid-template-columns: 1fr 1fr; margin: 12px; height: 36px; box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line); }
+.ap-flow button { font-weight: 700 !important; }
+.ap-flow button[data-on] { background: var(--color-text) !important; color: var(--color-surface) !important; }
+.ap-nav { list-style: none; margin: 0; padding: 0 0 8px; border-bottom: var(--shape-frame-quiet) solid var(--color-line-quiet); }
+.ap-nav a { display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 16px; font: 700 16px/1 var(--font-display); }
+.ap-nav a[data-on] { background: var(--color-text); color: var(--color-surface); box-shadow: inset 6px 0 0 var(--color-active); }
+.ap-foot { margin-top: auto; display: flex; flex-direction: column; padding-bottom: 2px; border-top: var(--shape-frame-quiet) solid var(--color-line-quiet); }
+.ap-foot a, .ap-theme { display: flex; align-items: center; gap: 10px; padding: 14px 16px !important; line-height: 20px; font-weight: 700 !important; text-align: left; }
+.ap-theme i { margin-left: auto; width: 40px; height: 22px; box-sizing: border-box; border-radius: 11px; border: 2px solid var(--color-text); position: relative; }
+.ap-theme i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-text); }
+
+/* Main: page title on the ground, content in frames */
+.ap-main { min-width: 0; min-height: 0; padding: 0 12px 12px 0; box-sizing: border-box; background: var(--color-canvas); display: flex; flex-direction: column; gap: 12px; }
+.ap-head { flex: none; height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 24px; color: var(--color-on-canvas); }
+.ap-head h1 { font: 800 32px/1.05 var(--font-display); letter-spacing: -.02em; white-space: nowrap; }
+.ap-head p { margin-top: 4px; font-size: 15px; }
+.ap-acts { display: flex; gap: 10px; align-items: center; }
+
+.ap-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 16px !important; box-sizing: border-box; font-weight: 700 !important; white-space: nowrap; }
+.ap-btn--go { font: 800 16px/1 var(--font-display) !important; color: var(--color-on-active) !important; background: var(--color-active) !important; border: var(--shape-frame) solid var(--art-ink) !important; box-shadow: var(--shape-hard-shadow-small) var(--color-shadow); }
+.ap-btn--alt { color: var(--color-text) !important; background: var(--color-raised) !important; box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line); }
+.ap-btn--quiet { padding: 0 6px !important; text-decoration: underline; text-underline-offset: 3px; }
+.ap-btn--stop { color: var(--color-alert) !important; background: var(--color-surface) !important; border: 2px dashed var(--color-alert) !important; }
+.ap-btn[disabled] { color: var(--color-text-soft) !important; background: var(--color-well) !important; box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line-quiet); cursor: default; }
+
+.ap-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ap-panel__h { flex: none; display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border-bottom: var(--shape-frame-quiet) solid var(--color-line); }
+.ap-panel__h h2 { font: 800 19px/1.1 var(--font-display); letter-spacing: -.01em; white-space: nowrap; }
+.ap-panel__h > span { font-size: var(--type-min); color: var(--color-text-soft); white-space: nowrap; }
+.ap-panel__h > a, .ap-panel__h > button { margin-left: auto; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+
+/* A campaign's Film Strip, small */
+.ap-strip { display: inline-flex; gap: 6px; }
+.ap-strip i { flex: none; display: grid; place-items: center; box-sizing: border-box; border: 2px solid var(--art-ink); }
+.ap-strip i[data-mode=story] { background: var(--color-scene-story); color: var(--color-on-scene-story); }
+.ap-strip i[data-mode=montage] { background: var(--color-scene-montage); color: var(--color-on-scene-montage); }
+.ap-strip i[data-mode=negotiation] { background: var(--color-scene-negotiation); color: var(--color-on-scene-negotiation); }
+.ap-strip i[data-mode=battle] { background: var(--color-scene-battle); color: var(--color-on-scene-battle); }
+.ap-strip i[data-mode=respite] { background: var(--color-scene-respite); color: var(--color-on-scene-respite); }
+
+/* Inputs drawn as the session's rail fields */
+.ap-field { display: flex; flex-direction: column; gap: 6px; }
+.ap-field > span { font-weight: 700; font-size: var(--type-body); }
+.ap-input { min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; box-sizing: border-box; background: var(--color-raised); box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line); font-size: 15px; }
+.ap-input--area { align-items: flex-start; padding: 10px 12px; line-height: 1.4; }
+.ap-ph { color: var(--color-text-soft); }
+
+.ap-tabs { display: flex; gap: 0; height: 40px; box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line); align-self: flex-start; }
+.ap-tabs span { display: flex; align-items: center; gap: 8px; padding: 0 16px; font-weight: 700; }
+.ap-tabs span[data-on] { background: var(--color-text); color: var(--color-surface); }
+.ap-tabs em { font-style: normal; font-weight: 400; }
+
+.ap-tag { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; box-sizing: border-box; font-size: var(--type-min); font-weight: 700; background: var(--color-well); box-shadow: inset 0 0 0 1.5px var(--color-line-quiet); white-space: nowrap; }
+.ap-live { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; font-size: var(--type-min); font-weight: 700; color: #fff; background: var(--color-scene-battle); box-shadow: 0 0 0 2px var(--art-ink); }
+.ap-live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+
+/* Public pages: Google and Discord sign-in, as the app has them */
+.ap-oauth { display: flex; gap: 12px; flex-wrap: wrap; }
+.ap-oauth[data-column] { flex-direction: column; }
+.ap-oauth button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; height: 52px; padding: 0 22px !important; box-sizing: border-box; font: 700 17px/1 var(--font-body) !important; border: var(--shape-frame) solid var(--art-ink) !important; box-shadow: var(--shape-hard-shadow-small) var(--art-ink); white-space: nowrap; }
+.ap-oauth__g { color: #15171c !important; background: #fff !important; }
+.ap-oauth__d { color: #fff !important; background: #4752c4 !important; }
+
+/* A page of panels is one comic page: panels share 3 px ink gutters, the page holds the frame */
+.ap-page { flex: 1; min-height: 0; display: grid; gap: var(--shape-frame); margin: var(--shape-frame); background: var(--art-ink); outline: var(--shape-frame) solid var(--art-ink); }
+.ap-page > .ap-panel { border: 0; }
+
+/* Public pages: one bar, on the ground */
+.ap-pub { width: 1440px; height: 900px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; background: var(--color-canvas); color: var(--color-text); font: 400 var(--type-body)/1.35 var(--font-body); }
+.ap-mnav { flex: none; height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px 0 24px; color: var(--color-on-canvas); }
+.ap-brand { display: flex; align-items: center; gap: 10px; }
+.ap-brand span { font: 800 30px/1 var(--font-display); letter-spacing: -.02em; }
+.ap-mnav nav { display: flex; align-items: center; gap: 28px; font-weight: 700; font-size: 16px; }

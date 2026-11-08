@@ -17,7 +17,7 @@ export function FoeMark({ family, rank, size }: { family: Monster['family']; ran
   return family === 'cicero' ? <Portrait who="foe" size={size} /> : <FoeFace family={family} rank={rank} size={size} />;
 }
 
-function InkMap({ g, role }: { g: Geo; role: Role }) {
+export function InkMap({ g, role }: { g: Geo; role: Role }) {
   const t = terrain;
   const c = g.cell;
   const k = c / 46;
@@ -91,7 +91,7 @@ export function Burst({ size }: { size: number }) {
   return <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden><polygon points={pts} fill="#ffd21f" stroke={INK} strokeWidth="4" strokeLinejoin="round" /></svg>;
 }
 
-function HeroTok({ h, g, s, tag }: { h: Hero; g: Geo; s: BattleState; tag?: string }) {
+export function HeroTok({ h, g, s, tag }: { h: Hero; g: Geo; s: BattleState; tag?: string }) {
   const dying = h.state === 'dying';
   const [x, y] = posOf(s, h);
   const active = s.activeId === h.id;
@@ -110,7 +110,7 @@ function HeroTok({ h, g, s, tag }: { h: Hero; g: Geo; s: BattleState; tag?: stri
   );
 }
 
-function FoeTok({ m, g, s, role }: { m: Monster; g: Geo; s: BattleState; role: Role }) {
+export function FoeTok({ m, g, s, role }: { m: Monster; g: Geo; s: BattleState; role: Role }) {
   const z = m.size > 1 ? g.boss : g.foe;
   const [x, y] = posOf(s, m);
   const Cond = conditionIcon[m.conditions[0]];
@@ -137,7 +137,7 @@ const tagOf = (m: Monster) => {
 };
 
 export type MapRect = { x: number; y: number; w: number; h: number };
-function Labels({ g, role, s, blockers, riding }: { g: Geo; role: Role; s: BattleState; blockers: MapRect[]; riding?: string }) {
+export function Labels({ g, role, s, blockers, riding }: { g: Geo; role: Role; s: BattleState; blockers: MapRect[]; riding?: string }) {
   const foes = foesInView(role, g.first);
   const labels = useMemo(() => {
     const px = (v: number) => v * g.cell;

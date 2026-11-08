@@ -1,0 +1,25 @@
+.au-page { margin: 3px 15px 15px; grid-template-columns: minmax(0, 1fr) 520px; }
+.au-art { min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 28px; padding: 0 0 0 56px; overflow: hidden; background: var(--art-hazard); color: var(--art-on-hazard); }
+.au-art h2 { font: 800 44px/1.05 var(--font-display); letter-spacing: -.02em; max-width: 14ch; }
+.au-boards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; margin-right: -60px; }
+.au-boards li { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: stretch; height: 76px; background: var(--color-surface); color: var(--color-text); border: var(--shape-frame) solid var(--art-ink); }
+.au-boards i { display: grid; place-items: center; border-right: var(--shape-frame) solid var(--art-ink); }
+.au-boards li[data-mode=story] { --m: var(--color-scene-story); --on-m: var(--color-on-scene-story); }
+.au-boards li[data-mode=montage] { --m: var(--color-scene-montage); --on-m: var(--color-on-scene-montage); }
+.au-boards li[data-mode=negotiation] { --m: var(--color-scene-negotiation); --on-m: var(--color-on-scene-negotiation); }
+.au-boards li[data-mode=battle] { --m: var(--color-scene-battle); --on-m: var(--color-on-scene-battle); }
+.au-boards li[data-mode=respite] { --m: var(--color-scene-respite); --on-m: var(--color-on-scene-respite); }
+.au-boards i { background: var(--m); color: var(--on-m); }
+.au-boards span { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 16px; }
+.au-boards b { font: 800 20px/1.1 var(--font-display); }
+.au-boards small { font-size: 15px; }
+.au-boards li[data-on] { background: var(--m); color: var(--on-m); box-shadow: var(--shape-hard-shadow) var(--art-ink); transform: rotate(-1.2deg) translateX(18px); }
+.au-boards li[data-on] i { background: var(--art-ink); color: #fff; }
+
+.au-card { display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 0 56px; background: var(--color-surface); }
+.au-card h1 { font: 800 44px/1.05 var(--font-display); letter-spacing: -.02em; }
+.au-card > p { font-size: 18px; line-height: 1.45; }
+.au-card .ap-oauth { margin-top: 8px; }
+.au-card .ap-oauth button { width: 100%; }
+.au-small { font-size: 15px !important; color: var(--color-text-soft); }
+.au-back { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; font-weight: 700; text-decoration: underline !important; text-underline-offset: 3px; }
