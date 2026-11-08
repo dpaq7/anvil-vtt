@@ -42,3 +42,14 @@ Dan chose all four behaviour changes, each client-side on messages the server al
 - Pause actions on a drop: during a reconnect the table stays readable and actions wait.
 - Real not-found pages for a bad campaign link and a bad address while signed in.
 - A 30-second give-up showing "Can't reach the table" with Try again. 30 seconds is Claude's guess, so it can be tuned.
+
+## 2026-11-07: Gate 5, the rest of the product
+
+Dan approved the set: `home`, `campaigns`, `builder`, `builder-montage`, `heroes`, `hero-sheet`, `wizard`, `assets`, `notes`, `account`, `auth`, `landing`.
+
+Layout calls approved with it:
+- The Campaign Builder uses the live-session shell and goes back through "← Campaigns".
+- Home's count tiles become counts in the section headings.
+- The landing has new copy. "Draw Steel by MCDM" and the footer attribution stay: Claude restored them as attribution, not a design choice.
+
+Not shown and designed by rule during the build: dark theme and 1280 for these pages, the Player's home, the other three Builder workspaces, the landing below the fold, About and Contact.
