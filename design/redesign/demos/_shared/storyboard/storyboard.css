@@ -13,7 +13,7 @@
 .sb-word { flex: none; align-self: center; font: 800 var(--type-wordmark)/1 var(--font-display); letter-spacing: -.02em; color: var(--color-on-canvas); }
 [data-size="1280"] .sb-word { font-size: 26px; }
 .sb-strip { flex: 1; min-width: 0; display: flex; }
-.sb-strip--one { flex: none; width: 196px; }
+.sb-strip--one { flex: none; width: auto; min-width: 196px; }
 .sb-strip--one .sb-board[data-on] { transform: none; }
 .sb-cell { position: relative; flex: 1 1 auto; display: flex; align-items: stretch; min-width: 0; padding-right: 18px; }
 .sb-cell:last-child { padding-right: 0; }
@@ -27,7 +27,13 @@
 .sb-board span { flex: 1; display: flex; flex-direction: column; gap: 4px; justify-content: center; padding: 0 10px; min-width: 0; }
 .sb-board b { font: 700 var(--type-name)/1.1 var(--font-display); white-space: nowrap; }
 .sb-board small { font-size: var(--type-min); line-height: 1.1; color: var(--color-text-soft); }
-.sb-board[data-on] { border: var(--shape-frame) solid var(--art-ink) !important; background: var(--color-scene-battle) !important; color: var(--color-on-scene-battle) !important; box-shadow: var(--shape-hard-shadow) var(--color-shadow); transform: rotate(-.6deg); }
+/* Each board carries its mode's colour; the live one is filled with it, raised and tilted. */
+.sb-board[data-mode=story] { --m: var(--color-scene-story); --on-m: var(--color-on-scene-story); }
+.sb-board[data-mode=montage] { --m: var(--color-scene-montage); --on-m: var(--color-on-scene-montage); }
+.sb-board[data-mode=negotiation] { --m: var(--color-scene-negotiation); --on-m: var(--color-on-scene-negotiation); }
+.sb-board[data-mode=battle] { --m: var(--color-scene-battle); --on-m: var(--color-on-scene-battle); }
+.sb-board[data-mode=respite] { --m: var(--color-scene-respite); --on-m: var(--color-on-scene-respite); }
+.sb-board[data-on] { border: var(--shape-frame) solid var(--art-ink) !important; background: var(--m) !important; color: var(--on-m) !important; box-shadow: var(--shape-hard-shadow) var(--color-shadow); transform: rotate(-.6deg); }
 .sb-board[data-on] small { color: inherit; }
 .sb-board[data-on] i { background: var(--art-ink); color: #fff; border-right: var(--shape-frame) solid var(--art-ink); }
 .sb-arrow { position: absolute; right: 1.5px; top: 50%; margin-top: -7.5px; color: var(--color-on-canvas); }

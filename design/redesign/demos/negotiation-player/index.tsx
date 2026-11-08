@@ -1,0 +1,5 @@
+import { NegotiationStill } from '../_shared/storyboard/negotiation';
+
+export default function Demo() {
+  return <NegotiationStill role="player" />;
+}

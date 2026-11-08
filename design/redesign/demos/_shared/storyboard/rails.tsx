@@ -15,7 +15,8 @@ export function Meter({ cur, max, state }: { cur: number; max: number; state?: s
   return <i className="sb-meter" data-winded={state === 'winded' || undefined}><u style={{ width: `${(cur / max) * 100}%` }} /></i>;
 }
 
-function HeroRow({ h, s, role, ownId, live }: { h: Hero; s: BattleState; role: Role; ownId?: string; live: Live }) {
+// sub: another mode's line under the name. Battle works it out from turn state and conditions.
+export function HeroRow({ h, s, role, ownId, live, sub: modeSub }: { h: Hero; s: BattleState; role: Role; ownId?: string; live: Live; sub?: string }) {
   const num = live.num ?? plainNum;
   const txt = live.text ?? plainText;
   const cur = curOf(s, h);
@@ -32,7 +33,7 @@ function HeroRow({ h, s, role, ownId, live }: { h: Hero; s: BattleState; role: R
   const done = s.acted.includes(h.id);
   const own = h.id === ownId;
   const note = active ? (own ? 'Your turn' : 'Acting now') : done ? 'Done' : null;
-  const sub = [note, ...h.conditions.map(conditionName)].filter(Boolean).join(', ') || (own ? `${h.heroClass}, you` : h.heroClass);
+  const sub = modeSub ?? ([note, ...h.conditions.map(conditionName)].filter(Boolean).join(', ') || (own ? `${h.heroClass}, you` : h.heroClass));
   return (
     <div className="sb-row" data-target={`row-${h.first}`} data-active={active || undefined} data-done={done || undefined}>
       <div className="sb-row__f"><HeroMark h={h} size={36} /><em className="sb-badge sb-badge--done" data-on={done || undefined}><Check size={10} strokeWidth={4} /></em></div>
@@ -45,7 +46,7 @@ function HeroRow({ h, s, role, ownId, live }: { h: Hero; s: BattleState; role: R
   );
 }
 
-function UnitRow({ u, role, cur, target }: { u: Unit; role: Role; cur?: ReactNode; target?: string }) {
+export function UnitRow({ u, role, cur, target }: { u: Unit; role: Role; cur?: ReactNode; target?: string }) {
   const note = u.conditions.length === 1 && role === 'player' ? conditionName(u.conditions[0]) : null;
   return (
     <div className="sb-unit" data-target={target}>
@@ -56,15 +57,38 @@ function UnitRow({ u, role, cur, target }: { u: Unit; role: Role; cur?: ReactNod
   );
 }
 
+// The party, the same seven rows in every mode. Only the line under each name changes.
+export function HeroList({ s, role, ownId, live, note, sub }: { s: BattleState; role: Role; ownId?: string; live: Live; note: ReactNode; sub?: (h: Hero) => string }) {
+  return (
+    <>
+      <div className="sb-sub"><b>Heroes</b><span>{note}</span></div>
+      {heroes.map((h) => <HeroRow key={h.id} h={h} s={s} role={role} ownId={ownId} live={live} sub={sub?.(h)} />)}
+    </>
+  );
+}
+
 export function LeftRail({ s, role, size, ownId, live, endLabel }: { s: BattleState; role: Role; size: Size; ownId?: string; live: Live; endLabel?: ReactNode }) {
+  const num = live.num ?? plainNum;
+  return (
+    <section className="sb-frame sb-rail" aria-label="Rail">
+      {role === 'director' && <LeftTabs />}
+      <HeroList s={s} role={role} ownId={ownId} live={live} note={<>{num(s.acted.length)} of {heroes.length} acted</>} />
+      <DirectorList s={s} role={role} size={size} live={live} endLabel={endLabel} />
+    </section>
+  );
+}
+
+export function LeftTabs() {
+  return <nav className="sb-tabs" aria-label="Left rail">{leftTabs.map((t, i) => <span key={t.l} data-on={i === 0 || undefined}>{t.l}{t.n != null && <em>{t.n}</em>}</span>)}</nav>;
+}
+
+// Battle's lower left rail: the Director's side, Malice, and the turn's end.
+export function DirectorList({ s, role, size, live, endLabel }: { s: BattleState; role: Role; size: Size; live: Live; endLabel?: ReactNode }) {
   const num = live.num ?? plainNum;
   const units = role === 'director' ? directorRows : playerRows(size);
   const cicero = monsters[0];
   return (
-    <section className="sb-frame sb-rail" aria-label="Rail">
-      {role === 'director' && <nav className="sb-tabs" aria-label="Left rail">{leftTabs.map((t, i) => <span key={t.l} data-on={i === 0 || undefined}>{t.l}{t.n != null && <em>{t.n}</em>}</span>)}</nav>}
-      <div className="sb-sub"><b>Heroes</b><span>{num(s.acted.length)} of {heroes.length} acted</span></div>
-      {heroes.map((h) => <HeroRow key={h.id} h={h} s={s} role={role} ownId={ownId} live={live} />)}
+    <>
       <div className="sb-sub sb-sub--dir">
         <b>Director</b>
         {role === 'director' && <span className="sb-malice">Malice<button aria-label="Lower Malice"><Minus size={13} strokeWidth={3} /></button><strong>{combat.malice}</strong><button aria-label="Raise Malice"><Plus size={13} strokeWidth={3} /></button></span>}
@@ -78,7 +102,7 @@ export function LeftRail({ s, role, size, ownId, live, endLabel }: { s: BattleSt
           <button className="sb-link">End combat…</button>
         </div>
       )}
-    </section>
+    </>
   );
 }
 
@@ -97,7 +121,7 @@ export function TurnActions({ moveLeft, states, move }: { moveLeft: number; stat
   );
 }
 
-function NowCard({ s, live }: { s: BattleState; live: Live }) {
+export function NowCard({ s, live }: { s: BattleState; live: Live }) {
   const h = heroes.find((e) => e.id === s.activeId) ?? heroes[1];
   const txt = live.text ?? plainText;
   const num = live.num ?? plainNum;

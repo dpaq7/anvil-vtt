@@ -1,0 +1,42 @@
+/* Two layers in one place: the one in play sits on top and fades in over the other. */
+.sc-swap { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); min-width: 0; min-height: 0; }
+.sc-layer { grid-area: 1 / 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; transition: opacity .28s cubic-bezier(.25, .8, .25, 1) var(--d); }
+.sc-layer[data-k=b] { opacity: 0; }
+.sc-swap[data-on] > [data-k=b] { opacity: 1; }
+.sc-swap[data-on] > [data-k=a] { opacity: 0; transition-delay: calc(var(--d) + 280ms); transition-duration: 0s; }
+.sc-tabs { flex: none; }
+.sc-lower { flex: 1; }
+.sc-lower > .sc-layer { overflow: hidden; background: var(--color-surface); }
+.sc-lower > [data-k=b] { transform: translateY(8px); transition: opacity .28s cubic-bezier(.25, .8, .25, 1) var(--d), transform .4s cubic-bezier(.25, .8, .25, 1) var(--d); }
+.sc-lower[data-on] > [data-k=b] { transform: none; }
+.sc-right > .sc-layer > .sb-rail { flex: 1; min-height: 0; }
+.sc-bar { flex: 1; }
+.sc-bar > .sc-layer { flex-direction: row; }
+.sc-bar .sb-bar { flex: 1; }
+
+/* The Film Strip hands the raised board on */
+.sc .sb-board { transition: background-color .3s, color .3s, transform .45s cubic-bezier(.25, .8, .25, 1), box-shadow .3s; }
+.sc .sb-board i { transition: background-color .3s, color .3s; }
+
+/* The screen: the map underneath, the story page over it, and the title card */
+.sc-screen { position: relative; overflow: hidden; }
+.sc-story { position: absolute; inset: 0; z-index: 8; overflow: hidden; background: var(--art-ink); visibility: hidden; }
+.sc-story[data-on] { visibility: visible; }
+.sc-card { will-change: transform; position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; color: #fff; background: var(--color-scene-battle); box-shadow: inset 0 0 0 var(--shape-frame) var(--art-ink); transform: translateX(-102%); }
+.sc-card[data-s=in] { transform: none; transition: transform .6s cubic-bezier(.45, 0, .1, 1); }
+.sc-card[data-s=out] { transform: translateX(102%); transition: transform .6s cubic-bezier(.45, 0, .1, 1); }
+.sc-card__in { display: flex; flex-direction: column; align-items: center; gap: 14px; transform: rotate(-2deg); }
+.sc-card__in i { display: grid; place-items: center; width: 88px; height: 88px; color: #fff; background: var(--art-ink); box-shadow: 6px 6px 0 rgb(21 23 28 / .5); }
+.sc-card__in strong { font: 800 66px/1 var(--font-display); letter-spacing: -.02em; text-shadow: 4px 4px 0 var(--art-ink); }
+.sc-card__in span { font: 700 20px/1 var(--font-display); }
+
+.sc-wipe { will-change: transform; position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: var(--art-ink); color: #fff; font: 800 64px/1 var(--font-display); transform: translateX(-101%); }
+.sc-wipe[data-s="in"] { transform: none; transition: transform .5s cubic-bezier(.45, 0, .1, 1); }
+.sc-wipe[data-s="out"] { transform: translateX(101%); transition: transform .5s cubic-bezier(.45, 0, .1, 1); }
+.sc .sb-board, .sc-lower > .sc-layer { will-change: transform; }
+/* The right column sits on the canvas like every other column of the shell. */
+.sc-right, .sc-right > .sc-layer { background: var(--color-canvas); }
+/* The card's words never cross the screen's edge: they arrive after the card and leave before it. */
+.sc-card__in { opacity: 0; transition: opacity .15s; }
+.sc-card[data-s=in] .sc-card__in { opacity: 1; transition: opacity .22s .42s; }
+.sc-card[data-s=out] { transition-delay: .16s; }
