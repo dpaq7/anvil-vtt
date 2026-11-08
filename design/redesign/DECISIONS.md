@@ -15,3 +15,12 @@ Starting combat crashed the server when nothing was hidden by fog, which blocked
 Dan chose **Storyboard** (`direction-c`): inked frames, bold shapes, a mid-tone ground, and character faces on tokens. Claude recommended Projection Booth, and Dan preferred Storyboard.
 
 Known costs to design for at later gates: every class and ancestry needs a drawn head, uploaded token art must have a place in the system, and heavy outlines must stay comfortable over a long session.
+
+## 2026-11-07: Gate 2, Battle and the shared shell
+
+Dan approved as shown: `battle-director` (1440, 1280, dark), `battle-player`, `battle-turn-motion`, and `battle-director-end`. This sets the shell for every surface: Film Strip across the top, rails, status bar and panels.
+
+Approved changes to behaviour, which the plan allows only through a gate:
+- End session asks for confirmation (client-side only).
+- The Player gets a full-width "Your turn" banner with "Take my turn" in view.
+- Uploaded portraits sit inside the same inked token frame as drawn faces.
