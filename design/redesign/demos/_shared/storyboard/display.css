@@ -1,0 +1,68 @@
+/* The Display. Room scale: nothing under 26 px, names at 34, the turn at 72. No controls
+   of any kind. Heavy ink frames and hard shadows, as on the laptop, at the screen's size. */
+.dp-app { position: relative; width: 1920px; height: 1080px; overflow: hidden; display: flex; background: var(--art-ink); color: var(--color-text); font: 400 28px/1.3 var(--font-body); font-variant-numeric: tabular-nums; }
+.dp-app strong, .dp-app b { font-weight: 700; }
+.dp-map { position: relative; flex: none; overflow: hidden; }
+.dp-map .sb-map { box-shadow: none; }
+
+/* The scene's board, hung in the top-left corner like the laptop's Film Strip board */
+.dp-board { position: absolute; left: -8px; top: 32px; z-index: 6; display: flex; align-items: stretch; height: 104px; color: var(--on-m); background: var(--m); border: 5px solid var(--art-ink); box-shadow: 8px 8px 0 var(--art-ink); transform: rotate(-.8deg); }
+.dp-board[data-mode=battle] { --m: var(--color-scene-battle); --on-m: var(--color-on-scene-battle); }
+.dp-board[data-mode=story] { --m: var(--color-scene-story); --on-m: var(--color-on-scene-story); }
+.dp-board i { flex: none; width: 96px; padding-left: 8px; display: grid; place-items: center; color: #fff; background: var(--art-ink); }
+.dp-board span { display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 0 30px 0 22px; }
+.dp-board b { font: 800 44px/1 var(--font-display); letter-spacing: -.01em; white-space: nowrap; }
+.dp-board small { font: 700 26px/1 var(--font-body); }
+
+/* Battle rail: whose turn, then the party */
+.dp-rail { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--color-surface); border-left: 6px solid var(--color-line); box-sizing: border-box; }
+.dp-round { display: flex; justify-content: space-between; align-items: baseline; padding: 26px 28px 18px; }
+.dp-round b { font: 800 40px/1 var(--font-display); }
+.dp-round span { font-size: 28px; color: var(--color-text-soft); }
+.dp-up { flex: none; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 20px; align-items: center; padding: 26px 28px; margin-top: 24px; color: var(--art-on-active-plate); background: var(--art-active-plate); border-block: 6px solid var(--art-ink); }
+.dp-up i { width: 88px; height: 88px; display: grid; place-items: center; background: #fff; border: 5px solid var(--art-ink); border-radius: 50%; box-sizing: border-box; }
+.dp-up small { display: block; font: 700 28px/1 var(--font-body); }
+.dp-up strong { display: block; margin-top: 6px; font: 800 64px/1 var(--font-display); letter-spacing: -.02em; }
+.dp-party { list-style: none; margin: 0; padding: 0; flex: 1; display: flex; flex-direction: column; }
+.dp-party li { flex: 1; display: grid; grid-template-columns: 56px minmax(0, 1fr) 116px; gap: 18px; align-items: center; padding: 0 28px; box-shadow: inset 0 -2px 0 var(--color-line-quiet); }
+.dp-party li:last-child { box-shadow: none; }
+.dp-party li > i { width: 56px; height: 56px; display: grid; place-items: center; }
+.dp-party strong { font: 700 34px/1.1 var(--font-display); white-space: nowrap; }
+.dp-who { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.dp-who small { font: 700 26px/1 var(--font-body); }
+.dp-party em { font: 700 26px/1 var(--font-body); font-style: normal; padding: 3px 8px; color: var(--color-on-danger); background: var(--color-danger); box-shadow: 0 0 0 2px var(--art-ink); }
+.dp-party span { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.dp-party span b { font: 800 30px/1 var(--font-display); }
+.dp-party .sb-meter { height: 14px; border-width: 2.5px; }
+.dp-party li[data-on] { color: var(--color-on-active); background: var(--color-active); }
+.dp-party li[data-on] .sb-meter { border-color: currentColor; } .dp-party li[data-on] .sb-meter u { background: currentColor; }
+.dp-party li[data-done] { color: var(--color-text-soft); }
+.dp-party li > i { position: relative; }
+.dp-party .sb-badge { left: -6px; top: -6px; width: 24px; height: 24px; box-shadow: 0 0 0 2px var(--art-plate); }
+[data-theme="dark"] .dp-party li > i svg { filter: drop-shadow(0 0 1px #f1f3ee) drop-shadow(0 0 1px #f1f3ee); }
+.dp-party .dp-dying { display: block; color: var(--art-on-hazard); background: repeating-linear-gradient(135deg, var(--art-hazard) 0 18px, var(--art-ink) 18px 36px); box-shadow: inset 0 0 0 0 transparent; border-block: 6px solid var(--art-ink); }
+.dp-plate > i { background: #fff; border: 4px solid var(--art-ink); border-radius: 50%; box-sizing: border-box; transform: rotate(-9deg); }
+.dp-plate > i svg { filter: none !important; }
+.dp-plate { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 10px 14px; background: var(--art-hazard); box-shadow: 0 0 0 4px var(--art-ink); }
+.dp-plate > i { width: 56px; height: 56px; display: grid; place-items: center; }
+.dp-dying .dp-who { gap: 4px; }
+.dp-dying .dp-who b { font: 800 30px/1 var(--font-display); text-transform: uppercase; }
+.dp-foot { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 14px 28px 18px; font-size: 26px; border-top: 6px solid var(--color-line); }
+
+/* Story: the art fills the room's screen; the read-aloud is a bound page of script */
+.dp-app--story .sb-art { position: absolute; inset: 0; }
+.dp-sound { position: absolute; right: 32px; top: 32px; z-index: 6; display: flex; align-items: center; gap: 12px; padding: 14px 20px; font: 700 26px/1 var(--font-body); color: var(--color-text); background: var(--color-surface); border: 4px solid var(--art-ink); }
+.dp-page { position: absolute; left: 72px; right: 72px; bottom: 64px; z-index: 5; padding: 40px 64px 44px 140px; color: var(--color-text); background: var(--color-surface); border: 6px solid var(--color-line); box-shadow: 12px 12px 0 var(--art-ink); }
+.dp-page::before { content: ""; position: absolute; left: 96px; top: 0; bottom: 0; width: 5px; background: var(--color-scene-story); }
+.dp-page .md-holes { left: 32px; top: 44px; bottom: 44px; }
+.dp-page .md-holes u { width: 30px; height: 30px; box-shadow: inset 3px 3px 0 var(--art-ink); }
+.dp-slug { margin: 0 0 26px; font: 700 30px/1.2 "Courier Prime", ui-monospace, monospace; text-transform: uppercase; letter-spacing: .02em; }
+.dp-page p { margin: 0 0 22px; font: 400 46px/1.42 "Courier Prime", ui-monospace, monospace; }
+.dp-page p:last-child { margin-bottom: 0; }
+.dp-plate > span { justify-self: end; }
+.dp-plate > span b { padding: 4px 10px; color: #fff; background: var(--art-ink); font: 800 30px/1 var(--font-display); }
+/* On the Battle Display the board heads the rail, so it never covers a token */
+.dp-rail .dp-board { flex: none; position: relative; left: auto; top: auto; margin: 22px 24px 0 -14px; height: 92px; transform: rotate(-.8deg); }
+.dp-rail .dp-board b { font-size: 34px; }
+.dp-rail .dp-board span { gap: 10px; }
+.dp-party .dp-dying { flex: none; padding: 16px 28px; }

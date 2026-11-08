@@ -187,26 +187,29 @@ function Nav({ g, role }: { g: Geo; role: Role }) {
   );
 }
 
-export function BattleMap({ g, role, s, popover, popoverAt, heroTag, overlay, under, count }: {
+// bare: the map with no tools on it, for the Display. No corner tracker, no mini-map or
+// zoom, and the fog note only when fog is in view.
+export function BattleMap({ g, role, s, popover, popoverAt, heroTag, overlay, under, count, bare }: {
   g: Geo; role: Role; s: BattleState; popover?: ReactNode; popoverAt?: MapRect;
-  heroTag?: { first: string; text: string }; overlay?: ReactNode; under?: ReactNode; count?: (n: number) => ReactNode;
+  heroTag?: { first: string; text: string }; overlay?: ReactNode; under?: ReactNode; count?: (n: number) => ReactNode; bare?: boolean;
 }) {
   const foes = foesInView(role, g.first);
   const shoutAt = { x: (dyingHero.x + 0.9) * g.cell, y: (21 - g.first) * g.cell - (g.w === 1440 ? 8 : role === 'director' ? -5 : -1) };
   const blockers = useMemo(() => {
-    const list: MapRect[] = [
+    const list: MapRect[] = bare ? [{ x: shoutAt.x, y: shoutAt.y, w: 130, h: 34 }] : [
       { x: g.mapW - 330, y: 0, w: 330, h: 42 },
       { x: g.mapW - g.nav - 24, y: g.mapH - g.nav * 1.3 - 100, w: g.nav + 24, h: g.nav * 1.3 + 100 },
       { x: shoutAt.x, y: shoutAt.y, w: 130, h: 34 },
     ];
     if (popoverAt) list.push(popoverAt);
     return list;
-  }, [g, popoverAt, shoutAt.x, shoutAt.y]);
+  }, [g, popoverAt, shoutAt.x, shoutAt.y, bare]);
+  const fogInView = scene.fogZones.some((f) => f.y + f.h > g.first);
   return (
     <div className="sb-map" style={{ width: g.mapW, height: g.mapH }}>
       <InkMap g={g} role={role} />
       {role === 'director' && <div className="sb-fogtag" style={{ left: 4.05 * g.cell, top: 2 }}><EyeOff size={14} strokeWidth={2.6} />{g.w === 1440 ? 'Hidden from players' : 'Hidden'}</div>}
-      {role === 'player' && <div className="sb-fogtag sb-fogtag--player" style={{ left: 12, top: 12 }}>Fog. Not explored yet</div>}
+      {role === 'player' && (!bare || fogInView) && <div className="sb-fogtag sb-fogtag--player" style={{ left: 12, top: 12 }}>Fog. Not explored yet</div>}
       {under}
       {foes.map((m) => <FoeTok key={m.id} m={m} g={g} s={s} role={role} />)}
       <Labels g={g} role={role} s={s} blockers={blockers} riding={heroTag?.first ?? 'Smoke'} />
@@ -214,8 +217,8 @@ export function BattleMap({ g, role, s, popover, popoverAt, heroTag, overlay, un
       {heroes.map((h) => <HeroTok key={h.id} h={h} g={g} s={s} tag={heroTag?.first === h.first ? heroTag.text : undefined} />)}
       <div className="sb-shout" style={{ left: shoutAt.x, top: shoutAt.y }}>Pip is dying!</div>
       {popover}
-      <SideTracker s={s} role={role} live={count} />
-      <Nav g={g} role={role} />
+      {!bare && <SideTracker s={s} role={role} live={count} />}
+      {!bare && <Nav g={g} role={role} />}
       {overlay}
     </div>
   );

@@ -10,7 +10,7 @@ type Secret = (typeof n.motivations)[number];
 // The same secret, three ways. Revealed: anyone reads it. Hidden, Director: readable,
 // marked like fog seen through, with Reveal beside it. Hidden, Player: solid ink, no words.
 // The client knows who is looking, so this is a display choice, not a protocol change.
-function SecretCard({ s, role, kind }: { s: Secret; role: Role; kind: 'motivation' | 'pitfall' }) {
+export function SecretCard({ s, role, kind }: { s: Secret; role: Role; kind: 'motivation' | 'pitfall' }) {
   if (s.revealed) {
     return (
       <div className="md-secret" data-state="known">

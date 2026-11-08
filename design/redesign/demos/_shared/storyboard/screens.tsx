@@ -26,11 +26,12 @@ function Popover({ g, at }: { g: Geo; at: MapRect }) {
   );
 }
 
-export function StatusBar({ role, theme }: { role: 'director' | 'player'; theme: Theme }) {
+// link: what the connection says, when it is not simply Connected (the states sheet).
+export function StatusBar({ role, theme, link }: { role: 'director' | 'player'; theme: Theme; link?: ReactNode }) {
   const mode = theme === 'dark' ? 'Light' : 'Dark';
   return (
     <>
-      <span><CircleDot size={13} strokeWidth={3} />Connected</span>
+      {link ?? <span><CircleDot size={13} strokeWidth={3} />Connected</span>}
       {role === 'director' ? <><span>Dev Director, Director</span><span>Dev Player</span></> : <><span>Dev Player</span><span>Dev Director, Director</span></>}
       <span>1/1 players</span>
       <div><span>{mode}</span>{role === 'director' && <span>Display</span>}<span>Fullscreen</span>{role === 'director' && <span>Revert…</span>}</div>
@@ -56,7 +57,8 @@ export function DirectorBoard({ size, theme, s, live = {}, target, amount, popov
   );
 }
 
-export function PlayerBoard({ size, theme }: { size: Size; theme: Theme }) {
+// link, take and overlay change the board for the states sheet; a still leaves them out.
+export function PlayerBoard({ size, theme, link, take, overlay }: { size: Size; theme: Theme; link?: ReactNode; take?: ReactNode; overlay?: ReactNode }) {
   const g = useMemo(() => geoFor(size, 'player'), [size]);
   const s = useMemo(playerState, []);
   const battle = scenes.find((c) => c.key === 'battle')!;
@@ -69,14 +71,14 @@ export function PlayerBoard({ size, theme }: { size: Size; theme: Theme }) {
           <div className="sb-turn__f"><HeroMark h={smoke} size={size === 1440 ? 38 : 32} /></div>
           <strong>Your turn, {smoke.first}</strong>
           <small>{activeHero.first} has finished</small>
-          <button className="sb-take">Take my turn</button>
+          {take ?? <button className="sb-take">Take my turn</button>}
         </div>
       </>}
       left={<LeftRail s={s} role="player" size={size} ownId={smoke.id} live={{}} />}
       right={<PlayerRail h={smoke} s={s} size={size} />}
-      map={<BattleMap g={g} role="player" s={s} heroTag={{ first: smoke.first, text: 'You' }} />}
+      map={<BattleMap g={g} role="player" s={s} heroTag={{ first: smoke.first, text: 'You' }} overlay={overlay} />}
       bar={<RollBar size={size} tools={playerTools} />}
-      status={<StatusBar role="player" theme={theme} />}
+      status={<StatusBar role="player" theme={theme} link={link} />}
     />
   );
 }

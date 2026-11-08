@@ -1,0 +1,96 @@
+/* The states sheet. Sheet type is the shell's; each tile is a page drawn whole at true size. */
+.st-sheet { width: 1440px; display: flex; flex-direction: column; gap: 40px; padding: 0 0 40px; box-sizing: border-box; background: var(--color-canvas); color: var(--color-text); font: 400 var(--type-body)/1.35 var(--font-body); }
+.st-sheet button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.st-sec { display: flex; flex-direction: column; gap: 16px; }
+.st-h { display: flex; align-items: baseline; gap: 20px; padding: 32px 24px 0; color: var(--color-on-canvas); }
+.st-h h1 { flex: none; margin: 0; font: 800 30px/1.1 var(--font-display); letter-spacing: -.01em; }
+.st-h p { margin: 0; max-width: 760px; font-size: 16px; }
+.st-board { position: relative; height: 912px; }
+.st-board .sb-app { height: 912px !important; padding-bottom: 12px; }
+
+/* A short drop: the status bar and one strip on the screen's top edge say it */
+.st-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; color: var(--color-on-danger); background: var(--color-danger); box-shadow: 0 0 0 1.5px var(--art-ink); }
+.st-link svg { margin-right: 0 !important; }
+.st-drop { position: absolute; left: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 10px; height: 41px; box-sizing: border-box; padding: 0 14px 0 0; color: var(--art-on-hazard); background: var(--art-hazard); border: solid var(--art-ink); border-width: 0 var(--shape-frame) var(--shape-frame) 0; font-size: var(--type-body); }
+.st-drop i { align-self: stretch; width: 40px; display: grid; place-items: center; color: #fff; background: var(--art-ink); }
+.st-drop b { font: 800 var(--type-heading)/1 var(--font-display); }
+.st-take { opacity: 1; color: var(--color-text-soft) !important; background: var(--color-well) !important; border-style: dashed !important; box-shadow: none !important; }
+
+/* Tiles */
+.st-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--shape-frame); margin: 3px 27px; background: var(--art-ink); outline: var(--shape-frame) solid var(--art-ink); box-shadow: 7px 7px 0 var(--art-ink); }
+.st-panel { margin: 0; height: 420px; display: flex; flex-direction: column; min-width: 0; background: var(--color-surface); }
+.st-panel figcaption { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; height: 44px; padding: 0 16px; align-items: center; background: var(--color-canvas); color: var(--color-on-canvas); border-bottom: var(--shape-frame-quiet) solid var(--color-line); }
+.st-panel figcaption b { font: 800 var(--type-heading)/1.2 var(--font-display); }
+.st-panel figcaption span { font-size: var(--type-min); }
+.st-where { flex: none; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 16px; background: var(--color-canvas); color: var(--color-on-canvas); border-block: var(--shape-frame-quiet) solid var(--color-line); }
+.st-where b { font: 800 20px/1 var(--font-display); letter-spacing: -.02em; }
+.st-where span { font-size: var(--type-body); font-weight: 700; }
+.st-tile { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.st-tile figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--color-on-canvas); }
+.st-tile figcaption b { font: 800 var(--type-heading)/1.2 var(--font-display); }
+.st-tile figcaption span { font-size: var(--type-min); }
+.st-page { height: 380px; display: flex; flex-direction: column; background: var(--color-surface); border: var(--shape-frame) solid var(--color-line); box-shadow: var(--shape-hard-shadow) var(--color-shadow); box-sizing: border-box; overflow: hidden; }
+.st-page header { flex: none; display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 16px; background: var(--color-canvas); border-bottom: var(--shape-frame) solid var(--color-line); color: var(--color-on-canvas); }
+.st-page header b { font: 800 22px/1 var(--font-display); letter-spacing: -.02em; }
+.st-page header span { font-size: var(--type-body); font-weight: 700; }
+.st-page__b { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* A failure: what happened, then the way on */
+.st-msg { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; padding: 24px 16px; }
+.st-msg i { width: 56px; height: 56px; display: grid; place-items: center; color: var(--art-on-hazard); background: var(--art-hazard); border: var(--shape-frame) solid var(--art-ink); transform: rotate(-4deg); margin-bottom: 4px; }
+.st-msg h2, .st-empty h2 { margin: 0; font: 800 22px/1.15 var(--font-display); letter-spacing: -.01em; }
+.st-msg p, .st-empty p { margin: 0; font-size: 15px; line-height: 1.4; color: var(--color-text); max-width: 36ch; }
+.st-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.st-go { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px !important; font: 800 16px/1 var(--font-display) !important; color: var(--color-on-active) !important; background: var(--color-active) !important; border: var(--shape-frame) solid var(--art-ink) !important; box-shadow: var(--shape-hard-shadow-small) var(--color-shadow); }
+.st-alt { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px !important; font-weight: 700 !important; background: var(--color-raised) !important; box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line); }
+
+/* Loading: hatched like ink still going down, in the content's own shape */
+.st-load, .st-phload { flex: 1; display: flex; flex-direction: column; gap: 0; }
+.st-load__h { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px; }
+.st-load__h b { font: 800 var(--type-heading)/1.2 var(--font-display); }
+.st-ghost { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 14px; align-items: center; padding: 14px 16px; border-top: var(--shape-frame-quiet) solid var(--color-line-quiet); }
+.st-ghost i, .st-ghost u, .st-sess__top span, .st-rail u, .st-ghostboard { display: block; background: repeating-linear-gradient(135deg, var(--color-line-quiet) 0 3px, transparent 3px 9px); box-shadow: inset 0 0 0 1.5px var(--color-line-quiet); }
+.st-ghost i { width: 48px; height: 48px; }
+.st-ghost div { display: flex; flex-direction: column; gap: 8px; }
+.st-ghost u { height: 14px; }
+
+/* Empty: an open strip and one thing to do */
+.st-empty { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; padding: 24px 16px; }
+.st-strip { display: flex; gap: 10px; margin-bottom: 6px; }
+.st-strip span { width: 44px; height: 44px; display: grid; place-items: center; color: var(--color-text-soft); border: 2px dashed var(--color-text-soft); box-sizing: border-box; }
+.st-strip span[data-i="0"] { color: #fff; background: var(--color-scene-story); border: var(--shape-frame) solid var(--art-ink); transform: rotate(-4deg); }
+
+/* Loading a session: the shell in outline */
+.st-sess { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px 0 0 12px; background: var(--color-canvas); }
+.st-sess__top { padding-right: 12px; }
+.st-sess__top { display: flex; align-items: center; gap: 8px; height: 36px; color: var(--color-on-canvas); }
+.st-sess__top b { font: 800 20px/1 var(--font-display); margin-right: 4px; }
+.st-sess__top span { flex: 1; height: 32px; }
+.st-sess__mid { flex: 1; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }
+.st-rail { display: flex; flex-direction: column; gap: 10px; padding: 10px; background: var(--color-surface); border: var(--shape-frame-quiet) solid var(--color-line); }
+.st-rail u { height: 30px; }
+.st-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #fff; background: var(--art-ink); border: var(--shape-frame) solid var(--art-ink); text-align: center; }
+.st-screen b { font: 800 19px/1.2 var(--font-display); }
+.st-screen span { font-size: var(--type-body); }
+
+/* Phones */
+.st-phones { display: flex; justify-content: center; gap: 56px; padding: 0 24px; }
+.st-phones .st-tile { width: 375px; flex: none; }
+.st-phones .ph-app { outline: var(--shape-frame) solid var(--color-line); box-shadow: 7px 7px 0 var(--color-shadow); }
+.st-drop--phone { position: static; flex: none; height: 44px; border-width: 0 0 var(--shape-frame-quiet); }
+.st-drop--phone b { font-size: var(--type-name); }
+.ph-go[data-wait] { color: var(--color-text-soft) !important; background: var(--color-well) !important; border-style: dashed !important; box-shadow: none !important; font-size: 18px !important; }
+.st-ghostboard { flex: 1; height: 46px; }
+.st-phload { flex: 1; margin-bottom: 12px; }
+
+.st-lock { align-items: center; justify-content: center; gap: 14px; padding: 32px 28px; text-align: center; }
+.st-lock__art { position: relative; width: 150px; height: 104px; margin-bottom: 8px; }
+.st-lock__laptop { position: absolute; left: 0; top: 0; width: 112px; height: 92px; display: grid; place-items: center; background: var(--color-surface); border: var(--shape-frame) solid var(--art-ink); box-shadow: var(--shape-hard-shadow) var(--color-shadow); }
+.st-lock__phone { position: absolute; right: 0; bottom: 0; width: 56px; height: 78px; display: grid; place-items: center; color: var(--art-on-hazard); background: var(--art-hazard); border: var(--shape-frame) solid var(--art-ink); transform: rotate(6deg); }
+.st-lock h2 { margin: 0; font: 800 26px/1.15 var(--font-display); letter-spacing: -.01em; }
+.st-lock p { margin: 0; font-size: 16px; line-height: 1.4; }
+.st-lock ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; width: calc(100% + 56px); text-align: left; border-top: var(--shape-frame-quiet) solid var(--color-line); }
+.st-lock li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px 28px; background: var(--color-surface); border-bottom: var(--shape-frame-quiet) solid var(--color-line); font-size: 16px; }
+.st-lock li b { width: 36px; height: 36px; display: grid; place-items: center; color: var(--color-surface); background: var(--color-text); font: 800 18px/1 var(--font-display); }
+.st-wait { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-weight: 700; font-size: 16px; }
+.st-wait i { width: 12px; height: 12px; border-radius: 50%; background: var(--color-active); box-shadow: 0 0 0 4px var(--color-active-soft); }
