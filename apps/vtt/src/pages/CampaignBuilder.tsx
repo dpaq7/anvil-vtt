@@ -42,7 +42,9 @@ import type {
   MonsterFeature,
 } from '@anvil/data';
 import type { MotivationType, NPCAttitude, SceneImportDocument, SceneType } from '@anvil/types';
-import { api } from '../lib/api.js';
+import { ApiError, api } from '../lib/api.js';
+import { CampaignNotFound } from '../components/CampaignNotFound.js';
+import { LoadingSkeleton } from '../components/LoadingSkeleton.js';
 import {
   NEGOTIATION_TRAITS,
   RESPITE_ACTIVITY_OPTIONS,
@@ -476,6 +478,8 @@ export function CampaignBuilder() {
     name: string;
     description: string;
   } | null>(null);
+  // A bad campaign link stops loading on the server's refusal (DESIGN.md 9).
+  const [campaignMissing, setCampaignMissing] = useState(false);
   const [modules, setModules] = useState<Module[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -540,7 +544,14 @@ export function CampaignBuilder() {
   }, [campaignId]);
 
   useEffect(() => {
-    load();
+    setCampaignMissing(false);
+    load().catch((error: unknown) => {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
+        setCampaignMissing(true);
+        return;
+      }
+      console.error('Failed to load campaign:', error);
+    });
   }, [load]);
 
   useEffect(() => {
@@ -1568,7 +1579,8 @@ export function CampaignBuilder() {
     }
   };
 
-  if (!campaign) return <div className="p-8 text-zinc-400">Loading...</div>;
+  if (campaignMissing) return <CampaignNotFound />;
+  if (!campaign) return <LoadingSkeleton variant="list" label="Opening the campaign…" />;
 
   const builderSidebar = (
     <div

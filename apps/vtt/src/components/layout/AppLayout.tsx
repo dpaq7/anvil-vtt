@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, Outlet, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   CircleUserRound,
@@ -282,6 +282,26 @@ function AccountMenu() {
   );
 }
 
+/** The app rail's own width (232 px), or the narrow strip when collapsed. */
+const railWidthClass = 'group-data-[collapsed=false]/side:w-[232px]';
+
+/** The side column: the wordmark on the ground, then the framed rail. */
+function AppSide({ children }: { children: ReactNode }) {
+  const { collapsed } = useSidebar();
+  return (
+    <div className="group/side relative z-30 flex min-h-0 shrink-0 flex-col gap-2 pb-3" data-collapsed={collapsed}>
+      <Link
+        to="/app"
+        aria-label="Anvil home"
+        className="flex h-[62px] shrink-0 items-center px-1.5 font-display text-[32px] font-extrabold leading-none tracking-[-0.02em] text-on-canvas"
+      >
+        {collapsed ? <AnvilIcon size={28} /> : 'Anvil'}
+      </Link>
+      {children}
+    </div>
+  );
+}
+
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
   const checkAuth = useAuthStore((s) => s.checkAuth);
@@ -353,9 +373,12 @@ export function AppLayout() {
   return (
     <TooltipProvider delayDuration={0}>
       <SidebarProvider labels={ALL_LABELS}>
-        <div className="flex h-screen overflow-hidden">
+        {/* App frame (demo `home`, `ap-app`): the canvas ground, the wordmark over one
+            framed rail, and the page beside it. */}
+        <div className="flex h-screen gap-3 overflow-hidden bg-canvas pl-3 pt-3 text-text">
+          <AppSide>
           <Sidebar
-            className="relative z-30 shrink-0"
+            className={cn('relative z-30 min-h-0 flex-1 shrink-0 border-[3px] border-line', railWidthClass)}
             variant={isPlayer ? 'player' : 'director'}
             data-onboarding="menu-bar"
           >
@@ -388,7 +411,8 @@ export function AppLayout() {
               <SidebarToggle />
             </div>
           </Sidebar>
-          <main className="relative flex-1 overflow-y-auto">
+          </AppSide>
+          <main className="relative min-w-0 flex-1 overflow-y-auto pb-3 pr-3">
             <Outlet key={`${user?.id ?? 'anonymous'}:${user?.role ?? 'unknown'}:${location.pathname}`} />
           </main>
         </div>

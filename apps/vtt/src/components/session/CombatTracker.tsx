@@ -1,3 +1,4 @@
+import { useSessionConnection } from './shell/connection-context.js';
 import type { MouseEvent } from 'react';
 import { Clapperboard, Dices, Shield, Swords } from 'lucide-react';
 import { Button, cn } from '@anvil/ui';
@@ -64,6 +65,8 @@ export function CombatTracker({
   onAdjustMalice,
   onRollInitiative,
 }: CombatTrackerProps) {
+  // During a drop the table stays readable; actions that need the server wait.
+  const { paused } = useSessionConnection();
   const entityMap = new Map(entities.map((e) => [e.id, e]));
   const selectedSet = new Set(selectedEntityIds);
   const initiativePending = combat.initiativeRoll === null || combat.firstSide === null || combat.activeSide === null;
@@ -129,6 +132,7 @@ export function CombatTracker({
               size="sm"
               variant="secondary"
               className="mt-2 w-full"
+              disabled={paused}
               onClick={onRollInitiative}
             >
               Roll d10
@@ -191,62 +195,63 @@ export function CombatTracker({
         />
       </div>
 
-      <div className="flex items-center justify-between rounded bg-zinc-800/50 px-2 py-1.5">
-        <span className="text-xs text-zinc-400">Malice</span>
-        <div className="flex items-center gap-1">
-          {isDirector && (
+      {/* Malice is the Director's alone (DESIGN.md section 7). */}
+      {isDirector && (
+        <div className="flex items-center justify-between rounded bg-zinc-800/50 px-2 py-1.5">
+          <span className="text-xs text-zinc-400">Malice</span>
+          <div className="flex items-center gap-1">
             <Button
               size="icon"
               variant="ghost"
               className="size-5"
+              disabled={paused}
               onClick={() => onAdjustMalice(-1)}
             >
               <span className="text-xs">-</span>
             </Button>
-          )}
-          <span className="min-w-[20px] text-center text-sm font-bold text-purple-400">
-            {combat.malice}
-          </span>
-          {isDirector && (
+            <span className="min-w-[20px] text-center text-sm font-bold text-purple-400">
+              {combat.malice}
+            </span>
             <Button
               size="icon"
               variant="ghost"
               className="size-5"
+              disabled={paused}
               onClick={() => onAdjustMalice(1)}
             >
               <span className="text-xs">+</span>
             </Button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {canClaimTurn && !isDirector && (
         <Button
           size="sm"
-          className="bg-blue-600 hover:bg-blue-700"
+          disabled={paused}
           onClick={() => {
             if (currentHeroEntityId) onClaimTurn(currentHeroEntityId);
           }}
         >
-          Take My Turn
+          {paused ? 'Take My Turn, when back' : 'Take My Turn'}
         </Button>
       )}
 
       {isMyTurn && !isDirector && (
-        <Button size="sm" variant="outline" onClick={onEndTurn}>
-          End My Turn
+        <Button size="sm" variant="outline" disabled={paused} onClick={onEndTurn}>
+          {paused ? 'End My Turn, when back' : 'End My Turn'}
         </Button>
       )}
 
       {isDirector && combat.activeEntityId && (
-        <Button size="sm" variant="outline" onClick={onEndTurn}>
-          End Turn
+        <Button size="sm" variant="outline" disabled={paused} onClick={onEndTurn}>
+          {paused ? 'End Turn, when back' : 'End Turn'}
         </Button>
       )}
 
       {isDirector && (
-        <Button size="sm" variant="ghost" onClick={onEndCombat} className="text-zinc-500">
-          End Combat
+        <Button size="sm" variant="ghost" disabled={paused} onClick={onEndCombat} className="text-zinc-500">
+          {paused ? 'End Combat, when back' : 'End Combat'}
         </Button>
       )}
     </div>

@@ -3,6 +3,17 @@ import { reportApiError } from './bug-reporting.js';
 
 const API_BASE = import.meta.env['VITE_API_BASE'] || '';
 
+/** A request the server answered with an error. `status` lets a page tell 404 from a crash. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = 'ApiError';
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method ?? 'GET';
   let res: Response;
@@ -30,7 +41,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
     const message = body.error ?? `Request failed: ${res.status}`;
     if (res.status >= 500) reportApiError({ method, path, status: res.status, message });
-    throw new Error(message);
+    throw new ApiError(message, res.status);
   }
 
   return res.json() as Promise<T>;

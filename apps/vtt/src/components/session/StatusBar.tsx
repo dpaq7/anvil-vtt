@@ -1,42 +1,49 @@
-import { SceneTypeIcon, SCENE_COLORS, cn } from '@anvil/ui';
-import type { SceneType } from '@anvil/ui';
+import type { ReactNode } from 'react';
+import { CircleDot, Unplug } from 'lucide-react';
 import type { ConnectionStatus } from '../../hooks/useSessionSocket.js';
+import { useSessionConnection } from './shell/connection-context.js';
 
 interface StatusBarProps {
-  sceneType: SceneType | null;
   connectionStatus: ConnectionStatus;
-  participantCount: number;
+  /** Who is at the table, between the connection and the actions. */
+  children?: ReactNode;
+  /** Quiet actions on the right: theme, Display, Fullscreen, Revert… */
+  actions?: ReactNode;
 }
 
-const CONNECTION_LABELS: Record<ConnectionStatus, { label: string; color: string }> = {
-  connected: { label: 'Connected', color: 'text-emerald-400' },
-  connecting: { label: 'Connecting...', color: 'text-amber-400' },
-  reconnecting: { label: 'Reconnecting...', color: 'text-amber-400' },
-  disconnected: { label: 'Disconnected', color: 'text-red-400' },
-};
-
-export function StatusBar({ sceneType, connectionStatus, participantCount }: StatusBarProps) {
-  const conn = CONNECTION_LABELS[connectionStatus];
+/*
+ * The status bar on the ground under the shell (demo `battle-director`, `sb-status`).
+ * Connected reads as a dot and a word. A drop turns it into the yellow reconnect chip
+ * with how long the table has been away (demo `states`, `st-link`).
+ */
+export function StatusBar({ connectionStatus, children, actions }: StatusBarProps) {
+  const { dropSeconds } = useSessionConnection();
   return (
-    <div className="flex h-full items-center gap-4 text-xs">
-      {/* Scene type */}
-      {sceneType && (
-        <span className={cn('flex items-center gap-1', SCENE_COLORS[sceneType])}>
-          <SceneTypeIcon type={sceneType} className="text-xs" />
-          <span className="capitalize">{sceneType}</span>
-        </span>
-      )}
+    <footer className="sb-status" aria-label="Session status">
+      <ConnectionLink status={connectionStatus} seconds={dropSeconds} />
+      {children}
+      {actions && <div className="sb-status__acts">{actions}</div>}
+    </footer>
+  );
+}
 
-      {/* Connection */}
-      <span className={cn('flex items-center gap-1', conn.color)}>
-        <span className={cn('inline-block h-1.5 w-1.5 rounded-full', conn.color === 'text-emerald-400' ? 'bg-emerald-400' : conn.color === 'text-red-400' ? 'bg-red-400' : 'bg-amber-400')} />
-        {conn.label}
+function ConnectionLink({ status, seconds }: { status: ConnectionStatus; seconds: number }) {
+  if (status === 'connected') {
+    return (
+      <span>
+        <CircleDot size={13} strokeWidth={3} aria-hidden="true" />
+        Connected
       </span>
-
-      {/* Participants */}
-      <span className="text-zinc-500">
-        {participantCount} participant{participantCount !== 1 ? 's' : ''}
-      </span>
-    </div>
+    );
+  }
+  const label =
+    status === 'disconnected'
+      ? 'Disconnected'
+      : `${status === 'connecting' ? 'Connecting' : 'Reconnecting'}, ${seconds} s`;
+  return (
+    <span className="st-link" role="status">
+      <Unplug size={13} strokeWidth={3} aria-hidden="true" />
+      {label}
+    </span>
   );
 }

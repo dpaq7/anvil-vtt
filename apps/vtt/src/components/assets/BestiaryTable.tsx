@@ -207,7 +207,7 @@ export function BestiaryTable({
                     <TableHead className="w-10 text-center">PRE</TableHead>
                   </>
                 )}
-                {onAddToScene && <TableHead className="w-10" />}
+                {onAddToScene && <TableHead className="sticky right-0 w-10 bg-surface" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -285,7 +285,7 @@ export function BestiaryTable({
                         </>
                       )}
                       {onAddToScene && (
-                        <TableCell>
+                        <TableCell className="sticky right-0 bg-surface">
                           <AddToSceneMenu
                             monsterName={monster.name}
                             isMinion={minionFlag}

@@ -1,0 +1,161 @@
+/* The live-session shell (DESIGN.md sections 4 to 6; demos battle-director, battle-player,
+   scene-change-motion and states). Ported from the Storyboard demo's sb- rules, not imported.
+   Colours, type and weights come from the tokens in @anvil/ui/globals.css.
+   Heavy ink (--shape-frame) only where it carries meaning; quiet lines everywhere else. */
+
+.sb-app {
+  --top: var(--layout-top);
+  --bar: var(--layout-bar);
+  --status: var(--layout-status);
+  display: grid;
+  grid-template-rows: var(--top) minmax(0, 1fr) var(--status);
+  gap: 8px;
+  height: 100vh;
+  width: 100%;
+  padding: 12px 12px 0;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font: 400 var(--type-body) / 1.3 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+/* 1280 x 720 and anything that small: the frame tightens, rails keep their width. */
+@media (max-width: 1365px), (max-height: 800px) {
+  .sb-app { --top: var(--layout-top1280); --bar: var(--layout-bar1280); --status: var(--layout-status1280); }
+  .sb-word { font-size: var(--type-1280-wordmark) !important; }
+  .sb-turn strong { font-size: var(--type-1280-turn) !important; }
+  .sb-turn__f { width: 38px !important; height: 38px !important; }
+  .md-band strong { font-size: var(--type-1280-band) !important; }
+}
+.sb-frame { background: var(--color-surface); border: var(--shape-frame) solid var(--color-line); box-sizing: border-box; }
+
+/* Top: wordmark, Film Strip or the Player's band, session danger set apart */
+.sb-top { display: flex; gap: 12px; align-items: stretch; min-width: 0; }
+.sb-word { flex: none; align-self: center; font: 800 var(--type-wordmark) / 1 var(--font-display); letter-spacing: -0.02em; color: var(--color-on-canvas); }
+.sb-endsession { flex: none; align-self: center; height: 40px; padding: 0 12px; font-weight: 700; background: var(--color-surface); color: var(--color-alert); border: var(--shape-frame-dashed) dashed var(--color-alert); }
+.sb-endsession:hover { background: var(--color-well); }
+.sb-endsession:active { transform: translate(1px, 1px); }
+
+/* Film Strip: each scene a board; the live one filled with its mode colour, raised, tilted */
+.sb-strip { flex: 1; min-width: 0; display: flex; overflow-x: auto; overflow-y: visible; padding: 0 6px 6px 0; margin-bottom: -6px; scrollbar-width: none; }
+.sb-strip--one { flex: none; min-width: 196px; overflow: visible; }
+.sb-cell { position: relative; flex: 1 1 0; display: flex; align-items: stretch; min-width: 132px; padding-right: 18px; }
+.sb-cell:last-child { padding-right: 0; }
+.sb-strip--one .sb-cell { flex: 1 1 auto; }
+.sb-board { --m: var(--color-scene-story); --on-m: var(--color-on-scene-story);
+  flex: 1; min-width: 0; display: flex; align-items: stretch; text-align: left; padding: 0; cursor: pointer;
+  color: var(--color-text); background: var(--color-surface); border: var(--shape-frame-quiet) solid var(--color-line); box-sizing: border-box;
+  transition: background-color 0.3s, color 0.3s, transform 0.45s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s; }
+.sb-board[data-mode="montage"] { --m: var(--color-scene-montage); --on-m: var(--color-on-scene-montage); }
+.sb-board[data-mode="negotiation"] { --m: var(--color-scene-negotiation); --on-m: var(--color-on-scene-negotiation); }
+.sb-board[data-mode="battle"] { --m: var(--color-scene-battle); --on-m: var(--color-on-scene-battle); }
+.sb-board[data-mode="respite"] { --m: var(--color-scene-respite); --on-m: var(--color-on-scene-respite); }
+.sb-board:not([data-on]):hover { background: var(--color-well); }
+.sb-board > i { flex: none; width: 34px; display: grid; place-items: center; background: var(--m); color: var(--on-m); border-right: var(--shape-frame-quiet) solid var(--color-line); transition: background-color 0.3s, color 0.3s; }
+.sb-board > span { flex: 1; display: flex; flex-direction: column; gap: 4px; justify-content: center; padding: 0 10px; min-width: 0; }
+.sb-board b { font: 700 var(--type-name) / 1.1 var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-board small { font-size: var(--type-min); line-height: 1.1; color: var(--color-text-soft); }
+.sb-board[data-on] { border: var(--shape-frame) solid var(--art-ink); background: var(--m); color: var(--on-m); box-shadow: var(--shape-hard-shadow) var(--color-shadow); transform: rotate(-0.6deg); }
+.sb-board[data-on] small { color: inherit; }
+.sb-board[data-on] > i { background: var(--art-ink); color: var(--art-on-hero-plate); border-right: var(--shape-frame) solid var(--art-ink); }
+.sb-board:disabled { cursor: default; }
+.sb-strip--one .sb-board[data-on] { transform: none; }
+.sb-arrow { position: absolute; right: 1.5px; top: 50%; margin-top: -7.5px; color: var(--color-on-canvas); }
+
+/* Player: the page itself says it is your turn */
+.sb-turn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 10px; box-sizing: border-box; background: var(--art-active-plate); color: var(--art-on-active-plate); border: var(--shape-frame) solid var(--art-ink); box-shadow: var(--shape-hard-shadow) var(--color-shadow); }
+.sb-turn__f { flex: none; display: grid; place-items: center; width: 44px; height: 44px; background: var(--art-plate); color: var(--art-on-plate); border: var(--shape-face-ring) solid var(--art-ink); border-radius: 50%; box-sizing: border-box; overflow: hidden; font: 800 18px / 1 var(--font-display); }
+.sb-turn__f img { width: 100%; height: 100%; object-fit: cover; }
+.sb-turn strong { font: 800 var(--type-turn) / 1 var(--font-display); letter-spacing: -0.01em; white-space: nowrap; }
+.sb-turn small { flex: 1; min-width: 0; font-size: var(--type-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-take { flex: none; height: calc(var(--top) - 18px); padding: 0 20px; font: 800 17px / 1 var(--font-display); color: var(--art-on-plate); background: var(--art-plate); border: var(--shape-frame) solid var(--art-ink); box-shadow: var(--shape-hard-shadow-small) var(--art-ink); cursor: pointer; }
+.sb-take:active { transform: translate(1px, 1px); }
+/* An action held during a reconnect: it waits, it does not hide */
+.sb-take[data-wait], .sb-wait { color: var(--color-text-soft); background: var(--color-well); border-style: dashed; box-shadow: none; cursor: default; }
+.sb-endsession[data-wait] { color: var(--color-text-soft); border-color: var(--color-text-soft); background: var(--color-well); cursor: default; }
+
+/* Player: the band naming what the table is doing, where Battle says "Your turn" */
+.md-band { --m: var(--color-scene-story);
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 0 16px 0 26px; box-sizing: border-box; color: var(--color-text); background: var(--color-surface); border: var(--shape-frame) solid var(--art-ink); box-shadow: inset 10px 0 0 var(--m); }
+.md-band[data-mode="montage"] { --m: var(--color-scene-montage); }
+.md-band[data-mode="negotiation"] { --m: var(--color-scene-negotiation); }
+.md-band[data-mode="battle"] { --m: var(--color-scene-battle); }
+.md-band[data-mode="respite"] { --m: var(--color-scene-respite); }
+.md-band strong { font: 800 var(--type-band) / 1.1 var(--font-display); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+.md-band small { font-size: var(--type-body); color: var(--color-text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Middle: two fixed rails, the screen takes what is left */
+.sb-mid { display: grid; grid-template-columns: var(--shape-rail-left) minmax(0, 1fr) var(--shape-rail-right); gap: 8px; min-height: 0; }
+.sb-mid[data-rails="right"] { grid-template-columns: minmax(0, 1fr) var(--shape-rail-right); }
+.sb-mid[data-rails="left"] { grid-template-columns: var(--shape-rail-left) minmax(0, 1fr); }
+.sb-mid[data-rails="none"] { grid-template-columns: minmax(0, 1fr); }
+.sb-rail { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+/* Rail tabs: one row of equal tabs, 34 px, 13 px bold; counts in regular weight */
+.sb-rail [role="tablist"] { display: flex; flex: none; width: 100%; height: var(--layout-tabs); min-height: var(--layout-tabs); padding: 0; box-shadow: none; border-bottom: var(--shape-frame-quiet) solid var(--color-line); background: var(--color-well); }
+.sb-rail [role="tab"] { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0 4px; gap: 4px; font-size: var(--type-min); font-weight: 700; color: var(--color-text-soft); }
+.sb-rail [role="tab"][data-state="active"] { background: var(--color-text); color: var(--color-surface); }
+.sb-rail [role="tab"] em { font-style: normal; font-weight: 400; }
+.sb-rail [role="tabpanel"] { margin-top: 0; }
+
+/* Centre: the screen in heavy ink, the bar under it */
+.sb-centre { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+.sb-screen { position: relative; flex: 1; min-height: 0; overflow: hidden; border: var(--shape-frame) solid var(--art-ink); box-shadow: var(--shape-hard-shadow) var(--color-shadow); background: var(--art-ink); }
+.sb-screen[data-turn] { outline: var(--shape-frame) solid var(--color-active); outline-offset: 0; }
+.sb-bar { flex: none; height: var(--bar); display: flex; justify-content: space-between; align-items: center; padding: 0 8px; font-size: var(--type-min); color: var(--color-text); background: var(--color-surface); border: var(--shape-frame) solid var(--color-line); box-sizing: border-box; }
+
+/* Status bar on the ground */
+.sb-status { display: flex; align-items: center; gap: 16px; min-width: 0; font-size: var(--type-min); font-weight: 700; padding: 0 2px; color: var(--color-on-canvas); white-space: nowrap; }
+.sb-status__acts { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+.sb-status__acts button { font-weight: 700; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-underline-offset: 3px; }
+.sb-status__acts button:hover { text-decoration: underline; }
+.sb-status__acts button:disabled { opacity: 0.7; cursor: default; text-decoration: none; }
+.sb-status span, .sb-status__acts button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.sb-status__off { color: inherit; opacity: 0.75; font-weight: 400; }
+.st-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; color: var(--color-on-danger); background: var(--color-danger); box-shadow: 0 0 0 1.5px var(--art-ink); }
+
+/* A short drop: one hazard strip on the screen's top edge */
+.st-drop { position: absolute; left: 0; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; height: 41px; box-sizing: border-box; padding: 0 14px 0 0; color: var(--art-on-hazard); background: var(--art-hazard); border: solid var(--art-ink); border-width: 0 var(--shape-frame) var(--shape-frame) 0; font-size: var(--type-body); }
+.st-drop > i { align-self: stretch; width: 40px; display: grid; place-items: center; color: var(--art-on-hero-plate); background: var(--art-ink); }
+.st-drop b { font: 800 var(--type-heading) / 1 var(--font-display); white-space: nowrap; }
+.st-drop span { white-space: nowrap; }
+.st-drop--fixed { position: fixed; }
+
+/* Mode change: the title card crosses the screen while the shell turns over */
+.sc-card { will-change: transform; position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; color: var(--art-on-hero-plate); background: var(--m, var(--color-scene-battle)); box-shadow: inset 0 0 0 var(--shape-frame) var(--art-ink); transform: translateX(-102%); pointer-events: none; }
+.sc-card[data-mode="story"] { --m: var(--color-scene-story); --on-m: var(--color-on-scene-story); }
+.sc-card[data-mode="montage"] { --m: var(--color-scene-montage); --on-m: var(--color-on-scene-montage); }
+.sc-card[data-mode="negotiation"] { --m: var(--color-scene-negotiation); --on-m: var(--color-on-scene-negotiation); }
+.sc-card[data-mode="battle"] { --m: var(--color-scene-battle); --on-m: var(--color-on-scene-battle); }
+.sc-card[data-mode="respite"] { --m: var(--color-scene-respite); --on-m: var(--color-on-scene-respite); }
+.sc-card[data-s="in"] { transform: none; transition: transform 0.6s cubic-bezier(0.45, 0, 0.1, 1); }
+.sc-card[data-s="out"] { transform: translateX(102%); transition: transform 0.6s cubic-bezier(0.45, 0, 0.1, 1) 0.16s; }
+.sc-card__in { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 0 24px; text-align: center; transform: rotate(-2deg); opacity: 0; transition: opacity 0.15s; }
+.sc-card[data-s="in"] .sc-card__in { opacity: 1; transition: opacity 0.22s 0.42s; }
+.sc-card__in > i { display: grid; place-items: center; width: 88px; height: 88px; color: var(--art-on-hero-plate); background: var(--art-ink); box-shadow: 6px 6px 0 rgb(21 23 28 / 0.5); }
+.sc-card__in strong { font: 800 66px / 1 var(--font-display); letter-spacing: -0.02em; color: var(--art-on-hero-plate); text-shadow: 4px 4px 0 var(--art-ink); }
+.sc-card__in span { font: 700 20px / 1 var(--font-display); color: var(--on-m); }
+
+/* Two layers in one place: the outgoing one stays put while the incoming one fades in over it */
+.sc-swap { position: relative; flex: 1 1 auto; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); min-width: 0; min-height: 0; }
+.sc-layer { grid-area: 1 / 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.sc-layer > * { flex: 1 1 auto; min-height: 0; }
+.sc-layer[data-k="old"] { pointer-events: none; }
+.sc-layer[data-k="new"][data-s="wait"] { opacity: 0; }
+.sc-layer[data-k="new"][data-s="rise"] { opacity: 0; transform: translateY(8px); }
+.sc-layer[data-k="new"][data-s="on"] { opacity: 1; transform: none; transition: opacity 0.28s cubic-bezier(0.25, 0.8, 0.25, 1), transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+.sc-swap--screen { position: absolute; inset: 0; }
+/* A mode screen taller than the frame scrolls inside it, as the old stage panel did. */
+.sc-swap--screen > .sc-layer { overflow-y: auto; }
+.sb-bar-swap { flex: none; }
+.sc-swap--screen > .sc-layer[data-k="old"] { z-index: 2; background: var(--art-ink); }
+
+/* Reduced motion: every transition is 0 s, the end state applies at once, no title card */
+@media (prefers-reduced-motion: reduce) {
+  .sb-board, .sb-board > i, .sc-card, .sc-card__in, .sc-layer { transition: none !important; }
+  .sc-card { display: none; }
+}
+
+/* Drawn heads and portraits keep a keyline on dark panels */
+[data-theme="dark"] .sb-turn__f { box-shadow: 0 0 0 1px var(--art-keyline); }

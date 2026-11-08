@@ -7,8 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { Expand, Minimize2, Volume2, VolumeX } from "lucide-react";
-import { AppShell, Tabs, TabsContent, TabsList, TabsTrigger } from "@anvil/ui";
+import { Minimize2, Volume2, VolumeX } from "lucide-react";
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@anvil/ui";
 import type { SceneType } from "@anvil/ui";
 import type {
   SessionState,
@@ -40,6 +40,12 @@ import {
   PlayerHeroSheetPanel,
 } from "../../components/session/PlayerHeroLiveSheet.js";
 import { SessionThemeToggle } from "../../components/session/SessionThemeToggle.js";
+import { SessionShell } from "../../components/session/shell/SessionShell.js";
+import { FilmStrip } from "../../components/session/FilmStrip.js";
+import { PlayerTopBand } from "../../components/session/TurnBanner.js";
+import { canClaimTurn } from "../../lib/turn.js";
+import { PlayerCharactersPanel } from "../../components/session/PlayerCharactersPanel.js";
+import { useNavigate } from "react-router-dom";
 import type { CharacterInventoryItem } from "../../lib/inventory.js";
 import { StoryStage } from "../../components/stages/StoryStage.js";
 import { MontageStage } from "../../components/stages/MontageStage.js";
@@ -54,14 +60,16 @@ interface PlayerViewProps {
   connectionStatus: ConnectionStatus;
   send: (msg: ClientMessage) => void;
   combatLog: AbilityResult[];
+  /** The give-up window passed: the shell shows "Can't reach the table". */
+  lost?: boolean;
+  onRetry: () => void;
 }
 
-type RightRailTab = "sheet" | "abilities" | "turn" | "combat" | "log";
+type RightRailTab = "sheet" | "abilities" | "turn" | "log";
 
-const RAIL_TABS_LIST_CLASS =
-  "flex h-9 w-full justify-start overflow-x-auto rounded-none border-b border-zinc-800 bg-zinc-950/40 p-0 px-2 pt-1";
-const RAIL_TAB_TRIGGER_CLASS =
-  "h-8 min-w-16 shrink-0 whitespace-nowrap rounded-b-none rounded-t-md border border-transparent border-b-0 px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 transition data-[state=active]:border-zinc-700 data-[state=active]:bg-zinc-900 data-[state=active]:text-zinc-100 data-[state=inactive]:hover:bg-zinc-800/50 data-[state=inactive]:hover:text-zinc-300";
+// Rail tabs take the shell's look (session-shell.css, `.sb-rail [role=tab]`).
+const RAIL_TABS_LIST_CLASS = "";
+const RAIL_TAB_TRIGGER_CLASS = "";
 const RAIL_TAB_CONTENT_CLASS =
   "mt-0 min-h-0 flex-1 overflow-hidden focus-visible:ring-0";
 
@@ -70,8 +78,11 @@ export function PlayerView({
   connectionStatus,
   send,
   combatLog,
+  lost = false,
+  onRetry,
 }: PlayerViewProps) {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
 
   // Sync server audio commands to local HTML5 Audio playback
   const audioPlayback = useAudioSync(sessionState.audio);
@@ -83,7 +94,6 @@ export function PlayerView({
   );
   // Director-broadcast camera focus ("pull everyone here").
   const focusRequest = useSessionStore((s) => s.focusRequest);
-  const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>("sheet");
   const [focusMode, setFocusMode] = useState(false);
   const initiativePromptedRef = useRef(false);
@@ -180,7 +190,7 @@ export function PlayerView({
   const rightRailTabs = useMemo<RightRailTab[]>(() => {
     const tabs: RightRailTab[] = ["sheet"];
     if (heroAbilities.length > 0) tabs.push("abilities");
-    if (combat) tabs.push("turn", "combat");
+    if (combat) tabs.push("turn");
     if (sceneType) tabs.push("log");
     return tabs;
   }, [combat, heroAbilities.length, sceneType]);
@@ -192,7 +202,6 @@ export function PlayerView({
   }, [rightRailTab, rightRailTabs]);
 
   const openRightRailTab = useCallback((tab: RightRailTab) => {
-    setRightRailCollapsed(false);
     setRightRailTab(tab);
   }, []);
 
@@ -418,7 +427,7 @@ export function PlayerView({
   const renderStage = () => {
     if (!activeScene) {
       return (
-        <div className="flex h-full items-center justify-center text-zinc-500">
+        <div className="flex h-full items-center justify-center text-art-on-hero-plate">
           Waiting for the Director to set a scene...
         </div>
       );
@@ -555,90 +564,99 @@ export function PlayerView({
       }
       default:
         return (
-          <div className="flex h-full items-center justify-center text-zinc-500">
+          <div className="flex h-full items-center justify-center text-art-on-hero-plate">
             Unknown scene type: {activeScene.type}
           </div>
         );
     }
   };
 
+  const battleFog =
+    sceneType === "battle" ? parseBattleData(sceneData).fogZones : [];
+  // A Player's tracker draws through the fog helper: fogged creatures are absent.
+  const playerVisibleEntities = filterVisibleEntities(entities, battleFog);
+  const directorName =
+    participants.find((p) => p.role === "director")?.username ?? null;
+  const mayTakeTurn = canClaimTurn(combat, heroEntityId);
+
   return (
-    <AppShell
-      topBar={
+    <SessionShell
+      role="player"
+      mode={sceneType}
+      sceneName={activeScene?.name ?? ""}
+      turn={sceneType === "battle" && (isMyTurn || mayTakeTurn) && Boolean(heroEntityId)}
+      lost={lost}
+      onRetry={onRetry}
+      back={{ label: "Back to your home", onClick: () => navigate("/app") }}
+      top={
         focusMode ? (
-          <div className="flex w-full justify-end">
-            <button
-              type="button"
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-800 px-3 text-sm font-medium text-zinc-100 transition hover:bg-zinc-700"
+          <div className="flex flex-1 items-center justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setFocusMode(false)}
               title="Exit full screen"
             >
               <Minimize2 className="size-4" />
               Exit full screen
-            </button>
+            </Button>
           </div>
         ) : (
-          <div className="flex w-full min-w-0 items-center gap-2">
-            <PlayerHeroCommandBar
+          <>
+            <FilmStrip scenes={scenes} activeSceneId={activeSceneId} />
+            <PlayerTopBand
+              mode={sceneType}
+              sceneName={activeScene?.name ?? ""}
+              combat={combat}
               hero={heroEntity ?? null}
-              combatActive={Boolean(combat)}
-              onCatchBreath={handleCatchBreath}
-              onRollCharacteristic={handleRollCharacteristic}
-              onRollResource={handleRollResource}
-              onOpenSheet={() => openRightRailTab("sheet")}
+              entities={playerVisibleEntities}
+              directorName={directorName}
+              onTakeTurn={(entityId) =>
+                send({
+                  type: "combat_action",
+                  action: { type: "CLAIM_TURN", entityId },
+                })
+              }
             />
-            {/* Audio now-playing indicator */}
-            {sessionState.audio?.playing &&
-              sessionState.audio.assetName &&
-              (audioPlayback.needsUserGesture ? (
-                <button
-                  type="button"
-                  className="mr-1 inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-200 transition hover:border-amber-400 hover:bg-amber-500/20"
-                  onClick={() => {
-                    void audioPlayback.retryPlayback();
-                  }}
-                  title={audioPlayback.error ?? "Click to enable scene audio"}
-                >
-                  <VolumeX className="size-3" />
-                  Enable audio
-                </button>
-              ) : audioPlayback.status === "error" ? (
-                <span
-                  className="mr-1 inline-flex shrink-0 items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-300"
-                  title={
-                    audioPlayback.error ?? "Scene audio could not be played"
-                  }
-                >
-                  <VolumeX className="size-3" />
-                  Audio unavailable
-                </span>
-              ) : (
-                <span className="mr-1 flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400">
-                  <span className="inline-block size-1.5 animate-pulse rounded-full bg-purple-400" />
-                  <Volume2 className="size-3" />
-                  {sessionState.audio.assetName}
-                </span>
-              ))}
-            {/* Scene type indicator */}
-            {sceneType && (
-              <span className="mr-2 shrink-0 rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-                {sceneType}
-              </span>
-            )}
-            <SessionThemeToggle />
-            <button
-              type="button"
-              className="inline-flex size-9 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
-              onClick={() => setFocusMode(true)}
-              title="Focus map"
-              aria-label="Focus map"
-            >
-              <Expand className="size-4" />
-            </button>
-          </div>
+          </>
         )
       }
-      rightRail={
+      left={
+        focusMode ? undefined : combat ? (
+          <div className="h-full overflow-y-auto p-3">
+            <CombatTracker
+              combat={combat}
+              entities={playerVisibleEntities}
+              selectedEntityIds={selectedEntityIds}
+              isDirector={false}
+              currentHeroEntityId={heroEntityId}
+              onClaimTurn={(entityId) =>
+                send({
+                  type: "combat_action",
+                  action: { type: "CLAIM_TURN", entityId },
+                })
+              }
+              onSelectEntities={handleSelectEntities}
+              onSelectTurn={() => {}}
+              onEndTurn={() =>
+                send({
+                  type: "combat_action",
+                  action: { type: "END_TURN" },
+                })
+              }
+              onEndCombat={() => {}}
+              onAdjustMalice={() => {}}
+              onRollInitiative={handleRollInitiative}
+            />
+          </div>
+        ) : (
+          <PlayerCharactersPanel
+            participants={participants}
+            entities={entities}
+          />
+        )
+      }
+      right={
         focusMode ? undefined : (
           <Tabs
             value={rightRailTab}
@@ -662,11 +680,6 @@ export function PlayerView({
               {rightRailTabs.includes("turn") && (
                 <TabsTrigger value="turn" className={RAIL_TAB_TRIGGER_CLASS}>
                   Turn
-                </TabsTrigger>
-              )}
-              {rightRailTabs.includes("combat") && (
-                <TabsTrigger value="combat" className={RAIL_TAB_TRIGGER_CLASS}>
-                  Combat
                 </TabsTrigger>
               )}
               {rightRailTabs.includes("log") && (
@@ -724,37 +737,6 @@ export function PlayerView({
               </TabsContent>
             )}
 
-            {combat && (
-              <TabsContent value="combat" className={RAIL_TAB_CONTENT_CLASS}>
-                <div className="h-full overflow-y-auto p-3">
-                  <CombatTracker
-                    combat={combat}
-                    entities={entities}
-                    selectedEntityIds={selectedEntityIds}
-                    isDirector={false}
-                    currentHeroEntityId={heroEntityId}
-                    onClaimTurn={(entityId) =>
-                      send({
-                        type: "combat_action",
-                        action: { type: "CLAIM_TURN", entityId },
-                      })
-                    }
-                    onSelectEntities={handleSelectEntities}
-                    onSelectTurn={() => {}}
-                    onEndTurn={() =>
-                      send({
-                        type: "combat_action",
-                        action: { type: "END_TURN" },
-                      })
-                    }
-                    onEndCombat={() => {}}
-                    onAdjustMalice={() => {}}
-                    onRollInitiative={handleRollInitiative}
-                  />
-                </div>
-              </TabsContent>
-            )}
-
             <TabsContent value="log" className={RAIL_TAB_CONTENT_CLASS}>
               <ActionLogPanel
                 entries={sessionState.actionLog ?? []}
@@ -768,16 +750,68 @@ export function PlayerView({
           </Tabs>
         )
       }
-      rightRailCollapsed={rightRailCollapsed}
-      onToggleRightRail={() => setRightRailCollapsed((value) => !value)}
-      statusBar={
+      bar={
+        focusMode ? undefined : (
+          <PlayerHeroCommandBar
+            hero={heroEntity ?? null}
+            combatActive={Boolean(combat)}
+            onCatchBreath={handleCatchBreath}
+            onRollCharacteristic={handleRollCharacteristic}
+            onRollResource={handleRollResource}
+            onOpenSheet={() => openRightRailTab("sheet")}
+          />
+        )
+      }
+      status={
         <ParticipantStatusBar
           participants={participants}
           connectionStatus={connectionStatus}
+          viewerRole="player"
+          actions={
+            <>
+              {sessionState.audio?.playing &&
+                sessionState.audio.assetName &&
+                (audioPlayback.needsUserGesture ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void audioPlayback.retryPlayback();
+                    }}
+                    title={audioPlayback.error ?? "Click to enable scene audio"}
+                  >
+                    <VolumeX size={13} strokeWidth={3} aria-hidden="true" />
+                    Enable audio
+                  </button>
+                ) : audioPlayback.status === "error" ? (
+                  <span
+                    title={
+                      audioPlayback.error ?? "Scene audio could not be played"
+                    }
+                  >
+                    <VolumeX size={13} strokeWidth={3} aria-hidden="true" />
+                    Audio unavailable
+                  </span>
+                ) : (
+                  <span title="Now playing">
+                    <Volume2 size={13} strokeWidth={3} aria-hidden="true" />
+                    {sessionState.audio.assetName}
+                  </span>
+                ))}
+              <SessionThemeToggle variant="status" />
+              <button
+                type="button"
+                onClick={() => setFocusMode((value) => !value)}
+                title={focusMode ? "Exit full screen" : "Focus map"}
+                aria-label={focusMode ? "Exit full screen" : "Focus map"}
+                aria-pressed={focusMode}
+              >
+                Fullscreen
+              </button>
+            </>
+          }
         />
       }
-    >
-      {renderStage()}
-    </AppShell>
+      screen={renderStage()}
+    />
   );
 }

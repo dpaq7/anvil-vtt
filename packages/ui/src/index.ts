@@ -23,6 +23,7 @@ export {
   DialogOverlay,
   DialogContent,
   DialogTitle,
+  DialogDescription,
 } from './components/Dialog.js';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './components/Tabs.js';
 export { Alert } from './components/Alert.js';

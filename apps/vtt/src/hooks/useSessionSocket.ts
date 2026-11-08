@@ -4,12 +4,24 @@ import type { ClientMessage, ServerMessage } from '../types/protocol.js';
 import { csrfHeaders } from '../lib/csrf.js';
 import { addBreadcrumb } from '../lib/bug-reporting.js';
 import { useSessionStore } from '../stores/sessionStore.js';
+import { RECONNECT_GIVE_UP_MS } from '../lib/reconnect.js';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 export type SessionClientKind = 'desktop' | 'phone';
 
-const MAX_RETRIES = 5;
 const BASE_DELAY = 1000;
+// Longest wait between two tries, so a drop is retried several times inside the give-up window.
+const MAX_DELAY = 8000;
+
+/** A token request that failed with an HTTP status (0 when the server could not be reached). */
+class TokenRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 interface UseSessionSocketOptions {
   clientKind?: SessionClientKind;
@@ -24,6 +36,9 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
   const resetSessionRuntime = useSessionStore((s) => s.resetSessionRuntime);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  // HTTP status of the last failed token request (0: unreachable). Lets the page tell a bad
+  // link from a server that is down.
+  const [failureStatus, setFailureStatus] = useState<number | null>(null);
   const [phoneAnchorConnected, setPhoneAnchorConnected] = useState<boolean | null>(
     clientKind === 'phone' ? null : true,
   );
@@ -31,6 +46,8 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the current drop began; null while connected or before the first try. */
+  const dropStartedRef = useRef<number | null>(null);
   /** Tracks whether the owning effect is still mounted (survives Strict Mode double-mount). */
   const mountedRef = useRef(false);
 
@@ -98,6 +115,18 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
 
     setStatus((prev) => (prev === 'disconnected' ? 'connecting' : 'reconnecting'));
     setError(null);
+    setFailureStatus(null);
+
+    // Try again after a backoff while the drop is inside the give-up window.
+    const scheduleRetry = (retryable: boolean): boolean => {
+      const started = dropStartedRef.current;
+      if (!retryable || started === null || Date.now() - started >= RECONNECT_GIVE_UP_MS) return false;
+      const delay = Math.min(MAX_DELAY, BASE_DELAY * Math.pow(2, retriesRef.current));
+      retriesRef.current++;
+      setStatus('reconnecting');
+      timerRef.current = setTimeout(() => { void connect(); }, delay);
+      return true;
+    };
 
     const apiBase = import.meta.env['VITE_API_BASE'] ?? '';
 
@@ -112,7 +141,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? `Token request failed: ${res.status}`);
+        throw new TokenRequestError(body.error ?? `Token request failed: ${res.status}`, res.status);
       }
       const data = await res.json() as { token: string };
       token = data.token;
@@ -124,6 +153,11 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         message: 'WebSocket token request failed',
         data: { message: err instanceof Error ? err.message : 'Failed to authenticate' },
       });
+      const httpStatus = err instanceof TokenRequestError ? err.status : 0;
+      // During a drop, a server that cannot be reached is tried again until the give-up
+      // window closes. A refusal (4xx) is final.
+      if (scheduleRetry(httpStatus === 0 || httpStatus >= 500)) return;
+      setFailureStatus(httpStatus);
       setError(err instanceof Error ? err.message : 'Failed to authenticate');
       setStatus('disconnected');
       return;
@@ -149,6 +183,7 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
       addBreadcrumb({ category: 'session', message: 'WebSocket connected' });
       setStatus('connected');
       retriesRef.current = 0;
+      dropStartedRef.current = null;
       ws.send(JSON.stringify({ type: 'request_state' } satisfies ClientMessage));
     };
 
@@ -164,23 +199,21 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     ws.onclose = (event) => {
       wsRef.current = null;
       if (!mountedRef.current) return;
-      if (retriesRef.current < MAX_RETRIES) {
-        const delay = BASE_DELAY * Math.pow(2, retriesRef.current);
-        retriesRef.current++;
+      dropStartedRef.current ??= Date.now();
+      if (scheduleRetry(true)) {
         addBreadcrumb({
           category: 'session',
           message: 'WebSocket closed, reconnecting',
           data: { code: event.code, retry: retriesRef.current },
         });
-        setStatus('reconnecting');
         toast.warning('Connection lost. Reconnecting...');
-        timerRef.current = setTimeout(() => { void connect(); }, delay);
       } else {
         addBreadcrumb({
           category: 'session',
           message: 'WebSocket disconnected',
           data: { code: event.code, retries: retriesRef.current },
         });
+        setFailureStatus(0);
         setStatus('disconnected');
         setError('Connection lost. Please refresh.');
         toast.error('Connection lost. Please refresh the page.');
@@ -207,11 +240,21 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     }
   }, []);
 
+  /** "Try again" after the shell gave up: start a fresh round of tries. */
+  const retry = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    retriesRef.current = 0;
+    dropStartedRef.current = Date.now();
+    void connect();
+  }, [connect]);
+
   useEffect(() => {
     resetSessionRuntime();
     setStatus('disconnected');
     setError(null);
+    setFailureStatus(null);
     retriesRef.current = 0;
+    dropStartedRef.current = null;
 
     return () => {
       resetSessionRuntime();
@@ -238,5 +281,5 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
     return () => clearInterval(interval);
   }, [status, send]);
 
-  return { state, status, error, send, combatLog, sessionStarted, phoneAnchorConnected };
+  return { state, status, error, failureStatus, retry, send, combatLog, sessionStarted, phoneAnchorConnected };
 }

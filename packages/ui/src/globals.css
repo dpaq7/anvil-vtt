@@ -132,6 +132,7 @@
   --color-art-on-hazard: var(--art-on-hazard);
   --color-art-active-plate: var(--art-active-plate);
   --color-art-on-active-plate: var(--art-on-active-plate);
+  --color-art-on-hero-plate: var(--art-on-hero-plate);
 
   /* zinc, remapped by role */
   --color-zinc-950: var(--color-canvas); /* page */

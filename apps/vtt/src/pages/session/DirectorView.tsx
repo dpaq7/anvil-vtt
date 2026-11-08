@@ -7,10 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { Expand, Minimize2, MonitorUp, RotateCcw } from "lucide-react";
+import { Minimize2 } from "lucide-react";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts.js";
 import {
-  AppShell,
   Button,
   Tabs,
   TabsContent,
@@ -58,6 +57,9 @@ import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
 import { AssetPanel } from "../../components/session/AssetPanel.js";
 import { SceneAudioPanel } from "../../components/session/SceneAudioPanel.js";
 import { SessionThemeToggle } from "../../components/session/SessionThemeToggle.js";
+import { SessionShell } from "../../components/session/shell/SessionShell.js";
+import { useSessionConnection } from "../../components/session/shell/connection-context.js";
+import { EndSessionButton } from "../../components/session/EndSessionDialog.js";
 import { StoryStage } from "../../components/stages/StoryStage.js";
 import { MontageStage } from "../../components/stages/MontageStage.js";
 import { NegotiationStage } from "../../components/stages/NegotiationStage.js";
@@ -101,10 +103,9 @@ function clampGridOffset(value: number, cellSize: number): number {
 type LeftRailTab = "combat" | "heroes" | "creatures" | "tracking" | "log";
 type RightRailTab = "audio" | "combat" | "grid" | "assets";
 
-const RAIL_TABS_LIST_CLASS =
-  "flex h-9 w-full justify-start rounded-none border-b border-zinc-800 bg-zinc-950/40 p-0 px-2 pt-1";
-const RAIL_TAB_TRIGGER_CLASS =
-  "h-8 min-w-0 flex-1 rounded-b-none rounded-t-md border border-transparent border-b-0 px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 transition data-[state=active]:border-zinc-700 data-[state=active]:bg-zinc-900 data-[state=active]:text-zinc-100 data-[state=inactive]:hover:bg-zinc-800/50 data-[state=inactive]:hover:text-zinc-300";
+// Rail tabs take the shell's look (session-shell.css, `.sb-rail [role=tab]`).
+const RAIL_TABS_LIST_CLASS = "";
+const RAIL_TAB_TRIGGER_CLASS = "";
 const RAIL_TAB_CONTENT_CLASS =
   "mt-0 min-h-0 flex-1 overflow-hidden focus-visible:ring-0";
 
@@ -113,6 +114,9 @@ interface DirectorViewProps {
   connectionStatus: ConnectionStatus;
   send: (msg: ClientMessage) => void;
   combatLog: AbilityResult[];
+  /** The give-up window passed: the shell shows "Can't reach the table". */
+  lost?: boolean;
+  onRetry: () => void;
 }
 
 export function DirectorView({
@@ -120,6 +124,8 @@ export function DirectorView({
   connectionStatus,
   send,
   combatLog,
+  lost = false,
+  onRetry,
 }: DirectorViewProps) {
   const navigate = useNavigate();
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -141,8 +147,6 @@ export function DirectorView({
   const sceneData = useMemo(() => activeScene?.data ?? {}, [activeScene?.data]);
 
   const [showHelp, setShowHelp] = useState(false);
-  const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
-  const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const [leftRailTab, setLeftRailTab] = useState<LeftRailTab>("combat");
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>("assets");
   const [focusMode, setFocusMode] = useState(false);
@@ -603,7 +607,7 @@ export function DirectorView({
   const renderStage = () => {
     if (!activeScene) {
       return (
-        <div className="flex h-full items-center justify-center text-zinc-500">
+        <div className="flex h-full items-center justify-center text-art-on-hero-plate">
           Select a scene from the film strip above.
         </div>
       );
@@ -765,18 +769,34 @@ export function DirectorView({
       }
       default:
         return (
-          <div className="flex h-full items-center justify-center text-zinc-500">
+          <div className="flex h-full items-center justify-center text-art-on-hero-plate">
             Unknown scene type: {activeScene.type}
           </div>
         );
     }
   };
 
+  const openDisplay = () =>
+    window.open(
+      `/app/session/${sessionState.sessionId}/display`,
+      "anvil-display",
+      "width=1280,height=800",
+    );
+
   return (
-    <AppShell
-      topBar={
+    <SessionShell
+      role="director"
+      mode={sceneType}
+      sceneName={activeScene?.name ?? ""}
+      lost={lost}
+      onRetry={onRetry}
+      back={{
+        label: "Back to campaign",
+        onClick: () => navigate(`/app/campaigns/${sessionState.campaignId}`),
+      }}
+      top={
         focusMode ? (
-          <div className="flex w-full justify-end">
+          <div className="flex flex-1 items-center justify-end">
             <Button
               variant="secondary"
               size="sm"
@@ -788,62 +808,33 @@ export function DirectorView({
             </Button>
           </div>
         ) : (
-          <div className="flex w-full items-center gap-3">
-            {/* Film strip scene navigator fills most of the top bar */}
-            <div className="min-w-0 flex-1">
-              <DirectorFilmStrip
-                scenes={scenes}
-                activeSceneId={activeSceneId}
-                onSelectScene={handleSelectScene}
-              />
-            </div>
-
-            {/* Actions float right */}
-            <div className="flex shrink-0 items-center gap-2">
-              <SessionThemeToggle />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() =>
-                  window.open(
-                    `/app/session/${sessionState.sessionId}/display`,
-                    "anvil-display",
-                    "width=1280,height=800",
-                  )
-                }
-                title="Open player display (external monitor)"
-                aria-label="Open player display in a new window"
-              >
-                <MonitorUp className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setFocusMode(true)}
-                title="Focus map"
-                aria-label="Focus map"
-              >
-                <Expand className="size-4" />
-              </Button>
-              {activeSceneId && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRevertActiveScene}
-                  title="Revert active scene to prepared state"
-                >
-                  <RotateCcw className="mr-1 size-3.5" />
-                  Revert
-                </Button>
-              )}
-              <Button variant="ghost" size="sm" onClick={handleEndSession}>
-                End
-              </Button>
-            </div>
-          </div>
+          <>
+            <DirectorFilmStrip
+              scenes={scenes}
+              activeSceneId={activeSceneId}
+              onSelectScene={handleSelectScene}
+            />
+            <EndSessionButton onEnd={handleEndSession} />
+          </>
         )
       }
-      leftRail={
+      status={
+        <ParticipantStatusBar
+          participants={participants}
+          connectionStatus={connectionStatus}
+          viewerRole="director"
+          actions={
+            <DirectorStatusActions
+              onOpenDisplay={openDisplay}
+              focusMode={focusMode}
+              onToggleFocus={() => setFocusMode((value) => !value)}
+              canRevert={Boolean(activeSceneId)}
+              onRevert={handleRevertActiveScene}
+            />
+          }
+        />
+      }
+      left={
         focusMode ? undefined : (
           <Tabs
             value={leftRailTab}
@@ -857,12 +848,8 @@ export function DirectorView({
                   value={tab.value}
                   className={RAIL_TAB_TRIGGER_CLASS}
                 >
-                  <span className="truncate">{tab.label}</span>
-                  {tab.count !== undefined && (
-                    <span className="ml-1 rounded bg-zinc-800 px-1 text-[9px] font-semibold text-zinc-400">
-                      {tab.count}
-                    </span>
-                  )}
+                  {tab.label}
+                  {tab.count !== undefined && <em>{tab.count}</em>}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -962,7 +949,7 @@ export function DirectorView({
           </Tabs>
         )
       }
-      rightRail={
+      right={
         focusMode ? undefined : (
           <Tabs
             value={rightRailTab}
@@ -976,7 +963,7 @@ export function DirectorView({
                   value={tab.value}
                   className={RAIL_TAB_TRIGGER_CLASS}
                 >
-                  <span className="truncate">{tab.label}</span>
+                  {tab.label}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -1246,71 +1233,61 @@ export function DirectorView({
           </Tabs>
         )
       }
-      leftRailCollapsed={leftRailCollapsed}
-      rightRailCollapsed={rightRailCollapsed}
-      onToggleLeftRail={() => setLeftRailCollapsed((value) => !value)}
-      onToggleRightRail={() => setRightRailCollapsed((value) => !value)}
-      statusBar={
-        <ParticipantStatusBar
-          participants={participants}
-          connectionStatus={connectionStatus}
-        />
-      }
+      screen={renderStage()}
     >
-      {renderStage()}
       {showHelp && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--art-scrim)]"
           onClick={() => setShowHelp(false)}
         >
           <div
-            className="rounded-lg border border-zinc-700 bg-zinc-900 p-6"
+            className="border-[3px] border-art-ink bg-surface p-6 text-text shadow-[var(--shape-hard-shadow-large)_var(--art-ink)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="mb-4 text-sm font-semibold text-zinc-200">
+            <p className="mb-4 font-display text-base font-extrabold text-text">
               Keyboard Shortcuts
             </p>
-            <div className="flex flex-col gap-2 text-xs">
+            <div className="flex flex-col gap-2 text-[13px]">
               <div className="flex justify-between gap-8">
-                <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">
+                <kbd className="bg-well px-2 py-0.5 font-mono text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]">
                   Esc
                 </kbd>
-                <span className="text-zinc-400">Deselect / Close</span>
+                <span className="text-text">Deselect / Close</span>
               </div>
               <div className="flex justify-between gap-8">
-                <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">
+                <kbd className="bg-well px-2 py-0.5 font-mono text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]">
                   Space
                 </kbd>
-                <span className="text-zinc-400">Next Turn</span>
+                <span className="text-text">Next Turn</span>
               </div>
               <div className="flex justify-between gap-8">
-                <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">
+                <kbd className="bg-well px-2 py-0.5 font-mono text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]">
                   ?
                 </kbd>
-                <span className="text-zinc-400">Toggle Help</span>
+                <span className="text-text">Toggle Help</span>
               </div>
               {sceneType === "battle" && (
                 <>
-                  <div className="mt-2 border-t border-zinc-700 pt-2 text-[10px] text-zinc-500">
+                  <div className="mt-2 border-t-[1.5px] border-line-quiet pt-2 text-[13px] font-bold text-text-soft">
                     Battle Tools
                   </div>
                   <div className="flex justify-between gap-8">
-                    <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">
+                    <kbd className="bg-well px-2 py-0.5 font-mono text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]">
                       H/V/D/F/T/E
                     </kbd>
-                    <span className="text-zinc-400">Tools</span>
+                    <span className="text-text">Tools</span>
                   </div>
                   <div className="flex justify-between gap-8">
-                    <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">
+                    <kbd className="bg-well px-2 py-0.5 font-mono text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]">
                       G
                     </kbd>
-                    <span className="text-zinc-400">Toggle Grid</span>
+                    <span className="text-text">Toggle Grid</span>
                   </div>
                   <div className="flex justify-between gap-8">
-                    <kbd className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-zinc-300">
+                    <kbd className="bg-well px-2 py-0.5 font-mono text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]">
                       Hold Space
                     </kbd>
-                    <span className="text-zinc-400">Temporary Pan</span>
+                    <span className="text-text">Temporary Pan</span>
                   </div>
                 </>
               )}
@@ -1318,7 +1295,56 @@ export function DirectorView({
           </div>
         </div>
       )}
-    </AppShell>
+    </SessionShell>
+  );
+}
+
+/** Quiet actions at the right of the status bar (demo `battle-director`, `sb-status`). */
+function DirectorStatusActions({
+  onOpenDisplay,
+  focusMode,
+  onToggleFocus,
+  canRevert,
+  onRevert,
+}: {
+  onOpenDisplay: () => void;
+  focusMode: boolean;
+  onToggleFocus: () => void;
+  canRevert: boolean;
+  onRevert: () => void;
+}) {
+  const { paused } = useSessionConnection();
+  return (
+    <>
+      <SessionThemeToggle variant="status" />
+      <button
+        type="button"
+        onClick={onOpenDisplay}
+        title="Open player display (external monitor)"
+        aria-label="Open player display in a new window"
+      >
+        Display
+      </button>
+      <button
+        type="button"
+        onClick={onToggleFocus}
+        title={focusMode ? "Exit full screen" : "Focus map"}
+        aria-label={focusMode ? "Exit full screen" : "Focus map"}
+        aria-pressed={focusMode}
+      >
+        Fullscreen
+      </button>
+      {canRevert && (
+        <button
+          type="button"
+          onClick={onRevert}
+          disabled={paused}
+          title="Revert active scene to prepared state"
+        >
+          {paused ? "Revert…, when back" : "Revert…"}
+        </button>
+      )}
+    </>
   );
 }
 

@@ -127,6 +127,11 @@ const DisplayView = lazyWithChunkReload(() =>
     default: module.DisplayView,
   })),
 );
+const NotFound = lazyWithChunkReload(() =>
+  import('./pages/NotFound.js').then((module) => ({
+    default: module.NotFound,
+  })),
+);
 const LivePage = lazyWithChunkReload(() =>
   import('./pages/LivePage.js').then((module) => ({
     default: module.LivePage,
@@ -134,8 +139,8 @@ const LivePage = lazyWithChunkReload(() =>
 );
 
 const routeFallback = (
-  <div className="flex h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-400">
-    Loading...
+  <div role="status" className="flex h-screen items-center justify-center bg-canvas text-sm font-bold text-on-canvas">
+    Loading…
   </div>
 );
 
@@ -227,6 +232,11 @@ export const router = createBrowserRouter([
       {
         path: 'session/:id/lobby',
         element: routeChunk(<Lobby />),
+      },
+      {
+        // A bad address while signed in gets a real not-found page (DESIGN.md 9).
+        path: '*',
+        element: routeChunk(<NotFound />),
       },
     ],
   },

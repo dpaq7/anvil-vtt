@@ -1,45 +1,48 @@
 import { useRouteError } from 'react-router-dom';
+import { RefreshCw, TriangleAlert } from 'lucide-react';
 import {
   isChunkLoadError,
   refreshForChunkLoadError,
 } from '../lib/chunk-reload.js';
+import { StatePage, StateMessage } from './StateMessage.js';
 
+/*
+ * When a route fails (DESIGN.md section 4, Error; demo `states`: Anvil updated). The copy
+ * says what happened and the one way on is a reload.
+ */
 export function RouteErrorFallback() {
   const error = useRouteError();
+  const chunkLoadError = isChunkLoadError(error);
   const message =
     error instanceof Error
       ? error.message
       : 'An unexpected navigation error occurred.';
-  const chunkLoadError = isChunkLoadError(error);
+
+  const reload = () => {
+    if (chunkLoadError) {
+      refreshForChunkLoadError({ force: true });
+      return;
+    }
+    window.location.reload();
+  };
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-zinc-950 p-6 text-center text-zinc-100">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-300">
-        !
-      </div>
-      <div>
-        <h1 className="text-lg font-semibold">
-          {chunkLoadError ? 'Update needed' : 'Something went wrong'}
-        </h1>
-        <p className="mt-2 max-w-md text-sm text-zinc-400">
-          {chunkLoadError
-            ? 'The app was updated while this tab was open. Reload to continue with the latest version.'
-            : message}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          if (chunkLoadError) {
-            refreshForChunkLoadError({ force: true });
-            return;
-          }
-          window.location.reload();
-        }}
-        className="rounded bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-white"
-      >
-        {chunkLoadError ? 'Refresh App' : 'Reload'}
-      </button>
-    </div>
+    <StatePage>
+      {chunkLoadError ? (
+        <StateMessage
+          icon={<RefreshCw size={30} strokeWidth={2.4} />}
+          title="A new version of Anvil is ready"
+          body="Reload to load it. Your session is saved on the server."
+          go={{ label: <><RefreshCw size={16} strokeWidth={3} aria-hidden="true" />Reload</>, onClick: reload }}
+        />
+      ) : (
+        <StateMessage
+          icon={<TriangleAlert size={30} strokeWidth={2.4} />}
+          title="Something went wrong"
+          body={message}
+          go={{ label: <><RefreshCw size={16} strokeWidth={3} aria-hidden="true" />Reload</>, onClick: reload }}
+        />
+      )}
+    </StatePage>
   );
 }

@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { RefreshCw, Unplug, WifiOff } from 'lucide-react';
 import { TooltipProvider } from '@anvil/ui';
 import { useSessionSocket } from '../../hooks/useSessionSocket.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { ErrorBoundary } from '../../components/ErrorBoundary.js';
-import { ReconnectOverlay } from '../../components/ReconnectOverlay.js';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton.js';
+import { StateMessage, StatePage } from '../../components/StateMessage.js';
+import { SessionConnectionProvider } from '../../components/session/shell/connection.js';
+import { RECONNECT_GIVE_UP_SECONDS } from '../../lib/reconnect.js';
 import { DirectorView } from './DirectorView.js';
 import { PlayerView } from './PlayerView.js';
 import { PhoneSessionPage } from './PhoneSessionPage.js';
@@ -19,28 +22,20 @@ export function SessionPage() {
   return usePhoneCompanion ? <PhoneSessionPage /> : <DesktopSessionPage />;
 }
 
+/** A refusal from the server (4xx) means the link is bad or the session is over. */
+const isRefusal = (status: number | null) => status !== null && status > 0 && status < 500;
+
 function DesktopSessionPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
 
-  const { state, status, error, send, combatLog } = useSessionSocket(id ?? null);
+  const { state, status, error, failureStatus, retry, send, combatLog } = useSessionSocket(id ?? null);
 
-  if (error && !state) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-zinc-950" role="alert">
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-sm text-red-400">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="rounded bg-zinc-700 px-4 py-1.5 text-sm text-zinc-200 transition hover:bg-zinc-600"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-    );
+  if ((error && !state) || (state && status === 'disconnected' && isRefusal(failureStatus))) {
+    return <SessionProblem failureStatus={failureStatus} error={error} onRetry={retry} />;
   }
 
+  // Loading a session: the shell in outline with "Opening the table…" (demo `states`).
   if (!state) {
     return <LoadingSkeleton variant="page" />;
   }
@@ -48,20 +43,79 @@ function DesktopSessionPage() {
   // Determine role from participants list
   const me = state.participants.find((p) => p.userId === user?.id);
   const isDirector = me?.role === 'director';
+  // After the give-up window the shell covers the table with "Can't reach the table".
+  const lost = status === 'disconnected';
+  const viewProps = { sessionState: state, connectionStatus: status, send, combatLog, lost, onRetry: retry };
 
   return (
     <TooltipProvider delayDuration={0}>
       <ErrorBoundary label="session">
-        {/* Reconnect overlay shown over the active session */}
-        {status !== 'connected' && (
-          <ReconnectOverlay status={status} error={error} />
-        )}
-        {isDirector ? (
-          <DirectorView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
-        ) : (
-          <PlayerView sessionState={state} connectionStatus={status} send={send} combatLog={combatLog} />
-        )}
+        <SessionConnectionProvider status={status}>
+          {isDirector ? <DirectorView {...viewProps} /> : <PlayerView {...viewProps} />}
+        </SessionConnectionProvider>
       </ErrorBoundary>
     </TooltipProvider>
+  );
+}
+
+/*
+ * Why the table could not open (DESIGN.md section 4, Error; demo `states`). A bad link or a
+ * finished session gets "No live session at this link"; a server that cannot be reached gets
+ * "Can't reach the table" with Try again.
+ */
+function SessionProblem({
+  failureStatus,
+  error,
+  onRetry,
+}: {
+  failureStatus: number | null;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const navigate = useNavigate();
+  const isPlayer = useAuthStore((s) => s.user?.role === 'player');
+  const home = isPlayer
+    ? { label: 'Your home', onClick: () => navigate('/app') }
+    : { label: 'Your campaigns', onClick: () => navigate('/app/campaigns') };
+  const roomCode = { label: 'Use a room code', onClick: () => navigate('/app/join') };
+
+  if (!isRefusal(failureStatus)) {
+    return (
+      <StatePage>
+        <StateMessage
+          icon={<WifiOff size={30} strokeWidth={2.4} />}
+          title="Can’t reach the table"
+          body={`Anvil tried for ${RECONNECT_GIVE_UP_SECONDS} seconds. Everything up to the drop is saved.`}
+          go={{ label: <><RefreshCw size={16} strokeWidth={3} aria-hidden="true" />Try again</>, onClick: onRetry }}
+          alt={home}
+        />
+      </StatePage>
+    );
+  }
+
+  if (failureStatus === 403 && error && /room code/i.test(error)) {
+    return (
+      <StatePage>
+        <StateMessage
+          icon={<Unplug size={30} strokeWidth={2.4} />}
+          title="This table needs its room code"
+          body="Join from the Live page with the code your Director gave you."
+          go={roomCode}
+          alt={home}
+        />
+      </StatePage>
+    );
+  }
+
+  return (
+    <StatePage>
+      <StateMessage
+        icon={<Unplug size={30} strokeWidth={2.4} />}
+        title="No live session at this link"
+        body="It may have ended. Its campaign keeps everything that happened."
+        go={home}
+        alt={roomCode}
+      />
+    </StatePage>
   );
 }
