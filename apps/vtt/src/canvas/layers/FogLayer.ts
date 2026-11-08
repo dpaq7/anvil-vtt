@@ -1,4 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
+import { getCanvasTheme } from '../theme.js';
 
 /** A rectangular fog zone in grid coordinates */
 export interface FogZoneData {
@@ -39,7 +40,7 @@ export class FogLayer extends Container {
     this.redraw();
   }
 
-  /** Set whether the director is viewing (50% opacity) or a player (100% opaque) */
+  /** Set whether the director is viewing (see-through preview) or a player (100% opaque) */
   setDirectorMode(isDirector: boolean): void {
     this.directorMode = isDirector;
     this.visible = true;
@@ -57,7 +58,9 @@ export class FogLayer extends Container {
     this.fog.clear();
     if (this.zones.length === 0) return;
 
-    const alpha = this.directorMode ? 0.5 : 1.0;
+    const palette = getCanvasTheme();
+    const color = this.directorMode ? palette.fogPreview : palette.fog;
+    const alpha = this.directorMode ? palette.fogPreviewAlpha : palette.fogAlpha;
 
     for (const zone of this.zones) {
       const px = zone.x * this.cellSize;
@@ -66,12 +69,12 @@ export class FogLayer extends Container {
       const ph = zone.h * this.cellSize;
       this.fog.rect(px, py, pw, ph);
     }
-    this.fog.fill({ color: 0x000000, alpha });
+    this.fog.fill({ color, alpha });
   }
 
   /**
    * Live preview of a fog zone being drawn (drag in progress).
-   * Renders a dashed-outline rectangle at 30% opacity.
+   * Renders as the Director's fog preview, with an ink edge.
    */
   previewZone(gridX: number, gridY: number, w: number, h: number): void {
     if (!this.preview) {
@@ -87,8 +90,9 @@ export class FogLayer extends Container {
 
     // Semi-transparent fill preview
     this.preview.rect(px, py, pw, ph);
-    this.preview.fill({ color: 0x000000, alpha: 0.3 });
-    this.preview.stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
+    const palette = getCanvasTheme();
+    this.preview.fill({ color: palette.fogDraft, alpha: palette.fogDraftAlpha });
+    this.preview.stroke({ width: 2, color: palette.fogDraftEdge, alpha: 1 });
   }
 
   /** Remove the preview zone */

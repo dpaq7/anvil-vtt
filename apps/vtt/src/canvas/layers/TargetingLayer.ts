@@ -1,4 +1,5 @@
 import { Container, Graphics, Text } from 'pixi.js';
+import { CANVAS_FONT, getCanvasTheme } from '../theme.js';
 
 /** A grid cell in integer grid coordinates. */
 export interface GridCell {
@@ -13,11 +14,6 @@ export interface FootprintRect {
   size: number;
 }
 
-const AMBER = 0xfbbf24;
-const RED = 0xef4444;
-const EMERALD = 0x34d399;
-const SKY = 0x38bdf8;
-const SLATE = 0x94a3b8;
 
 /** A candidate target's footprint plus its advisory targeting state. */
 export interface TargetHighlight {
@@ -74,15 +70,17 @@ export class TargetingLayer extends Container {
     for (const cell of cells) {
       this.rangeG.rect(cell.x * cs, cell.y * cs, cs, cs);
     }
-    this.rangeG.fill({ color: SKY, alpha: 0.13 });
-    this.rangeG.stroke({ width: 1, color: SKY, alpha: 0.5 });
+    const palette = getCanvasTheme();
+    this.rangeG.fill({ color: palette.targetRange, alpha: palette.targetRangeFillAlpha });
+    this.rangeG.stroke({ width: 1, color: palette.targetRange, alpha: palette.targetRangeEdgeAlpha });
   }
 
-  /** Tint the squares an AoE template covers (green when placeable, amber when not). */
+  /** Tint the squares an AoE template covers (hazard when placeable, ink when not). */
   showAoETemplate(cells: GridCell[], valid: boolean): void {
     this.aoeG.clear();
     const cs = this.cellSize;
-    const color = valid ? EMERALD : AMBER;
+    const palette = getCanvasTheme();
+    const color = valid ? palette.aoeValid : palette.aoeInvalid;
     for (const cell of cells) {
       this.aoeG.rect(cell.x * cs, cell.y * cs, cs, cs);
     }
@@ -91,31 +89,32 @@ export class TargetingLayer extends Container {
   }
 
   /**
-   * Outline candidate target footprints. In-range targets get a solid emerald
-   * outline; out-of-range targets a fainter slate outline (still selectable —
+   * Outline candidate target footprints. In-range targets get a solid hazard
+   * outline; out-of-range targets a fainter ink outline (still selectable —
    * advisory). Flanking and high-ground advantages are marked with corner pips
-   * (emerald = flanking, sky = high ground), sized relative to the footprint so
-   * they stay legible at any zoom.
+   * (blue = flanking, top-left; ink = high ground, top-right), sized relative to
+   * the footprint so they stay legible at any zoom.
    */
   highlightTargets(targets: TargetHighlight[]): void {
     this.highlightG.clear();
     const cs = this.cellSize;
+    const palette = getCanvasTheme();
 
     // Outlines first, grouped by range state so each stroke color batches.
     for (const t of targets.filter((t) => t.inRange)) {
       const fp = t.footprint;
       this.highlightG.rect(fp.x * cs, fp.y * cs, fp.size * cs, fp.size * cs);
     }
-    this.highlightG.stroke({ width: 2.5, color: EMERALD, alpha: 0.9 });
+    this.highlightG.stroke({ width: 2.5, color: palette.targeting, alpha: 0.9 });
 
     for (const t of targets.filter((t) => !t.inRange)) {
       const fp = t.footprint;
       this.highlightG.rect(fp.x * cs, fp.y * cs, fp.size * cs, fp.size * cs);
     }
-    this.highlightG.stroke({ width: 1.5, color: SLATE, alpha: 0.55 });
+    this.highlightG.stroke({ width: 1.5, color: palette.targetInvalid, alpha: palette.targetInvalidAlpha });
 
-    // Advantage pips, drawn on top. Batch fills by color: flanking (emerald,
-    // top-left) then high ground (sky, top-right).
+    // Advantage pips, drawn on top. Batch fills by color: flanking (top-left)
+    // then high ground (top-right).
     const pipR = Math.max(3, cs * 0.11);
     const inset = pipR + 2;
     for (const t of targets) {
@@ -123,13 +122,13 @@ export class TargetingLayer extends Container {
       const fp = t.footprint;
       this.highlightG.circle(fp.x * cs + inset, fp.y * cs + inset, pipR);
     }
-    this.highlightG.fill({ color: EMERALD, alpha: 0.95 });
+    this.highlightG.fill({ color: palette.targetFlankPip, alpha: 0.95 });
     for (const t of targets) {
       if (!t.highGround) continue;
       const fp = t.footprint;
       this.highlightG.circle((fp.x + fp.size) * cs - inset, fp.y * cs + inset, pipR);
     }
-    this.highlightG.fill({ color: SKY, alpha: 0.95 });
+    this.highlightG.fill({ color: palette.targetHighGroundPip, alpha: 0.95 });
   }
 
   clearTargeting(): void {
@@ -144,7 +143,7 @@ export class TargetingLayer extends Container {
 
   /**
    * Draw the movement path from `origin` to `dest` as a polyline through the
-   * Chebyshev unit steps, with a cost pill. Amber within budget, red when the
+   * Chebyshev unit steps, with a cost pill. Blue within budget, hazard when the
    * cost exceeds `remaining` (advisory — the move is still allowed).
    */
   showMovementPath(
@@ -161,7 +160,8 @@ export class TargetingLayer extends Container {
       return;
     }
     const overBudget = cost > remaining;
-    const color = overBudget ? RED : AMBER;
+    const palette = getCanvasTheme();
+    const color = overBudget ? palette.warning : palette.moveTrail;
     const center = (c: GridCell) => ({ x: c.x * cs + cs / 2, y: c.y * cs + cs / 2 });
 
     // Polyline through step centers.
@@ -217,13 +217,14 @@ export class TargetingLayer extends Container {
     const b = { x: to.x * cs + cs / 2, y: to.y * cs + cs / 2 };
     this.rulerG.moveTo(a.x, a.y);
     this.rulerG.lineTo(b.x, b.y);
-    this.rulerG.stroke({ width: 2, color: SKY, alpha: 0.9 });
+    const palette = getCanvasTheme();
+    this.rulerG.stroke({ width: 2, color: palette.ruler, alpha: 0.9 });
     this.rulerG.circle(a.x, a.y, 4);
     this.rulerG.circle(b.x, b.y, 4);
-    this.rulerG.fill({ color: SKY, alpha: 0.9 });
+    this.rulerG.fill({ color: palette.ruler, alpha: 0.9 });
 
     if (this.rulerLabel) this.removeChild(this.rulerLabel);
-    this.rulerLabel = buildPill(`${squares} sq / ${squares * 5} ft`, SKY);
+    this.rulerLabel = buildPill(`${squares} sq / ${squares * 5} ft`, palette.ruler);
     this.rulerLabel.x = b.x;
     this.rulerLabel.y = b.y - 20;
     this.addChild(this.rulerLabel);
@@ -251,7 +252,7 @@ export class TargetingLayer extends Container {
       const cy = cell.y * cs + cs / 2;
       this.oaG.circle(cx, cy, cs * 0.32);
     }
-    this.oaG.stroke({ width: 2, color: RED, alpha: 0.8 });
+    this.oaG.stroke({ width: 2, color: getCanvasTheme().warning, alpha: 0.8 });
   }
 
   clearOA(): void {
@@ -272,15 +273,16 @@ export class TargetingLayer extends Container {
   }
 }
 
-/** Build a rounded label pill centered at (0,0). */
+/** Build a label pill centered at (0,0): a map label plate with a coloured edge. */
 function buildPill(label: string, color: number): Container {
+  const palette = getCanvasTheme();
   const container = new Container();
   const text = new Text({
     text: label,
     style: {
-      fontFamily: 'system-ui, sans-serif',
-      fontSize: 12,
-      fill: 0xffffff,
+      fontFamily: CANVAS_FONT,
+      fontSize: 13,
+      fill: palette.labelText,
       fontWeight: 'bold',
     },
   });
@@ -288,8 +290,8 @@ function buildPill(label: string, color: number): Container {
   const pad = 6;
   const bg = new Graphics();
   bg.roundRect(-text.width / 2 - pad, -text.height / 2 - pad / 2, text.width + pad * 2, text.height + pad, 4);
-  bg.fill({ color: 0x000000, alpha: 0.8 });
-  bg.stroke({ width: 1, color, alpha: 0.8 });
+  bg.fill({ color: palette.labelPlate, alpha: 1 });
+  bg.stroke({ width: 1.5, color: color === palette.warning ? palette.labelKeyline : color, alpha: 1 });
   container.addChild(bg);
   container.addChild(text);
   return container;

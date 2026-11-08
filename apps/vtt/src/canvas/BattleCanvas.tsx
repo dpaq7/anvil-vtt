@@ -27,6 +27,22 @@ import {
   credentialedMediaCrossOrigin,
   resolveApiBackedMediaUrl,
 } from '../lib/api-url.js';
+import {
+  CANVAS_THEME,
+  GRID_DEFAULT_ALPHA,
+  getCanvasTheme,
+  toCssHex,
+  useCanvasTheme,
+} from './theme.js';
+
+/** Map colours are art: the same in both themes. Side colours go in plan Task 14. */
+const ART_PALETTE = CANVAS_THEME.dark;
+
+const sideColorForType = (type: string): number => {
+  if (type === 'hero') return ART_PALETTE.sideHero;
+  if (type === 'monster') return ART_PALETTE.sideMonster;
+  return ART_PALETTE.sideNpc;
+};
 
 type RendererPreference = 'webgl' | 'canvas';
 
@@ -66,11 +82,7 @@ const getEntityTokenSize = (entity: EntityData): number => {
   return Number.isFinite(size) ? Math.max(1, size) : 1;
 };
 
-const tokenColorForType = (type: string): string => {
-  if (type === 'hero') return '#3b82f6';
-  if (type === 'monster') return '#ef4444';
-  return '#8b5cf6';
-};
+const tokenColorForType = (type: string): string => toCssHex(sideColorForType(type));
 
 const formatErrorForLog = (error: unknown): string => {
   if (error instanceof Error) return `${error.name}: ${error.message}`;
@@ -151,7 +163,7 @@ function BattleCanvasFallback({
         )}
 
         {terrain.map((zone) => {
-          const color = `#${(zone.color ?? 0x3b82f6).toString(16).padStart(6, '0')}`;
+          const color = toCssHex(zone.color ?? ART_PALETTE.terrainDefault);
           return (
             <div
               key={zone.id}
@@ -268,7 +280,7 @@ function BattleCanvasFallback({
                 top: entity.y * cellSize * scaleY,
                 width: tokenSize,
                 height: tokenSize,
-                borderColor: selected ? '#ffffff' : '#09090b',
+                borderColor: toCssHex(selected ? ART_PALETTE.selection : ART_PALETTE.tokenOutline),
                 backgroundColor: `${color}dd`,
                 outline: selected ? `2px solid ${color}` : 'none',
               }}
@@ -432,7 +444,7 @@ export function BattleCanvas({
   activeEntityId = null,
   builderMode = false,
   activeTool = 'select',
-  drawColor = '#ef4444',
+  drawColor = ART_PALETTE.drawDefault,
   drawWidth = 2,
   drawings = [],
   terrain = [],
@@ -449,8 +461,8 @@ export function BattleCanvas({
   fogBrushMode = 'draw',
   fogBrushSize = 1,
   gridVisible = true,
-  gridOpacity = 0.4,
-  gridColor = '#444444',
+  gridOpacity = GRID_DEFAULT_ALPHA,
+  gridColor = ART_PALETTE.gridDefaultHex,
   gridCellSize = cellSize,
   gridOffsetX = 0,
   gridOffsetY = 0,
@@ -460,6 +472,7 @@ export function BattleCanvas({
   onBackgroundLoaded,
   viewportRef,
 }: BattleCanvasProps) {
+  const canvasTheme = useCanvasTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   /** Flipped to true once PixiJS finishes async init so update effects re-run. */
@@ -530,7 +543,7 @@ export function BattleCanvas({
           width: Math.max(1, el.clientWidth || 1),
           height: Math.max(1, el.clientHeight || 1),
           resizeTo: el,
-          backgroundColor: 0x1a1a2e,
+          backgroundColor: getCanvasTheme().background,
           antialias: preference === 'webgl',
           preference: [preference],
           failIfMajorPerformanceCaveat: false,
@@ -784,8 +797,17 @@ export function BattleCanvas({
   useEffect(() => {
     const layers = layersRef.current;
     if (!layers || backgroundUrl) return;
-    layers.background.setColor(0x1a1a2e, cols * cellSize, rows * cellSize);
-  }, [backgroundUrl, cols, rows, cellSize, pixiReady]);
+    layers.background.setColor(canvasTheme.mapBlank, cols * cellSize, rows * cellSize);
+  }, [backgroundUrl, cols, rows, cellSize, canvasTheme, pixiReady]);
+
+  // Theme: the margin outside the map and the map dim follow the theme.
+  useEffect(() => {
+    const layers = layersRef.current;
+    const app = appRef.current;
+    if (!layers || !app) return;
+    app.renderer.background.color = canvasTheme.background;
+    layers.background.setDim(canvasTheme.mapDim);
+  }, [canvasTheme, pixiReady]);
 
   // Update tokens — diff-based to avoid destroying tokens during drag
   const prevEntityIdsRef = useRef(new Set<string>());
@@ -812,12 +834,7 @@ export function BattleCanvas({
 
     // Add new tokens or update changed ones
     for (const entity of entities) {
-      const color =
-        entity.type === 'hero'
-          ? 0x3b82f6
-          : entity.type === 'monster'
-            ? 0xef4444
-            : 0x8b5cf6;
+      const color = sideColorForType(entity.type);
       const size = getEntityTokenSize(entity);
       const active = activeEntityId === entity.id;
       const acted = actedSet.has(entity.id);

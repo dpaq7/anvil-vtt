@@ -3,6 +3,7 @@ import {
   mediaElementCrossOrigin,
   resolveApiBackedMediaUrl,
 } from '../../lib/api-url.js';
+import { dimColor } from '../theme.js';
 
 export interface ImageLoadedInfo {
   naturalWidth: number;
@@ -12,6 +13,21 @@ export interface ImageLoadedInfo {
 export class BackgroundLayer extends Container {
   private bg: Sprite | null = null;
   private loadingUrl: string | null = null;
+  /** Map dim (`--map-dim`): 1 in light, 0.86 in dark. */
+  private dim = 1;
+  /** Base colour of a blank map, or null when the map is an image. */
+  private baseColor: number | null = null;
+
+  /** Set the map brightness. Applied as a grey tint, so the art itself is untouched. */
+  setDim(dim: number): void {
+    this.dim = dim;
+    this.applyTint();
+  }
+
+  private applyTint(): void {
+    if (!this.bg) return;
+    this.bg.tint = dimColor(this.baseColor ?? 0xffffff, this.dim);
+  }
 
   setImage(
     url: string | null,
@@ -23,6 +39,7 @@ export class BackgroundLayer extends Container {
       this.bg = null;
     }
 
+    this.baseColor = null;
     if (!url) {
       this.loadingUrl = null;
       return;
@@ -55,6 +72,7 @@ export class BackgroundLayer extends Container {
       this.bg.width = img.naturalWidth;
       this.bg.height = img.naturalHeight;
       this.addChild(this.bg);
+      this.applyTint();
 
       // Notify caller of natural dimensions after sprite is created
       onLoaded?.({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
@@ -74,7 +92,8 @@ export class BackgroundLayer extends Container {
 
     const texture = Texture.WHITE;
     this.bg = new Sprite(texture);
-    this.bg.tint = color;
+    this.baseColor = color;
+    this.applyTint();
     this.bg.width = width;
     this.bg.height = height;
     this.addChild(this.bg);

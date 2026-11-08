@@ -71,9 +71,11 @@ import { toast } from "sonner";
 import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
 import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
 import { buildVillainCombatGroups } from "../../lib/combat-groups.js";
+import { CANVAS_THEME, GRID_DEFAULT_ALPHA } from "../../canvas/theme.js";
 
 // Grid color presets (shared with BattleWorkspace)
 const GRID_COLORS = [
+  { color: CANVAS_THEME.dark.gridDefaultHex, label: "Ink" },
   { color: "#444444", label: "Gray" },
   { color: "#ffffff", label: "White" },
   { color: "#000000", label: "Black" },
@@ -191,9 +193,9 @@ export function DirectorView({
   const negotiationData =
     sceneType === "negotiation" ? parseNegotiationData(sceneData) : null;
   const currentGridOpacity =
-    gridOpacityOverride ?? battleData?.gridOpacity ?? 0.4;
+    gridOpacityOverride ?? battleData?.gridOpacity ?? GRID_DEFAULT_ALPHA;
   const currentGridColor =
-    gridColorOverride ?? battleData?.gridColor ?? "#444444";
+    gridColorOverride ?? battleData?.gridColor ?? CANVAS_THEME.dark.gridDefaultHex;
   const currentTokenScale = clampGridCellSize(
     tokenScaleOverride ?? battleData?.cellSize ?? 48,
   );

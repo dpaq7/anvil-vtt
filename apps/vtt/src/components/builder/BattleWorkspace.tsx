@@ -67,6 +67,7 @@ import {
   credentialedMediaCrossOrigin,
   resolveApiBackedMediaUrl,
 } from '../../lib/api-url.js';
+import { CANVAS_THEME, GRID_DEFAULT_ALPHA } from '../../canvas/theme.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -490,7 +491,7 @@ export function BattleWorkspace({
 }: BattleWorkspaceProps) {
   // Tool state
   const [activeTool, setActiveTool] = useState<BattleTool>('select');
-  const [drawColor, setDrawColor] = useState('#ef4444');
+  const [drawColor, setDrawColor] = useState(CANVAS_THEME.dark.drawDefault);
   const [drawWidth, setDrawWidth] = useState(2);
   const [fogBrushMode, setFogBrushMode] = useState<FogBrushMode>('draw');
   const [fogBrushSize, setFogBrushSize] = useState(1);
@@ -595,8 +596,8 @@ export function BattleWorkspace({
     gridRows: (data['gridRows'] as number) ?? 20,
     gridCellSize: (data['gridCellSize'] as number) ?? 48,
     gridType: (data['gridType'] as 'square' | 'hex') ?? 'square',
-    gridOpacity: (data['gridOpacity'] as number) ?? 0.4,
-    gridColor: (data['gridColor'] as string) ?? '#444444',
+    gridOpacity: (data['gridOpacity'] as number) ?? GRID_DEFAULT_ALPHA,
+    gridColor: (data['gridColor'] as string) ?? CANVAS_THEME.dark.gridDefaultHex,
     tokens: parseTokens(),
     drawings: parseDrawings(),
     terrain: parseTerrain(),
@@ -728,7 +729,11 @@ export function BattleWorkspace({
         y: Math.floor(effectiveRows / 2),
         size: 1,
         color:
-          type === 'hero' ? 0x3b82f6 : type === 'monster' ? 0xef4444 : 0x8b5cf6,
+          type === 'hero'
+            ? CANVAS_THEME.dark.sideHero
+            : type === 'monster'
+              ? CANVAS_THEME.dark.sideMonster
+              : CANVAS_THEME.dark.sideNpc,
         type,
         ...extra,
       };
@@ -1536,6 +1541,7 @@ export function BattleWorkspace({
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs text-zinc-500">Color</span>
                             {[
+                              { color: CANVAS_THEME.dark.gridDefaultHex, label: 'Ink' },
                               { color: '#444444', label: 'Gray' },
                               { color: '#ffffff', label: 'White' },
                               { color: '#000000', label: 'Black' },

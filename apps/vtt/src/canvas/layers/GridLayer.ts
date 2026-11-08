@@ -1,4 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
+import { getCanvasTheme } from '../theme.js';
 
 export interface GridConfig {
   cellSize: number;
@@ -22,13 +23,14 @@ export class GridLayer extends Container {
   }
 
   draw(config: GridConfig): void {
+    const palette = getCanvasTheme();
     const {
       cellSize,
       stageCellSize = cellSize,
       cols,
       rows,
-      lineColor = 0x444444,
-      lineAlpha = 0.4,
+      lineColor = palette.grid,
+      lineAlpha = palette.gridAlpha,
       offsetX = 0,
       offsetY = 0,
     } = config;

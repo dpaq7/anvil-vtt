@@ -5,6 +5,7 @@ import type { TerrainLayer, TerrainZoneData } from '../layers/TerrainLayer.js';
 import type { FogLayer } from '../layers/FogLayer.js';
 import type { TargetingLayer, GridCell, FootprintRect } from '../layers/TargetingLayer.js';
 import { Quadtree } from './Quadtree.js';
+import { CANVAS_THEME } from '../theme.js';
 
 /**
  * On-canvas ability-targeting mode. While active, pointer input selects a target
@@ -99,7 +100,7 @@ export class InteractionManager {
   // Drawing state
   private isDrawing = false;
   private drawPoints: number[] = [];
-  private drawColor = '#ef4444';
+  private drawColor = CANVAS_THEME.dark.drawDefault;
   private drawWidth = 2;
 
   // Terrain placement state

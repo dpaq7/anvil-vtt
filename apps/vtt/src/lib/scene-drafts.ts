@@ -16,6 +16,7 @@ import type {
   NPCAttitude,
   SceneType,
 } from '@anvil/types';
+import { CANVAS_THEME, GRID_DEFAULT_ALPHA } from '../canvas/theme.js';
 
 export type BattleDifficulty = 'easy' | 'standard' | 'hard' | 'extreme';
 
@@ -439,8 +440,8 @@ export function createSceneData(
         gridRows: clampWholeNumber(draft.gridRows, 20, 5, 80),
         gridCellSize: 48,
         gridType: 'square',
-        gridOpacity: 0.4,
-        gridColor: '#444444',
+        gridOpacity: GRID_DEFAULT_ALPHA,
+        gridColor: CANVAS_THEME.dark.gridDefaultHex,
         tokens: createBattleTokens(draft, monsterByName),
         drawings: [],
         terrain: [],

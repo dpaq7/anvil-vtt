@@ -30,6 +30,7 @@ import { DiceRollControls } from '../session/DiceRollControls.js';
 import { TokenTooltip } from '../session/TokenTooltip.js';
 import { TokenContextMenu } from '../session/TokenContextMenu.js';
 import { TerrainContextMenu } from '../session/TerrainContextMenu.js';
+import { CANVAS_THEME, GRID_DEFAULT_ALPHA } from '../../canvas/theme.js';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -392,8 +393,8 @@ export function BattleStage({
   fogZones = [],
   drawings = [],
   terrain = [],
-  gridOpacity = 0.4,
-  gridColor = '#444444',
+  gridOpacity = GRID_DEFAULT_ALPHA,
+  gridColor = CANVAS_THEME.dark.gridDefaultHex,
   gridCellSize = cellSize,
   gridOffsetX = 0,
   gridOffsetY = 0,
@@ -415,7 +416,7 @@ export function BattleStage({
   const [activeTool, setActiveTool] = useState<BattleTool>('select');
   // Players don't get the full toolbar, but can toggle select/pan on the canvas.
   const [playerTool, setPlayerTool] = useState<BattleTool>('select');
-  const [drawColor, setDrawColor] = useState('#ef4444');
+  const [drawColor, setDrawColor] = useState(CANVAS_THEME.dark.drawDefault);
   const [drawWidth, setDrawWidth] = useState(2);
   const [fogBrushMode, setFogBrushMode] = useState<FogBrushMode>('draw');
   const [fogBrushSize, setFogBrushSize] = useState(1);

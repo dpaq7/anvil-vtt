@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button } from '@anvil/ui';
+import { CANVAS_THEME } from '../../canvas/theme.js';
 
 export type BattleTool =
   | 'select'
@@ -39,7 +40,7 @@ const TOOLS: { id: BattleTool; label: string; shortcut: string }[] = [
 ];
 
 const PRESET_COLORS = [
-  '#ef4444',
+  CANVAS_THEME.dark.drawDefault,
   '#f97316',
   '#eab308',
   '#22c55e',
@@ -119,7 +120,7 @@ export function BattleToolbar({
                     }`}
                     style={
                       color === 'none'
-                        ? { backgroundColor: '#27272a' }
+                        ? { backgroundColor: 'var(--color-well)' }
                         : { backgroundColor: color }
                     }
                     title={color === 'none' ? 'No stroke' : color}

@@ -6,6 +6,7 @@ import {
   resolveApiBackedMediaUrl,
 } from '../../lib/api-url.js';
 import { conditionNames } from '../../lib/conditions.js';
+import { CANVAS_FONT, CANVAS_THEME, getCanvasTheme } from '../theme.js';
 
 /** Condition ID → emoji for badge display */
 const CONDITION_EMOJI: Record<string, string> = {
@@ -20,11 +21,12 @@ const CONDITION_EMOJI: Record<string, string> = {
   weakened: '\u{1F494}',
 };
 
-/** Entity type → fill color */
+/** Entity type → side colour (the same in both themes; removed in plan Task 14). */
+const SIDE_PALETTE = CANVAS_THEME.dark;
 const TYPE_COLORS: Record<string, number> = {
-  hero: 0x3b82f6,
-  monster: 0xef4444,
-  npc: 0x8b5cf6,
+  hero: SIDE_PALETTE.sideHero,
+  monster: SIDE_PALETTE.sideMonster,
+  npc: SIDE_PALETTE.sideNpc,
 };
 
 /** Entity type → center glyph */
@@ -38,7 +40,7 @@ export interface TokenStyle {
   size: number; // grid cells
   color: number;
   selected: boolean;
-  /** Combatant is currently taking its turn (amber active-turn ring). */
+  /** Combatant is currently taking its turn (active-plate turn ring). */
   active?: boolean;
   /** Combatant has already acted this round (dimmed + done badge). */
   acted?: boolean;
@@ -82,7 +84,7 @@ export class TokenLayer extends Container {
     for (const { entity, size: tokenSize, selected, active, acted } of existingTokens) {
       this.addToken(entity, {
         size: tokenSize,
-        color: TYPE_COLORS[entity.type] ?? 0x8b5cf6,
+        color: TYPE_COLORS[entity.type] ?? SIDE_PALETTE.sideNpc,
         selected,
         active,
         acted,
@@ -99,14 +101,15 @@ export class TokenLayer extends Container {
     const cx = size / 2;
     const cy = size / 2;
 
-    const typeColor = TYPE_COLORS[entity.type] ?? 0x8b5cf6;
+    const palette = getCanvasTheme();
+    const typeColor = TYPE_COLORS[entity.type] ?? palette.sideNpc;
 
-    // Black ring border
+    // Ink ring border
     const ring = new Graphics();
     ring.circle(cx, cy, radius);
     ring.fill({ color: typeColor, alpha: 0.25 });
     ring.circle(cx, cy, radius);
-    ring.stroke({ width: 3, color: 0x000000 });
+    ring.stroke({ width: 3, color: palette.tokenOutline });
     container.addChild(ring);
 
     // Inner color ring (thinner, entity-type colored)
@@ -124,9 +127,9 @@ export class TokenLayer extends Container {
       const label = new Text({
         text: glyph,
         style: {
-          fontFamily: 'system-ui, sans-serif',
+          fontFamily: CANVAS_FONT,
           fontSize: Math.max(10, size * 0.28),
-          fill: 0xffffff,
+          fill: palette.tokenGlyph,
         },
       });
       label.anchor.set(0.5);
@@ -141,9 +144,11 @@ export class TokenLayer extends Container {
     const nameLabel = new Text({
       text: entity.name,
       style: {
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: CANVAS_FONT,
         fontSize: nameFontSize,
-        fill: 0xcccccc,
+        fontWeight: 'bold',
+        fill: palette.labelPlate,
+        stroke: { color: palette.labelKeyline, width: 3, join: 'round' },
         align: 'center',
         breakWords: true,
         lineHeight: Math.ceil(nameFontSize * 1.08),
@@ -156,15 +161,15 @@ export class TokenLayer extends Container {
     nameLabel.y = size + 1;
     container.addChild(nameLabel);
 
-    // Selection highlight — white circle outline
+    // Selection highlight — plate circle outline
     if (style.selected) {
       const sel = new Graphics();
       sel.circle(cx, cy, radius + 3);
-      sel.stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+      sel.stroke({ width: 2, color: palette.selection, alpha: 0.9 });
       container.addChild(sel);
     }
 
-    // HP arc — color gradient based on stamina %
+    // Stamina arc — ink (recoloured only; plan Task 14 removes it)
     const maxStamina = typeof entity['maxStamina'] === 'number' ? entity['maxStamina'] as number : 0;
     const currentStamina = typeof entity['currentStamina'] === 'number' ? entity['currentStamina'] as number : maxStamina;
     if (maxStamina > 0) {
@@ -172,25 +177,24 @@ export class TokenLayer extends Container {
       const arc = new Graphics();
       const startAngle = -Math.PI / 2;
       const endAngle = startAngle + Math.PI * 2 * pct;
-      // Color gradient: green > amber > red
-      let arcColor = 0x22c55e; // green
-      if (pct <= 0.25) arcColor = 0xef4444; // red
-      else if (pct <= 0.5) arcColor = 0xf59e0b; // amber
       arc.arc(cx, cy, radius + 1, startAngle, endAngle);
-      arc.stroke({ width: 3, color: arcColor });
+      arc.stroke({ width: 3, color: palette.staminaArc });
       container.addChild(arc);
 
       // Stamina-state status ring (matches the context-menu badges): dying at
-      // ≤ 0 (red), winded at ≤ half (orange). Sits outside the HP arc.
+      // ≤ 0 (hazard with an ink edge), winded at ≤ half (hazard). Sits outside
+      // the stamina arc.
       if (currentStamina <= 0) {
         const dyingRing = new Graphics();
         dyingRing.circle(cx, cy, radius + 2);
-        dyingRing.stroke({ width: 3.5, color: 0xdc2626, alpha: 0.95 });
+        dyingRing.stroke({ width: 5.5, color: palette.dyingEdge, alpha: 0.95 });
+        dyingRing.circle(cx, cy, radius + 2);
+        dyingRing.stroke({ width: 3.5, color: palette.dying, alpha: 1 });
         container.addChild(dyingRing);
       } else if (currentStamina <= maxStamina / 2) {
         const windedRing = new Graphics();
         windedRing.circle(cx, cy, radius + 2);
-        windedRing.stroke({ width: 2.5, color: 0xfb923c, alpha: 0.9 });
+        windedRing.stroke({ width: 2.5, color: palette.winded, alpha: 0.9 });
         container.addChild(windedRing);
       }
     }
@@ -213,21 +217,21 @@ export class TokenLayer extends Container {
         const tx = cx + Math.cos(angle) * tagRadius;
         const ty = cy + Math.sin(angle) * tagRadius;
 
-        // Dark circle background
+        // Plate disc with an ink ring
         const bg = new Graphics();
         const bgRadius = tagFontSize * 0.65;
         bg.circle(tx, ty, bgRadius);
-        bg.fill({ color: 0x18181b, alpha: 0.9 });
+        bg.fill({ color: palette.conditionBadge, alpha: 1 });
         bg.circle(tx, ty, bgRadius);
-        bg.stroke({ width: 1, color: 0x3f3f46, alpha: 0.7 });
+        bg.stroke({ width: 2, color: palette.conditionRing, alpha: 1 });
         container.addChild(bg);
 
         const tag = new Text({
           text: emoji,
           style: {
-            fontFamily: 'system-ui, sans-serif',
+            fontFamily: CANVAS_FONT,
             fontSize: tagFontSize,
-            fill: 0xffffff,
+            fill: palette.labelText,
           },
         });
         tag.anchor.set(0.5);
@@ -239,11 +243,11 @@ export class TokenLayer extends Container {
 
     // Combat turn cues (tied to the initiative tracker's state).
     // Acted this round → dim the token face + a "done" check badge. The active
-    // combatant is never dimmed and instead gets a bright amber turn ring.
+    // combatant is never dimmed and instead gets the blue turn ring.
     if (style.acted && !style.active) {
       const scrim = new Graphics();
       scrim.circle(cx, cy, radius);
-      scrim.fill({ color: 0x09090b, alpha: 0.55 });
+      scrim.fill({ color: palette.doneScrim, alpha: 0.55 });
       container.addChild(scrim);
 
       const bR = Math.max(7, size * 0.14);
@@ -251,16 +255,16 @@ export class TokenLayer extends Container {
       const by = cy - radius * 0.68;
       const badge = new Graphics();
       badge.circle(bx, by, bR);
-      badge.fill({ color: 0x18181b, alpha: 0.95 });
+      badge.fill({ color: palette.doneBadge, alpha: 1 });
       badge.circle(bx, by, bR);
-      badge.stroke({ width: 1.5, color: 0x71717a, alpha: 0.95 });
+      badge.stroke({ width: 2, color: palette.doneRing, alpha: 1 });
       container.addChild(badge);
       const check = new Text({
         text: '✓',
         style: {
-          fontFamily: 'system-ui, sans-serif',
+          fontFamily: CANVAS_FONT,
           fontSize: bR * 1.4,
-          fill: 0xd4d4d8,
+          fill: palette.doneMark,
           fontWeight: 'bold',
         },
       });
@@ -273,9 +277,9 @@ export class TokenLayer extends Container {
     if (style.active) {
       const activeRing = new Graphics();
       activeRing.circle(cx, cy, radius + 4);
-      activeRing.stroke({ width: 3, color: 0xfbbf24, alpha: 0.95 });
+      activeRing.stroke({ width: 3.5, color: palette.turn, alpha: 1 });
       activeRing.circle(cx, cy, radius + 7);
-      activeRing.stroke({ width: 2, color: 0xfbbf24, alpha: 0.35 });
+      activeRing.stroke({ width: 2.5, color: palette.turnOuter, alpha: 1 });
       container.addChild(activeRing);
     }
 
@@ -505,12 +509,13 @@ export class TokenLayer extends Container {
     // Clear previous children
     this.distanceLabel.removeChildren();
 
+    const palette = getCanvasTheme();
     const text = new Text({
       text: labelText,
       style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: 12,
-        fill: 0xffffff,
+        fontFamily: CANVAS_FONT,
+        fontSize: 13,
+        fill: palette.labelText,
         fontWeight: 'bold',
       },
     });
@@ -526,7 +531,8 @@ export class TokenLayer extends Container {
       text.height + pad,
       4,
     );
-    bg.fill({ color: 0x000000, alpha: 0.75 });
+    bg.fill({ color: palette.labelPlate, alpha: 1 });
+    bg.stroke({ width: 1.5, color: palette.labelKeyline, alpha: 1 });
 
     this.distanceLabel.addChild(bg);
     this.distanceLabel.addChild(text);
@@ -557,12 +563,13 @@ export class TokenLayer extends Container {
 
     this.distanceLabel.removeChildren();
 
+    const palette = getCanvasTheme();
     const text = new Text({
       text: labelText,
       style: {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: 12,
-        fill: 0xffffff,
+        fontFamily: CANVAS_FONT,
+        fontSize: 13,
+        fill: palette.labelText,
         fontWeight: 'bold',
       },
     });
@@ -577,7 +584,8 @@ export class TokenLayer extends Container {
       text.height + pad,
       4,
     );
-    bg.fill({ color: 0x000000, alpha: 0.75 });
+    bg.fill({ color: palette.labelPlate, alpha: 1 });
+    bg.stroke({ width: 1.5, color: palette.labelKeyline, alpha: 1 });
 
     this.distanceLabel.addChild(bg);
     this.distanceLabel.addChild(text);
@@ -604,9 +612,10 @@ export class TokenLayer extends Container {
     }
     this.selectionRect.clear();
     this.selectionRect.rect(x, y, w, h);
-    this.selectionRect.fill({ color: 0x3b82f6, alpha: 0.12 });
+    const palette = getCanvasTheme();
+    this.selectionRect.fill({ color: palette.selectionRect, alpha: palette.selectionRectFillAlpha });
     this.selectionRect.rect(x, y, w, h);
-    this.selectionRect.stroke({ width: 1, color: 0x3b82f6, alpha: 0.6 });
+    this.selectionRect.stroke({ width: 1.5, color: palette.selectionRect, alpha: palette.selectionRectEdgeAlpha });
   }
 
   /** Remove the selection marquee rectangle. */

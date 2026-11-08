@@ -7,6 +7,7 @@
  */
 import type { MotivationType } from '@anvil/types';
 import { resolveApiBackedMediaUrl } from './api-url.js';
+import { CANVAS_THEME, GRID_DEFAULT_ALPHA } from '../canvas/theme.js';
 
 // ---------------------------------------------------------------------------
 // Montage
@@ -271,8 +272,8 @@ export function parseBattleData(sceneData: Record<string, unknown>): BattleStage
     rows: (sceneData['gridRows'] as number) ?? 20,
     backgroundUrl: backgroundUrl ? resolveApiBackedMediaUrl(backgroundUrl) : null,
     cellSize: (sceneData['gridCellSize'] as number) ?? 48,
-    gridOpacity: (sceneData['gridOpacity'] as number) ?? 0.4,
-    gridColor: (sceneData['gridColor'] as string) ?? '#444444',
+    gridOpacity: (sceneData['gridOpacity'] as number) ?? GRID_DEFAULT_ALPHA,
+    gridColor: (sceneData['gridColor'] as string) ?? CANVAS_THEME.dark.gridDefaultHex,
     gridOffsetX: (sceneData['gridOffsetX'] as number) ?? 0,
     gridOffsetY: (sceneData['gridOffsetY'] as number) ?? 0,
     drawings: parseArray<DrawingEntry>('drawings'),

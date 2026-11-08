@@ -1,4 +1,8 @@
 import { Container, Graphics, Text } from 'pixi.js';
+import { CANVAS_FONT, CANVAS_THEME } from '../theme.js';
+
+/** Terrain colours are art: the same in both themes. */
+const CANVAS_PALETTE = CANVAS_THEME.dark;
 
 export interface TerrainZoneData {
   id: string;
@@ -14,12 +18,12 @@ export interface TerrainZoneData {
 
 /** Terrain zone colors by category */
 const TERRAIN_COLORS: Record<string, number> = {
-  difficult: 0xf59e0b,
-  hazardous: 0xef4444,
-  impassable: 0x6b7280,
-  concealing: 0x22c55e,
-  elevated: 0x8b5cf6,
-  default: 0x3b82f6,
+  difficult: CANVAS_PALETTE.terrainDifficult,
+  hazardous: CANVAS_PALETTE.terrainHazardous,
+  impassable: CANVAS_PALETTE.terrainImpassable,
+  concealing: CANVAS_PALETTE.terrainConcealing,
+  elevated: CANVAS_PALETTE.terrainElevated,
+  default: CANVAS_PALETTE.terrainDefault,
 };
 
 export class TerrainLayer extends Container {
@@ -106,9 +110,9 @@ export class TerrainLayer extends Container {
     const label = new Text({
       text: zone.name,
       style: {
-        fontFamily: 'sans-serif',
+        fontFamily: CANVAS_FONT,
         fontSize: Math.min(14, this.cellSize * 0.3),
-        fill: 0xffffff,
+        fill: CANVAS_PALETTE.terrainHandle,
         fontWeight: 'bold',
       },
     });
@@ -121,7 +125,7 @@ export class TerrainLayer extends Container {
       const handleSize = Math.max(8, Math.min(14, this.cellSize * 0.22));
       const handle = new Graphics();
       handle.rect(pw - handleSize, ph - handleSize, handleSize, handleSize);
-      handle.fill({ color: 0xffffff, alpha: zone.hidden ? 0.22 : 0.35 });
+      handle.fill({ color: CANVAS_PALETTE.terrainHandle, alpha: zone.hidden ? 0.22 : 0.35 });
       handle.stroke({ width: 1, color, alpha: 0.9 });
       container.addChild(handle);
     }
