@@ -1,12 +1,30 @@
 {
-  "_source": "Storyboard, the direction chosen at Gate 1 (tokens/direction-c.json), extended at Gate 2 with the quiet rule, the hard-shadow colour and the art tokens. Edit here, then run: npm run tokens",
+  "_source": "Storyboard, the direction chosen at Gate 1 (tokens/direction-c.json), extended at Gate 2 with the quiet rule, the hard-shadow colour and the art tokens, and reconciled with the approved demos at Task 11 (see design/redesign/DESIGN.md). Edit here, then run: npm run tokens",
   "_rule": "Heavy ink carries meaning: the map frame, the active scene, whoever is acting, dying, the primary action, anything floating over the map. Everything inside a rail uses the quiet rule. Anything drawn on the map uses art tokens, so it reads the same in both themes and on any uploaded map.",
   "fonts": {
     "display": "\"Bricolage Grotesque Variable\", sans-serif",
     "body": "\"Atkinson Hyperlegible\", system-ui, sans-serif",
-    "mono": "ui-monospace, SFMono-Regular, Menlo, monospace"
+    "mono": "ui-monospace, SFMono-Regular, Menlo, monospace",
+    "script": "\"Courier Prime\", ui-monospace, monospace"
   },
-  "type": { "min": "13px", "body": "14px", "name": "14px", "heading": "16px", "wordmark": "32px" },
+  "type": {
+    "min": "13px",
+    "body": "14px",
+    "name": "14px",
+    "heading": "16px",
+    "wordmark": "32px",
+    "label": "15px",
+    "emphasis": "17px",
+    "panel": "19px",
+    "dialog": "22px",
+    "band": "22px",
+    "script": "25px",
+    "scriptSlug": "17px",
+    "turn": "26px",
+    "pageTitle": "32px",
+    "authTitle": "44px",
+    "heroTitle": "52px"
+  },
   "shape": {
     "radius": "0",
     "frame": "3px",
@@ -14,7 +32,13 @@
     "hardShadow": "4px 4px 0",
     "hardShadowSmall": "3px 3px 0",
     "railLeft": "304px",
-    "railRight": "294px"
+    "railRight": "294px",
+    "frameDashed": "2px",
+    "faceRing": "2.5px",
+    "hardShadowLarge": "6px 6px 0",
+    "hardShadowPage": "7px 7px 0",
+    "hardShadowWindow": "8px 8px 0",
+    "meter": "7px"
   },
   "scene": {
     "story": "#8b3fe0",
@@ -41,7 +65,78 @@
     "hazard": "#ffd21f",
     "onHazard": "#15171c",
     "fog": "#15171c",
-    "fogHatch": "#2c3038"
+    "fogHatch": "#2a2e38",
+    "fogHatchAlpha": "0.42",
+    "gridAlpha": "0.2",
+    "keyline": "#f1f3ee",
+    "tokenShadow": "rgb(21 23 28 / 0.9)",
+    "scrim": "rgb(21 23 28 / 0.62)",
+    "miniFoe": "#d6372c"
+  },
+  "type1280": {
+    "wordmark": "26px",
+    "turn": "22px",
+    "band": "19px",
+    "script": "21px",
+    "scriptSlug": "15px",
+    "dyingWord": "14px"
+  },
+  "space": {
+    "hair": "2px",
+    "xs": "4px",
+    "sm": "6px",
+    "gutter": "8px",
+    "md": "10px",
+    "pad": "12px",
+    "lg": "16px",
+    "xl": "24px"
+  },
+  "layout": {
+    "top": "62px",
+    "top1280": "52px",
+    "bar": "46px",
+    "bar1280": "42px",
+    "status": "26px",
+    "status1280": "24px",
+    "tabs": "34px",
+    "sub": "28px",
+    "sub1280": "26px",
+    "row": "48px",
+    "row1280": "40px",
+    "dying": "64px",
+    "dying1280": "52px",
+    "unit": "34px",
+    "unit1280": "22px",
+    "unitPlayer": "33px",
+    "unitPlayer1280": "24px",
+    "miniMap": "112px",
+    "miniMap1280": "84px",
+    "appRail": "232px",
+    "appHead": "62px",
+    "phoneW": "375px",
+    "phoneH": "812px",
+    "phoneTop": "70px",
+    "phoneTabs": "60px",
+    "phoneRow": "50px",
+    "phoneDying": "54px",
+    "phoneDock": "56px",
+    "target": "44px"
+  },
+  "display": {
+    "theme": "dark",
+    "w": "1920px",
+    "h": "1080px",
+    "rail": "440px",
+    "zoom": "2",
+    "frame": "6px",
+    "min": "26px",
+    "body": "28px",
+    "name": "34px",
+    "round": "40px",
+    "board": "44px",
+    "turn": "64px",
+    "scriptSlug": "30px",
+    "script": "46px"
   },
   "themes": {
     "light": {
