@@ -77,7 +77,7 @@ export function OnboardingCallout({
           type="button"
           size="sm"
           onClick={onNext}
-          className="rounded-chip bg-anvil-ember-500 text-white hover:bg-anvil-ember-600"
+          className="rounded-chip bg-anvil-ember-500 text-on-active hover:bg-anvil-ember-600"
         >
           {isFinal ? (
             <>

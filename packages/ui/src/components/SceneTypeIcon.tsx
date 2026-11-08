@@ -1,12 +1,14 @@
+import { BookOpen, Footprints, Handshake, Swords, Tent, type LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils.js';
 import { SCENE_COLORS, type SceneType } from './scene-type.js';
 
-const SCENE_ICONS: Record<SceneType, string> = {
-  story: '\u{1F4D6}',
-  battle: '\u{2694}\uFE0F',
-  montage: '\u{1F3AC}',
-  negotiation: '\u{1F91D}',
-  respite: '\u{1F3D5}\uFE0F',
+/* Mode icons (DESIGN.md 2.2). Sized by font size, so text-* classes still scale them. */
+const SCENE_ICONS: Record<SceneType, LucideIcon> = {
+  story: BookOpen,
+  battle: Swords,
+  montage: Footprints,
+  negotiation: Handshake,
+  respite: Tent,
 };
 
 export interface SceneTypeIconProps {
@@ -15,9 +17,14 @@ export interface SceneTypeIconProps {
 }
 
 export function SceneTypeIcon({ type, className }: SceneTypeIconProps) {
+  const Icon = SCENE_ICONS[type];
   return (
-    <span className={cn(SCENE_COLORS[type], className)} role="img" aria-label={type}>
-      {SCENE_ICONS[type]}
+    <span
+      className={cn('inline-flex items-center justify-center', SCENE_COLORS[type], className)}
+      role="img"
+      aria-label={type}
+    >
+      <Icon className="size-[1em] shrink-0" strokeWidth={2.6} aria-hidden="true" />
     </span>
   );
 }

@@ -83,10 +83,9 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
       <aside
         ref={ref}
         className={cn(
-          'flex h-full flex-col border-r transition-[width] duration-200 ease-in-out',
-          variant === 'director' && 'bg-sidebar-director border-sidebar-director/50',
-          variant === 'player' && 'bg-sidebar-player border-sidebar-player/50',
-          variant === 'default' && 'bg-zinc-950 border-zinc-800',
+          // App rail (DESIGN.md section 4): one framed surface. The Director /
+          // Player variant no longer tints the rail; the role switch shows it.
+          'flex h-full flex-col border-r-[3px] border-line bg-surface text-text transition-[width] duration-200 ease-in-out',
           collapsed ? 'w-12' : 'w-[var(--sidebar-width)]',
           className,
         )}
@@ -105,7 +104,7 @@ Sidebar.displayName = 'Sidebar';
 
 export const SidebarNav = forwardRef<HTMLElement, HTMLAttributes<HTMLElement>>(
   ({ className, ...props }, ref) => (
-    <nav ref={ref} className={cn('flex flex-1 flex-col gap-1 p-2', className)} {...props} />
+    <nav ref={ref} className={cn('flex flex-1 flex-col', className)} {...props} />
   ),
 );
 SidebarNav.displayName = 'SidebarNav';
@@ -126,22 +125,18 @@ export interface SidebarNavItemProps extends HTMLAttributes<HTMLAnchorElement> {
 
 export const SidebarNavItem = forwardRef<HTMLAnchorElement, SidebarNavItemProps>(
   ({ icon, label, active, className, as: Comp = 'a', ...props }, ref) => {
-    const { collapsed, variant } = useSidebar();
-    const isColored = variant === 'director' || variant === 'player';
+    const { collapsed } = useSidebar();
 
     const content = (
       <Comp
         ref={ref}
         aria-label={collapsed ? label : undefined}
         className={cn(
-          'flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors',
-          // Default (dark) variant
-          !isColored && 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100',
-          !isColored && active && 'border-l-2 border-anvil-accent bg-zinc-800 text-zinc-100',
-          // Colored (light) variants - use dark text
-          isColored && 'text-anvil-ink/80 hover:bg-black/10 hover:text-anvil-ink',
-          isColored && active && 'border-l-2 border-anvil-ink bg-black/15 text-anvil-ink font-semibold',
-          collapsed && 'justify-center',
+          // Nav row: 16 px display; the selected row is filled with text and
+          // carries a 6 px active bar on its inner edge.
+          'flex min-h-[46px] items-center gap-3 px-4 font-display text-base font-bold text-text transition-colors hover:bg-well',
+          active && 'bg-text text-surface shadow-[inset_6px_0_0_var(--color-active)] hover:bg-text',
+          collapsed && 'justify-center px-0',
           className,
         )}
         {...props}
@@ -170,24 +165,15 @@ SidebarNavItem.displayName = 'SidebarNavItem';
 /* ------------------------------------------------------------------ */
 
 export function SidebarToggle({ className }: { className?: string }) {
-  const { collapsed, toggle, variant } = useSidebar();
-  const isColored = variant === 'director' || variant === 'player';
+  const { collapsed, toggle } = useSidebar();
 
   return (
-    <div
-      className={cn(
-        'w-full border-t',
-        !isColored && 'border-zinc-800',
-        isColored && 'border-black/10',
-      )}
-    >
+    <div className="w-full border-t-[1.5px] border-line-quiet">
       <button
         type="button"
         onClick={toggle}
         className={cn(
-          'flex items-center justify-center p-2 transition-colors',
-          !isColored && 'text-zinc-500 hover:text-zinc-100',
-          isColored && 'text-anvil-ink/70 hover:text-anvil-ink',
+          'flex items-center justify-center p-2 text-text-soft transition-colors hover:text-text',
           className,
         )}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

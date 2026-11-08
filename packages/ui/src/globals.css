@@ -4,84 +4,70 @@
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../apps/vtt/src/**/*.{ts,tsx}";
 
+/* ==================================================================== */
+/*  Storyboard design language (design/redesign/DESIGN.md, section 2).  */
+/*  Variable names match design/redesign/tokens/look-anvil.css so demo  */
+/*  CSS ports line for line. Theme colours are set per theme further    */
+/*  down; the values here are the dark defaults Tailwind registers.     */
+/* ==================================================================== */
+
 @theme {
-  /* ------------------------------------------------------------------ */
-  /*  Site-wide dark theme — creator color scheme applied to zinc stops  */
-  /* ------------------------------------------------------------------ */
+  /* Theme colours: utilities such as bg-surface, text-text-soft, border-line */
+  --color-canvas: #46565b;
+  --color-on-canvas: #f1f3ee;
+  --color-surface: #1d2024;
+  --color-well: #2a2e34;
+  --color-raised: #30353c;
+  --color-text: #f1f3ee;
+  --color-text-soft: #c3cbd0;
+  --color-line: #d3dad8;
+  --color-line-quiet: #464d54;
+  --color-shadow: #0d0e11;
+  --color-active: #9db4ff;
+  --color-on-active: #15171c;
+  --color-active-soft: #2b3560;
+  --color-alert: #ff9d92;
+  --color-danger: #ffd21f;
+  --color-on-danger: #15171c;
+  --color-success: #6fd39b;
 
-  /* Override Tailwind zinc palette with warm earthy creator tones */
-  --color-zinc-950: #242423; /* deepest background (page bg) */
-  --color-zinc-900: #2d2d2c; /* card / panel backgrounds */
-  --color-zinc-800: #363635; /* elevated surfaces, hover states */
-  --color-zinc-700: #4a4a49; /* borders */
-  --color-zinc-600: #5a5a58; /* subtle borders, dividers */
-  --color-zinc-500: #7a9998; /* muted text, placeholders */
-  --color-zinc-400: #8ab0af; /* secondary text */
-  --color-zinc-300: #a0c4c3; /* emphasized secondary text */
-  --color-zinc-200: #b7d5d4; /* strong text */
-  --color-zinc-100: #c8e0df; /* primary text */
-  --color-zinc-50: #d4e8e7; /* brightest text */
+  /* Scene mode colours: identity, never an action. Same in both themes. */
+  --color-scene-story: #8b3fe0;
+  --color-scene-montage: #e38a00;
+  --color-scene-negotiation: #2b6fe6;
+  --color-scene-battle: #cf2a20;
+  --color-scene-respite: #1f9d55;
+  --color-on-scene-story: #ffffff;
+  --color-on-scene-montage: #15171c;
+  --color-on-scene-negotiation: #ffffff;
+  --color-on-scene-battle: #ffffff;
+  --color-on-scene-respite: #15171c;
 
-  /* Scene mode colors */
-  --color-scene-battle: #ef4444;
-  --color-scene-story: #a855f7;
-  --color-scene-montage: #f59e0b;
-  --color-scene-negotiation: #3b82f6;
-  --color-scene-respite: #22c55e;
+  /* Type */
+  --font-display: "Bricolage Grotesque Variable", sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-sans: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-script: "Courier Prime", ui-monospace, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Site accent */
-  --color-anvil-accent: #efea5a;
-  --color-anvil-ink: #242423;
-  --color-anvil-paper: #f7f2ea;
-  --color-flow-director: #fecdd3;
-  --color-flow-player: #a5f3fc;
+  /* 13 px is the floor (DESIGN.md rule 6): the smallest named size is 13 px. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(1 / 0.8125);
 
-  /* Creator color scheme — semantic aliases (still available) */
-  --color-creator-bg: #363635;
-  --color-creator-highlight: #9a7197;
-  --color-creator-text: #b7d5d4;
-  --color-creator-text-muted: #8ab0af;
-  --color-creator-border: #4a4a49;
-  --color-creator-card: #2d2d2c;
-  --color-creator-card-hover: #404040;
-
-  /* Role-based sidebar colors (preserved — not affected by zinc overrides) */
-  --color-sidebar-director: #e2b4bd;
-  --color-sidebar-player: #9a7197;
+  /* Square corners (rule 8). Round things use rounded-full. */
+  --radius: 0;
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
 
   /* Sidebar */
   --sidebar-width: 200px;
   --sidebar-width-collapsed: 48px;
-
-  /* ------------------------------------------------------------------ */
-  /*  Playful-tabletop language (additive — never remapped per theme)    */
-  /* ------------------------------------------------------------------ */
-
-  /* Parchment surfaces */
-  --color-anvil-parchment-50: #fbf7ef;
-  --color-anvil-parchment-100: #f7f2ea;
-  --color-anvil-parchment-200: #efe6d6;
-  --color-anvil-parchment-300: #e2d5bf;
-
-  /* Ember accent — formalizes the marketing orange; theme-stable */
-  --color-anvil-ember-400: #e8703d;
-  --color-anvil-ember-500: #d45a2a;
-  --color-anvil-ember-600: #b34a20;
-
-  /* Warm body ink on parchment */
-  --color-anvil-ink-soft: #4a4238;
-
-  /* Typography */
-  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
-  --font-body: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
-
-  /* Radius & shadow vocabulary */
-  --radius-card: 1rem;
-  --radius-chip: 9999px;
-  --shadow-paper:
-    0 1px 2px rgb(36 36 35 / 0.08), 0 4px 16px rgb(36 36 35 / 0.1);
-  --shadow-paper-lift:
-    0 2px 4px rgb(36 36 35 / 0.1), 0 12px 32px rgb(36 36 35 / 0.16);
 
   /* Motion vocabulary */
   --animate-fade-up: fade-up 0.5s ease-out both;
@@ -130,61 +116,241 @@
   }
 }
 
+/* -------------------------------------------------------------------- */
+/*  Old names, mapped by role onto the Storyboard set (DESIGN.md 2.8).  */
+/*  `inline` makes each utility read the new variable where it is used, */
+/*  so a nested [data-theme] (marketing pages) resolves correctly.      */
+/*  Keep until no file uses them (plan Task 18), then delete.           */
+/* -------------------------------------------------------------------- */
+
+@theme inline {
+  /* Art colours as utilities (bg-art-ink, text-art-on-hazard, ...) */
+  --color-art-ink: var(--art-ink);
+  --color-art-plate: var(--art-plate);
+  --color-art-on-plate: var(--art-on-plate);
+  --color-art-hazard: var(--art-hazard);
+  --color-art-on-hazard: var(--art-on-hazard);
+  --color-art-active-plate: var(--art-active-plate);
+  --color-art-on-active-plate: var(--art-on-active-plate);
+
+  /* zinc, remapped by role */
+  --color-zinc-950: var(--color-canvas); /* page */
+  --color-zinc-900: var(--color-surface); /* card, panel */
+  --color-zinc-800: var(--color-well); /* elevated, hover */
+  --color-zinc-700: var(--color-line-quiet); /* borders */
+  --color-zinc-600: var(--color-line-quiet);
+  --color-zinc-500: var(--color-text-soft); /* muted text */
+  --color-zinc-400: var(--color-text-soft);
+  --color-zinc-300: var(--color-text); /* text */
+  --color-zinc-200: var(--color-text);
+  --color-zinc-100: var(--color-text);
+  --color-zinc-50: var(--color-text);
+
+  /* creator */
+  --color-creator-bg: var(--color-well);
+  --color-creator-card-hover: var(--color-well);
+  --color-creator-card: var(--color-surface);
+  --color-creator-text: var(--color-text);
+  --color-creator-text-muted: var(--color-text-soft);
+  --color-creator-border: var(--color-line-quiet);
+  --color-creator-highlight: var(--color-active);
+
+  /* Parchment and ember. anvil-ink is used as text on parchment (now surface),
+     so it follows the theme's text colour rather than art ink. Ember marks
+     actions and their chips, so it follows active. */
+  --color-anvil-parchment-50: var(--color-surface);
+  --color-anvil-parchment-100: var(--color-surface);
+  --color-anvil-parchment-200: var(--color-well);
+  --color-anvil-parchment-300: var(--color-line-quiet);
+  --color-anvil-paper: var(--color-surface);
+  --color-anvil-ink: var(--color-text);
+  --color-anvil-ink-soft: var(--color-text-soft);
+  --color-anvil-accent: var(--art-hazard);
+  --color-anvil-ember-400: var(--color-active);
+  --color-anvil-ember-500: var(--color-active);
+  --color-anvil-ember-600: var(--color-active);
+
+  /* Role colours: the Director / Player switch fills the chosen side with text */
+  --color-flow-director: var(--color-text);
+  --color-flow-player: var(--color-text);
+  --color-sidebar-director: var(--color-text);
+  --color-sidebar-player: var(--color-text);
+
+  /* Radius and shadow vocabulary */
+  --radius-card: 0;
+  --radius-chip: 0;
+  --shadow-paper: var(--shape-hard-shadow-small) var(--color-shadow);
+  --shadow-paper-lift: var(--shape-hard-shadow) var(--color-shadow);
+}
+
+/* -------------------------------------------------------------------- */
+/*  Values that do not change with theme: art, shape, type, space,      */
+/*  layout, display.                                                    */
+/* -------------------------------------------------------------------- */
+
+:root {
+  --art-ink: #15171c;
+  --art-plate: #ffffff;
+  --art-on-plate: #15171c;
+  --art-hero-plate: #15171c;
+  --art-on-hero-plate: #ffffff;
+  --art-active-plate: #2348c9;
+  --art-on-active-plate: #ffffff;
+  --art-hazard: #ffd21f;
+  --art-on-hazard: #15171c;
+  --art-fog: #15171c;
+  --art-fog-hatch: #2a2e38;
+  --art-fog-hatch-alpha: 0.42;
+  --art-grid-alpha: 0.2;
+  --art-keyline: #f1f3ee;
+  --art-token-shadow: rgb(21 23 28 / 0.9);
+  --art-scrim: rgb(21 23 28 / 0.62);
+  --art-mini-foe: #d6372c;
+
+  --shape-radius: 0;
+  --shape-frame: 3px;
+  --shape-frame-quiet: 1.5px;
+  --shape-frame-dashed: 2px;
+  --shape-face-ring: 2.5px;
+  --shape-meter: 7px;
+  --shape-hard-shadow-small: 3px 3px 0;
+  --shape-hard-shadow: 4px 4px 0;
+  --shape-hard-shadow-large: 6px 6px 0;
+  --shape-hard-shadow-page: 7px 7px 0;
+  --shape-hard-shadow-window: 8px 8px 0;
+  --shape-rail-left: 304px;
+  --shape-rail-right: 294px;
+
+  --type-min: 13px;
+  --type-body: 14px;
+  --type-name: 14px;
+  --type-label: 15px;
+  --type-heading: 16px;
+  --type-emphasis: 17px;
+  --type-panel: 19px;
+  --type-dialog: 22px;
+  --type-band: 22px;
+  --type-script: 25px;
+  --type-script-slug: 17px;
+  --type-turn: 26px;
+  --type-wordmark: 32px;
+  --type-page-title: 32px;
+  --type-auth-title: 44px;
+  --type-hero-title: 52px;
+  --type-1280-wordmark: 26px;
+  --type-1280-turn: 22px;
+  --type-1280-band: 19px;
+  --type-1280-script: 21px;
+  --type-1280-script-slug: 15px;
+  --type-1280-dying-word: 14px;
+
+  --space-hair: 2px;
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-gutter: 8px;
+  --space-md: 10px;
+  --space-pad: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  --layout-top: 62px;
+  --layout-top1280: 52px;
+  --layout-bar: 46px;
+  --layout-bar1280: 42px;
+  --layout-status: 26px;
+  --layout-status1280: 24px;
+  --layout-tabs: 34px;
+  --layout-sub: 28px;
+  --layout-sub1280: 26px;
+  --layout-row: 48px;
+  --layout-row1280: 40px;
+  --layout-dying: 64px;
+  --layout-dying1280: 52px;
+  --layout-unit: 34px;
+  --layout-unit1280: 22px;
+  --layout-unit-player: 33px;
+  --layout-unit-player1280: 24px;
+  --layout-mini-map: 112px;
+  --layout-mini-map1280: 84px;
+  --layout-app-rail: 232px;
+  --layout-app-head: 62px;
+  --layout-phone-w: 375px;
+  --layout-phone-h: 812px;
+  --layout-phone-top: 70px;
+  --layout-phone-tabs: 60px;
+  --layout-phone-row: 50px;
+  --layout-phone-dying: 54px;
+  --layout-phone-dock: 56px;
+  --layout-target: 44px;
+
+  --display-w: 1920px;
+  --display-h: 1080px;
+  --display-rail: 440px;
+  --display-zoom: 2;
+  --display-frame: 6px;
+  --display-min: 26px;
+  --display-body: 28px;
+  --display-name: 34px;
+  --display-round: 40px;
+  --display-board: 44px;
+  --display-turn: 64px;
+  --display-script-slug: 30px;
+  --display-script: 46px;
+}
+
+/* -------------------------------------------------------------------- */
+/*  Theme colours                                                       */
+/* -------------------------------------------------------------------- */
+
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --color-zinc-950: #242423;
-  --color-zinc-900: #2d2d2c;
-  --color-zinc-800: #363635;
-  --color-zinc-700: #4a4a49;
-  --color-zinc-600: #5a5a58;
-  --color-zinc-500: #7a9998;
-  --color-zinc-400: #8ab0af;
-  --color-zinc-300: #a0c4c3;
-  --color-zinc-200: #b7d5d4;
-  --color-zinc-100: #c8e0df;
-  --color-zinc-50: #d4e8e7;
-
-  --color-creator-bg: #363635;
-  --color-creator-highlight: #9a7197;
-  --color-creator-text: #b7d5d4;
-  --color-creator-text-muted: #8ab0af;
-  --color-creator-border: #4a4a49;
-  --color-creator-card: #2d2d2c;
-  --color-creator-card-hover: #404040;
-
-  --color-flow-director: #fecdd3;
-  --color-flow-player: #a5f3fc;
+  --color-canvas: #46565b;
+  --color-on-canvas: #f1f3ee;
+  --color-surface: #1d2024;
+  --color-well: #2a2e34;
+  --color-raised: #30353c;
+  --color-text: #f1f3ee;
+  --color-text-soft: #c3cbd0;
+  --color-line: #d3dad8;
+  --color-line-quiet: #464d54;
+  --color-shadow: #0d0e11;
+  --color-active: #9db4ff;
+  --color-on-active: #15171c;
+  --color-active-soft: #2b3560;
+  --color-alert: #ff9d92;
+  --color-danger: #ffd21f;
+  --color-on-danger: #15171c;
+  --color-success: #6fd39b;
+  --map-dim: 0.86;
 }
 
 [data-theme="light"] {
   color-scheme: light;
 
-  --color-zinc-950: #f6f1e8;
-  --color-zinc-900: #fffdf9;
-  --color-zinc-800: #eee7dd;
-  --color-zinc-700: #d7cec2;
-  --color-zinc-600: #b9afa4;
-  --color-zinc-500: #6c7d78;
-  --color-zinc-400: #586d68;
-  --color-zinc-300: #435a54;
-  --color-zinc-200: #30433e;
-  --color-zinc-100: #202c29;
-  --color-zinc-50: #111816;
+  --color-canvas: #8fa6ab;
+  --color-on-canvas: #15171c;
+  --color-surface: #f1f3ee;
+  --color-well: #e2e6e1;
+  --color-raised: #ffffff;
+  --color-text: #15171c;
+  --color-text-soft: #3f4650;
+  --color-line: #15171c;
+  --color-line-quiet: #c3cac6;
+  --color-shadow: #15171c;
+  --color-active: #2348c9;
+  --color-on-active: #ffffff;
+  --color-active-soft: #dbe3ff;
+  --color-alert: #b3241b;
+  --color-danger: #ffd21f;
+  --color-on-danger: #15171c;
+  --color-success: #1a7a43;
+  --map-dim: 1;
 
-  --color-creator-bg: #f6f1e8;
-  --color-creator-highlight: #8a5d87;
-  --color-creator-text: #202c29;
-  --color-creator-text-muted: #647771;
-  --color-creator-border: #d7cec2;
-  --color-creator-card: #fffdf9;
-  --color-creator-card-hover: #eee7dd;
-
-  --color-flow-director: #9f1239;
-  --color-flow-player: #155e75;
-
-  /* Accent utilities double as icon/status foregrounds. Keep their low stops readable on pale surfaces. */
+  /* Accent utilities double as icon/status foregrounds. Keep their low stops
+     readable on pale surfaces. Stays until their last users are restyled
+     (plan Task 16). New code must not use them. */
   --color-cyan-100: #155e75;
   --color-cyan-200: #155e75;
   --color-cyan-300: #0e7490;
@@ -244,53 +410,59 @@
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+  background-color: var(--color-canvas);
+  color: var(--color-text);
   font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Playful-tabletop textures — CSS-only paper grain, no image assets  */
-/* ------------------------------------------------------------------ */
+/* No gate drew focus: keep focus-visible behaviour, in the active colour. */
+:focus-visible {
+  outline-color: var(--color-active);
+}
 
-.texture-grain,
+/* -------------------------------------------------------------------- */
+/*  Retired textures. Storyboard has no paper grain and no deckled      */
+/*  edges, so the class names now draw a plain surface. Delete once     */
+/*  unused (plan Task 18).                                              */
+/* -------------------------------------------------------------------- */
+
 .texture-parchment,
 .texture-parchment-dark {
-  /* ~1 KB SVG fractal-noise grain, tiled */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.045'/%3E%3C/svg%3E");
+  background-color: var(--color-surface);
 }
 
-.texture-parchment {
-  background-color: var(--color-anvil-parchment-100);
-}
-
-.texture-parchment-dark {
-  background-color: var(--color-zinc-900);
-}
-
-/* Slightly irregular "hand-cut card" edge for marketing surfaces. */
 .edge-deckle {
   position: relative;
-  border-radius: 1rem 1.15rem 0.9rem 1.2rem / 1.1rem 0.9rem 1.2rem 1rem;
+  border-radius: 0;
 }
+
+/* -------------------------------------------------------------------- */
+/*  Dashboard tones. Stay until their last users are restyled (plan     */
+/*  Task 16). New code must not use them.                               */
+/* -------------------------------------------------------------------- */
 
 .anvil-dashboard-scrim {
   background: linear-gradient(
     to bottom,
-    rgba(9, 9, 11, 0.69) 0%,
-    rgba(9, 9, 11, 0.68) 34%,
-    rgba(9, 9, 11, 0.62) 66%,
-    rgba(9, 9, 11, 0.43) 100%
+    rgb(21 23 28 / 0.69) 0%,
+    rgb(21 23 28 / 0.68) 34%,
+    rgb(21 23 28 / 0.62) 66%,
+    rgb(21 23 28 / 0.43) 100%
   );
 }
 
 [data-theme="light"] .anvil-dashboard-scrim {
   background: linear-gradient(
     to bottom,
-    rgba(246, 241, 232, 0.9) 0%,
-    rgba(246, 241, 232, 0.86) 34%,
-    rgba(246, 241, 232, 0.82) 66%,
-    rgba(246, 241, 232, 0.72) 100%
+    rgb(241 243 238 / 0.9) 0%,
+    rgb(241 243 238 / 0.86) 34%,
+    rgb(241 243 238 / 0.82) 66%,
+    rgb(241 243 238 / 0.72) 100%
   );
 }
 

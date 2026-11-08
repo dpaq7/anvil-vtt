@@ -25,7 +25,7 @@ export function LandingHero() {
   };
 
   return (
-    <section className="relative isolate flex min-h-[92svh] overflow-hidden bg-[#242b2f] md:min-h-[82svh]">
+    <section className="relative isolate flex min-h-[92svh] overflow-hidden bg-art-ink md:min-h-[82svh]">
       <div
         aria-hidden="true"
         className="absolute inset-0 hidden bg-no-repeat md:block"

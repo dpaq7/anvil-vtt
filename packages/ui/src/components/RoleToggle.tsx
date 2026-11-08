@@ -8,38 +8,33 @@ export interface RoleToggleProps {
   className?: string;
 }
 
+const ROLES: { role: UserRole; label: string }[] = [
+  { role: 'director', label: 'Director' },
+  { role: 'player', label: 'Player' },
+];
+
+/* Director / Player switch (DESIGN.md section 4, `ap-flow`): the chosen side is filled with text. */
 export function RoleToggle({ value, onValueChange, className }: RoleToggleProps) {
   return (
     <div
       className={cn(
-        'inline-flex rounded-lg border border-zinc-700 bg-zinc-900 p-1',
+        'inline-grid h-9 grid-cols-2 shadow-[inset_0_0_0_1.5px_var(--color-line)]',
         className,
       )}
     >
-      <button
-        type="button"
-        onClick={() => onValueChange('director')}
-        className={cn(
-          'rounded-md px-4 py-2 text-sm font-medium transition-colors',
-          value === 'director'
-            ? 'bg-zinc-100 text-zinc-900'
-            : 'text-zinc-400 hover:text-zinc-100',
-        )}
-      >
-        Director
-      </button>
-      <button
-        type="button"
-        onClick={() => onValueChange('player')}
-        className={cn(
-          'rounded-md px-4 py-2 text-sm font-medium transition-colors',
-          value === 'player'
-            ? 'bg-zinc-100 text-zinc-900'
-            : 'text-zinc-400 hover:text-zinc-100',
-        )}
-      >
-        Player
-      </button>
+      {ROLES.map(({ role, label }) => (
+        <button
+          key={role}
+          type="button"
+          onClick={() => onValueChange(role)}
+          className={cn(
+            'px-4 text-sm font-bold transition-colors',
+            value === role ? 'bg-text text-surface' : 'text-text hover:bg-well',
+          )}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

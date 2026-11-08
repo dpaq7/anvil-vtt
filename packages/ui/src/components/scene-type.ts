@@ -5,8 +5,9 @@ export type SceneType =
   | "negotiation"
   | "respite";
 
-// Aligned with the scene tokens in globals.css and Badge variants:
-// story = purple, negotiation = blue.
+// Text and icon colours stay on the accent stops, which globals.css keeps
+// readable in both themes. Fills and edges use the fixed scene tokens
+// (DESIGN.md 2.2): story = purple, negotiation = blue.
 export const SCENE_COLORS: Record<SceneType, string> = {
   story: "text-purple-400",
   battle: "text-red-400",
@@ -16,17 +17,17 @@ export const SCENE_COLORS: Record<SceneType, string> = {
 };
 
 export const SCENE_BG_COLORS: Record<SceneType, string> = {
-  story: "bg-purple-500/20",
-  battle: "bg-red-500/20",
-  montage: "bg-amber-500/20",
-  negotiation: "bg-blue-500/20",
-  respite: "bg-emerald-500/20",
+  story: "bg-scene-story/20",
+  battle: "bg-scene-battle/20",
+  montage: "bg-scene-montage/20",
+  negotiation: "bg-scene-negotiation/20",
+  respite: "bg-scene-respite/20",
 };
 
 export const SCENE_BORDER_COLORS: Record<SceneType, string> = {
-  story: "border-purple-500/40",
-  battle: "border-red-500/40",
-  montage: "border-amber-500/40",
-  negotiation: "border-blue-500/40",
-  respite: "border-emerald-500/40",
+  story: "border-scene-story",
+  battle: "border-scene-battle",
+  montage: "border-scene-montage",
+  negotiation: "border-scene-negotiation",
+  respite: "border-scene-respite",
 };

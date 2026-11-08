@@ -13,12 +13,17 @@ interface CardGridProps {
   onDoubleClick?: (id: string) => void;
 }
 
-const sceneAccents: Record<string, { color: string; label: string }> = {
-  battle: { color: '#ef4444', label: 'Battle' },
-  story: { color: '#3b82f6', label: 'Story' },
-  montage: { color: '#f59e0b', label: 'Montage' },
-  negotiation: { color: '#a855f7', label: 'Negotiation' },
-  respite: { color: '#10b981', label: 'Respite' },
+// Scene mode colours (DESIGN.md 2.2): identity, with fixed text on each.
+const sceneAccents: Record<string, { color: string; onColor: string; label: string }> = {
+  battle: { color: 'var(--color-scene-battle)', onColor: 'var(--color-on-scene-battle)', label: 'Battle' },
+  story: { color: 'var(--color-scene-story)', onColor: 'var(--color-on-scene-story)', label: 'Story' },
+  montage: { color: 'var(--color-scene-montage)', onColor: 'var(--color-on-scene-montage)', label: 'Montage' },
+  negotiation: {
+    color: 'var(--color-scene-negotiation)',
+    onColor: 'var(--color-on-scene-negotiation)',
+    label: 'Negotiation',
+  },
+  respite: { color: 'var(--color-scene-respite)', onColor: 'var(--color-on-scene-respite)', label: 'Respite' },
 };
 
 export function CardGrid({ items, onSelect, onDoubleClick }: CardGridProps) {
@@ -38,18 +43,18 @@ export function CardGrid({ items, onSelect, onDoubleClick }: CardGridProps) {
             style={{
               borderLeftColor: accent?.color,
               backgroundImage: accent
-                ? `linear-gradient(270deg, ${accent.color} 0%, ${accent.color}99 18%, rgba(39, 39, 42, 0.94) 68%)`
+                ? `linear-gradient(270deg, ${accent.color} 0%, color-mix(in srgb, ${accent.color} 60%, transparent) 18%, var(--color-surface) 68%)`
                 : undefined,
             }}
             onClick={() => onSelect(item.id)}
             onDoubleClick={() => onDoubleClick?.(item.id)}
           >
             <CardHeader className="relative z-10">
-              <CardTitle className="text-base text-white">{item.title}</CardTitle>
+              <CardTitle className="text-base text-text">{item.title}</CardTitle>
               {accent && (
                 <span
-                  className="mt-2 w-fit rounded-sm px-1.5 py-0.5 text-[0.55rem] font-black uppercase leading-none tracking-[0.18em] text-black"
-                  style={{ backgroundColor: accent.color }}
+                  className="mt-2 w-fit px-1.5 py-0.5 text-xs font-black uppercase leading-none tracking-[0.18em]"
+                  style={{ backgroundColor: accent.color, color: accent.onColor }}
                 >
                   {accent.label}
                 </span>

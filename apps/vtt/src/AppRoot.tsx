@@ -13,10 +13,14 @@ export function AppRoot() {
         position="bottom-right"
         theme={theme}
         toastOptions={{
+          // A toast floats, so it takes the popover frame (DESIGN.md section 4).
           style: {
-            background: 'var(--color-zinc-900)',
-            border: '1px solid var(--color-zinc-700)',
-            color: 'var(--color-zinc-100)',
+            background: 'var(--color-surface)',
+            border: 'var(--shape-frame) solid var(--art-ink)',
+            borderRadius: 0,
+            boxShadow: 'var(--shape-hard-shadow) var(--art-ink)',
+            color: 'var(--color-text)',
+            fontFamily: 'var(--font-body)',
           },
         }}
       />

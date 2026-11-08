@@ -12,7 +12,7 @@ Table.displayName = 'Table';
 
 export const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...props }, ref) => (
-    <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props} />
+    <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-line', className)} {...props} />
   ),
 );
 TableHeader.displayName = 'TableHeader';
@@ -26,7 +26,7 @@ TableBody.displayName = 'TableBody';
 
 export const TableFooter = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...props }, ref) => (
-    <tfoot ref={ref} className={cn('border-t bg-zinc-800/50 font-medium', className)} {...props} />
+    <tfoot ref={ref} className={cn('border-t border-line-quiet bg-well font-bold', className)} {...props} />
   ),
 );
 TableFooter.displayName = 'TableFooter';
@@ -35,7 +35,7 @@ export const TableRow = forwardRef<HTMLTableRowElement, HTMLAttributes<HTMLTable
   ({ className, ...props }, ref) => (
     <tr
       ref={ref}
-      className={cn('border-b border-zinc-800 transition-colors hover:bg-zinc-800/50 data-[state=selected]:bg-zinc-800', className)}
+      className={cn('h-11 border-b border-line-quiet transition-colors hover:bg-well data-[state=selected]:bg-active-soft', className)}
       {...props}
     />
   ),
@@ -46,7 +46,7 @@ export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLT
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
-      className={cn('h-10 px-3 text-left align-middle font-medium text-zinc-400 [&:has([role=checkbox])]:pr-0', className)}
+      className={cn('h-10 px-3 text-left align-middle text-xs font-bold text-text-soft [&:has([role=checkbox])]:pr-0', className)}
       {...props}
     />
   ),
@@ -62,7 +62,7 @@ TableCell.displayName = 'TableCell';
 
 export const TableCaption = forwardRef<HTMLTableCaptionElement, HTMLAttributes<HTMLTableCaptionElement>>(
   ({ className, ...props }, ref) => (
-    <caption ref={ref} className={cn('mt-4 text-sm text-zinc-400', className)} {...props} />
+    <caption ref={ref} className={cn('mt-4 text-sm text-text-soft', className)} {...props} />
   ),
 );
 TableCaption.displayName = 'TableCaption';

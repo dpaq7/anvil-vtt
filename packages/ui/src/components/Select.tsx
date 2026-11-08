@@ -1,4 +1,5 @@
 import * as SelectPrimitive from '@radix-ui/react-select';
+import { ChevronDown } from 'lucide-react';
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { cn } from '../lib/utils.js';
 
@@ -13,14 +14,14 @@ export const SelectTrigger = forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-10 w-full items-center justify-between rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1',
+      'flex h-10 w-full items-center justify-between bg-raised px-3 py-2 text-sm text-text shadow-[inset_0_0_0_1.5px_var(--color-line)] placeholder:text-text-soft focus:outline-none focus:ring-2 focus:ring-active focus:ring-offset-2 focus:ring-offset-canvas disabled:cursor-not-allowed disabled:bg-well disabled:text-text-soft disabled:shadow-[inset_0_0_0_1.5px_var(--color-line-quiet)] [&>span]:line-clamp-1',
       className,
     )}
     {...props}
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <span className="ml-2 text-xs text-zinc-400">▾</span>
+      <ChevronDown className="ml-2 size-4 shrink-0 text-text-soft" aria-hidden="true" />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -34,7 +35,7 @@ export const SelectContent = forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-md',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden border-[3px] border-art-ink bg-surface text-text shadow-[4px_4px_0_var(--art-ink)]',
         position === 'popper' && 'translate-y-1',
         className,
       )}
@@ -55,7 +56,7 @@ export const SelectLabel = forwardRef<
   React.ElementRef<typeof SelectPrimitive.Label>,
   ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
 >(({ className, ...props }, ref) => (
-  <SelectPrimitive.Label ref={ref} className={cn('py-1.5 pl-8 pr-2 text-sm font-semibold text-zinc-400', className)} {...props} />
+  <SelectPrimitive.Label ref={ref} className={cn('py-1 pl-8 pr-2 text-xs font-bold text-text-soft', className)} {...props} />
 ));
 SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
@@ -66,14 +67,14 @@ export const SelectItem = forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-zinc-800 focus:text-zinc-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-[26px] w-full cursor-default select-none items-center py-1 pl-8 pr-2 text-sm outline-none focus:bg-well focus:text-text data-[state=checked]:font-bold data-[disabled]:pointer-events-none data-[disabled]:text-text-soft',
       className,
     )}
     {...props}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <span className="text-xs">✓</span>
+        <span className="text-xs font-bold">✓</span>
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
@@ -85,6 +86,6 @@ export const SelectSeparator = forwardRef<
   React.ElementRef<typeof SelectPrimitive.Separator>,
   ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
 >(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator ref={ref} className={cn('-mx-1 my-1 h-px bg-zinc-700', className)} {...props} />
+  <SelectPrimitive.Separator ref={ref} className={cn('-mx-1 my-1 h-px bg-line-quiet', className)} {...props} />
 ));
 SelectSeparator.displayName = SelectPrimitive.Separator.displayName;

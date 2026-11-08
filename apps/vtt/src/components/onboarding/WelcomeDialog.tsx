@@ -63,7 +63,7 @@ export function WelcomeDialog({
           <Checkbox
             checked={neverShowAgain}
             onCheckedChange={(checked) => onNeverShowAgainChange(checked === true)}
-            className="border-anvil-parchment-300 bg-white data-[state=checked]:border-anvil-ember-500 data-[state=checked]:bg-anvil-ember-500 data-[state=checked]:text-white"
+            className="border-anvil-parchment-300 bg-white data-[state=checked]:border-anvil-ember-500 data-[state=checked]:bg-anvil-ember-500 data-[state=checked]:text-on-active"
           />
           Never show again
         </label>
@@ -79,7 +79,7 @@ export function WelcomeDialog({
           <Button
             type="button"
             onClick={onStartTour}
-            className="rounded-chip bg-anvil-ember-500 text-white hover:bg-anvil-ember-600"
+            className="rounded-chip bg-anvil-ember-500 text-on-active hover:bg-anvil-ember-600"
           >
             Show me around
             <ArrowRight size={15} />

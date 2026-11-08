@@ -2,20 +2,26 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import type { HTMLAttributes } from 'react';
 import { cn } from '../lib/utils.js';
 
+/*
+ * Chips and tags (DESIGN.md section 4): square, 13 px bold.
+ * default = Neutral tag, secondary = plain well, outline = Skill chip,
+ * destructive = hazard tag (the Winded look), scene variants = mode identity.
+ */
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border border-zinc-700 px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-zinc-950',
+  'inline-flex items-center gap-1 whitespace-nowrap border border-transparent px-2 py-0.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-active focus:ring-offset-2 focus:ring-offset-canvas',
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-zinc-100 text-zinc-900',
-        secondary: 'border-transparent bg-zinc-800 text-zinc-100',
-        destructive: 'border-transparent bg-red-600 text-zinc-100',
-        outline: 'text-zinc-100',
-        battle: 'border-transparent bg-red-600/20 text-red-400',
-        story: 'border-transparent bg-purple-600/20 text-purple-400',
-        montage: 'border-transparent bg-amber-600/20 text-amber-400',
-        negotiation: 'border-transparent bg-blue-600/20 text-blue-400',
-        respite: 'border-transparent bg-green-600/20 text-green-400',
+        default: 'bg-well text-text shadow-[inset_0_0_0_1.5px_var(--color-line-quiet)]',
+        secondary: 'bg-well text-text',
+        destructive: 'bg-danger text-on-danger shadow-[0_0_0_1.5px_var(--art-ink)]',
+        outline: 'text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]',
+        battle: 'bg-scene-battle text-on-scene-battle shadow-[inset_0_0_0_1.5px_var(--art-ink)]',
+        story: 'bg-scene-story text-on-scene-story shadow-[inset_0_0_0_1.5px_var(--art-ink)]',
+        montage: 'bg-scene-montage text-on-scene-montage shadow-[inset_0_0_0_1.5px_var(--art-ink)]',
+        negotiation:
+          'bg-scene-negotiation text-on-scene-negotiation shadow-[inset_0_0_0_1.5px_var(--art-ink)]',
+        respite: 'bg-scene-respite text-on-scene-respite shadow-[inset_0_0_0_1.5px_var(--art-ink)]',
       },
     },
     defaultVariants: {
