@@ -9,7 +9,7 @@
   .sb-app[data-role="player"] { --unit: var(--layout-unit-player1280); }
   .sb-dying__f { width: 36px !important; height: 36px !important; }
   .sb-dying { grid-template-columns: 38px minmax(0, 1fr) auto !important; }
-  .sb-dying .sb-who { flex-direction: row !important; align-items: center; justify-content: space-between; gap: 6px !important; padding: 5px 8px !important; }
+  .sb-dying .sb-who { flex-direction: row !important; align-items: center; justify-content: space-between; gap: 4px !important; padding: 5px 6px !important; }
   .sb-dying__w { font-size: var(--type-1280-dying, 14px) !important; }
   .sb-end { height: 34px !important; }
   .sb-foot { padding-block: 6px !important; }
