@@ -195,8 +195,9 @@ Every colour a demo uses is either a token above or one of these. Each is local 
 | `anvil-parchment-50`, `-100`, `anvil-paper` | `surface` |
 | `anvil-parchment-200` | `well` |
 | `anvil-parchment-300` | `lineQuiet` |
-| `anvil-ink`, `anvil-ink-soft` | `art.ink`, `textSoft` |
-| `anvil-accent`, `anvil-ember-*` | `art.hazard` for grounds and highlights; actions use `active` |
+| `anvil-ink`, `anvil-ink-soft` | `text`, `textSoft` (ruled at Task 12: its users are text on parchment, now `surface`, where art ink fails contrast in dark) |
+| `anvil-accent` | `art.hazard` |
+| `anvil-ember-*` | `active` (ruled at Task 12: ember marks text, links and buttons, and hazard yellow text on a light surface fails contrast) |
 | `flow-director`, `flow-player`, `sidebar-director`, `sidebar-player` | `text` (the Director / Player switch fills the chosen side with text colour) |
 | `scene-*` | the scene values in 2.2 |
 | `--radius-card`, `--radius-chip` | `0` |

@@ -43,8 +43,9 @@ export interface CanvasPalette {
   selectionRectFillAlpha: number;
   selectionRectEdgeAlpha: number;
 
-  /** Valid target ring (derived from the hit burst). */
+  /** Valid target ring (derived from the hit burst), drawn over an ink edge. */
   targeting: number;
+  targetingEdge: number;
   /** Out-of-range candidate outline (derived). */
   targetInvalid: number;
   targetInvalidAlpha: number;
@@ -58,8 +59,9 @@ export interface CanvasPalette {
   /** AoE template that can be placed, and one that cannot (derived). */
   aoeValid: number;
   aoeInvalid: number;
-  /** Path over budget, opportunity attack (derived from `--art-hazard`). */
+  /** Path over budget, opportunity attack (derived from `--art-hazard`), over an ink edge. */
   warning: number;
+  warningEdge: number;
   /** Movement path within budget (`--art-active-plate`). */
   moveTrail: number;
   /** Measure ruler (derived). */
@@ -144,6 +146,7 @@ const SHARED: Omit<CanvasPalette, 'background' | 'mapDim'> = {
   selectionRectEdgeAlpha: 1,
 
   targeting: HAZARD,
+  targetingEdge: INK,
   targetInvalid: INK,
   targetInvalidAlpha: 0.55,
   targetRange: ACTIVE_PLATE,
@@ -154,6 +157,7 @@ const SHARED: Omit<CanvasPalette, 'background' | 'mapDim'> = {
   aoeValid: HAZARD,
   aoeInvalid: INK,
   warning: HAZARD,
+  warningEdge: INK,
   moveTrail: ACTIVE_PLATE,
   ruler: INK,
 

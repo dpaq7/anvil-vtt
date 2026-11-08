@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 const LOGO_IMAGE = '/landing/anvil-vtt-logo.png';
 
 /**
- * Shared marketing footer — a warm dark ink band with paper grain,
+ * Shared marketing footer — a dark ink band,
  * theme-stable so it reads the same under the pinned light marketing theme.
  */
 export function SiteFooter() {
   return (
-    <footer className="texture-grain border-t border-anvil-parchment-300/40 bg-anvil-ink px-6 py-10 sm:px-10 lg:px-16">
+    <footer className="border-t border-anvil-parchment-300/40 bg-anvil-ink px-6 py-10 sm:px-10 lg:px-16">
       <div className="mx-auto grid max-w-5xl gap-8 text-sm text-anvil-parchment-200 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-3">

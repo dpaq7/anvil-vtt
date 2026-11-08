@@ -81,11 +81,21 @@ export class TargetingLayer extends Container {
     const cs = this.cellSize;
     const palette = getCanvasTheme();
     const color = valid ? palette.aoeValid : palette.aoeInvalid;
-    for (const cell of cells) {
-      this.aoeG.rect(cell.x * cs, cell.y * cs, cs, cs);
+    const drawCells = () => {
+      for (const cell of cells) this.aoeG.rect(cell.x * cs, cell.y * cs, cs, cs);
+    };
+    drawCells();
+    this.aoeG.fill({ color, alpha: valid ? 0.32 : 0.22 });
+    if (valid) {
+      // Hazard reads on any map only with its ink edge under it.
+      drawCells();
+      this.aoeG.stroke({ width: 3.5, color: palette.targetingEdge, alpha: 1 });
+      drawCells();
+      this.aoeG.stroke({ width: 1.5, color, alpha: 1 });
+    } else {
+      drawCells();
+      this.aoeG.stroke({ width: 1.5, color, alpha: 0.7 });
     }
-    this.aoeG.fill({ color, alpha: 0.22 });
-    this.aoeG.stroke({ width: 1.5, color, alpha: 0.7 });
   }
 
   /**
@@ -101,11 +111,18 @@ export class TargetingLayer extends Container {
     const palette = getCanvasTheme();
 
     // Outlines first, grouped by range state so each stroke color batches.
-    for (const t of targets.filter((t) => t.inRange)) {
-      const fp = t.footprint;
-      this.highlightG.rect(fp.x * cs, fp.y * cs, fp.size * cs, fp.size * cs);
-    }
-    this.highlightG.stroke({ width: 2.5, color: palette.targeting, alpha: 0.9 });
+    // In range: a 2.5 px hazard ring with 1.5 px of ink outside it (DESIGN.md 11).
+    const inRange = targets.filter((t) => t.inRange);
+    const drawInRange = (grow: number) => {
+      for (const t of inRange) {
+        const fp = t.footprint;
+        this.highlightG.rect(fp.x * cs - grow, fp.y * cs - grow, fp.size * cs + grow * 2, fp.size * cs + grow * 2);
+      }
+    };
+    drawInRange(0.75);
+    this.highlightG.stroke({ width: 4, color: palette.targetingEdge, alpha: 1 });
+    drawInRange(0);
+    this.highlightG.stroke({ width: 2.5, color: palette.targeting, alpha: 1 });
 
     for (const t of targets.filter((t) => !t.inRange)) {
       const fp = t.footprint;
@@ -164,21 +181,35 @@ export class TargetingLayer extends Container {
     const color = overBudget ? palette.warning : palette.moveTrail;
     const center = (c: GridCell) => ({ x: c.x * cs + cs / 2, y: c.y * cs + cs / 2 });
 
-    // Polyline through step centers.
-    const start = center(cells[0]!);
-    this.movementG.moveTo(start.x, start.y);
-    for (let i = 1; i < cells.length; i++) {
-      const p = center(cells[i]!);
-      this.movementG.lineTo(p.x, p.y);
+    // Polyline through step centers. Over budget, the hazard line sits on an ink edge.
+    const drawPath = () => {
+      const start = center(cells[0]!);
+      this.movementG.moveTo(start.x, start.y);
+      for (let i = 1; i < cells.length; i++) {
+        const p = center(cells[i]!);
+        this.movementG.lineTo(p.x, p.y);
+      }
+    };
+    if (overBudget) {
+      drawPath();
+      this.movementG.stroke({ width: 6, color: palette.warningEdge, alpha: 1, cap: 'round', join: 'round' });
     }
-    this.movementG.stroke({ width: 3, color, alpha: 0.85 });
+    drawPath();
+    this.movementG.stroke({ width: 3, color, alpha: overBudget ? 1 : 0.85, cap: 'round', join: 'round' });
 
     // Dots at each step.
     for (const c of cells) {
       const p = center(c);
       this.movementG.circle(p.x, p.y, 3);
     }
-    this.movementG.fill({ color, alpha: 0.9 });
+    this.movementG.fill({ color, alpha: overBudget ? 1 : 0.9 });
+    if (overBudget) {
+      for (const c of cells) {
+        const p = center(c);
+        this.movementG.circle(p.x, p.y, 3);
+      }
+      this.movementG.stroke({ width: 1.5, color: palette.warningEdge, alpha: 1 });
+    }
 
     this.drawMovementLabel(dest, `${cost} sq / ${cost * 5} ft${overBudget ? ' • over speed' : ''}`, color);
   }
@@ -247,12 +278,19 @@ export class TargetingLayer extends Container {
   showOAWarning(cells: GridCell[]): void {
     this.oaG.clear();
     const cs = this.cellSize;
-    for (const cell of cells) {
-      const cx = cell.x * cs + cs / 2;
-      const cy = cell.y * cs + cs / 2;
-      this.oaG.circle(cx, cy, cs * 0.32);
-    }
-    this.oaG.stroke({ width: 2, color: getCanvasTheme().warning, alpha: 0.8 });
+    const palette = getCanvasTheme();
+    // 2 px hazard ring with an ink edge (DESIGN.md 11).
+    const drawRings = () => {
+      for (const cell of cells) {
+        const cx = cell.x * cs + cs / 2;
+        const cy = cell.y * cs + cs / 2;
+        this.oaG.circle(cx, cy, cs * 0.32);
+      }
+    };
+    drawRings();
+    this.oaG.stroke({ width: 4, color: palette.warningEdge, alpha: 1 });
+    drawRings();
+    this.oaG.stroke({ width: 2, color: palette.warning, alpha: 1 });
   }
 
   clearOA(): void {
