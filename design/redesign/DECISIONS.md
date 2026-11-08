@@ -32,3 +32,13 @@ Dan approved all four: `story-*`, `montage-*`, `negotiation-*`, `respite-*` (Dir
 Approved changes to behaviour, all client-side:
 - The Director reads Negotiation motivations and pitfalls privately before revealing them. Players see them hidden.
 - Dan chose to keep all three new controls: Smaller/Larger text buttons, a Respite filter (All, Open, Done), and the Player's own volume slider in Story. Phase 3 builds them as client-side features.
+
+## 2026-11-07: Gate 4, phone, Display and states
+
+Dan approved: `phone-player`, `phone-director` and their Negotiation versions, `display` (Battle and Story), and the `states` sheet.
+
+Dan chose all four behaviour changes, each client-side on messages the server already handles:
+- Phone turn actions: "Take my turn" and "Make argument" on the Player's phone.
+- Pause actions on a drop: during a reconnect the table stays readable and actions wait.
+- Real not-found pages for a bad campaign link and a bad address while signed in.
+- A 30-second give-up showing "Can't reach the table" with Try again. 30 seconds is Claude's guess, so it can be tuned.
