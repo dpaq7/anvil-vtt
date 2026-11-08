@@ -1,7 +1,8 @@
 /**
  * Client-side fog of war visibility filtering.
  *
- * The server broadcasts ALL entities. Players filter visibility locally:
+ * The server also leaves fogged creatures out of what it sends a Player. The client still filters,
+ * so no view depends on that:
  * - Heroes are always visible (your party)
  * - Monsters/NPCs inside fog zones are hidden from players
  * - Director sees everything (fog is semi-transparent for them)
@@ -53,4 +54,26 @@ export function filterVisibleEntities(
     // Check if this entity's position is inside fog
     return !isInFog(entity.x, entity.y, fogZones);
   });
+}
+
+/** Monsters and NPCs this viewer's fog hides. */
+export function hiddenEntities(entities: EntityData[], fogZones: FogZone[]): EntityData[] {
+  return entities.filter((entity) => entity.type !== 'hero' && isInFog(entity.x, entity.y, fogZones));
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * A hidden creature's name never reaches a Player's log: it reads "Something" (DESIGN.md section 7).
+ * Longest names first, whole words only, so "Scrapper 1" does not eat into "Scrapper 10". A creature
+ * that shares its exact name with one the Player can see stays as written.
+ */
+export function maskHiddenNames(text: string, hidden: EntityData[], visible: EntityData[] = []): string {
+  const seen = new Set(visible.map((entity) => entity.name));
+  const names = hidden.map((entity) => entity.name).filter((name) => !seen.has(name)).sort((a, b) => b.length - a.length);
+  let out = text;
+  for (const name of names) {
+    out = out.replace(new RegExp(`(?<![\\w-])${escapeRegExp(name)}(?![\\w-])`, 'g'), 'Something');
+  }
+  return out;
 }

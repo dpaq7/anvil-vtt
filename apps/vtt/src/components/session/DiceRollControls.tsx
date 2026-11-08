@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { Dices } from 'lucide-react';
-import { Button, cn } from '@anvil/ui';
+import { ChevronDown, Dices } from 'lucide-react';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  cn,
+} from '@anvil/ui';
+import { useSessionConnection } from './shell/connection-context.js';
 import type { ClientMessage, DrawSteelRollKind } from '../../types/protocol.js';
 
 interface DiceRollControlsProps {
@@ -11,7 +19,9 @@ interface DiceRollControlsProps {
    * (montage, negotiation) — no heroic-resource roll or modifier input, and
    * the power roll is labeled by its dice (2d10).
    */
-  variant?: 'full' | 'simple';
+  variant?: 'full' | 'simple' | 'bar';
+  /** In the bar: fold to "Power ▾", "Mod 0" and "None ▾" (Director at 1280, DESIGN.md section 6). */
+  fold?: boolean;
 }
 
 type EdgeBane = 'none' | 'edge' | 'bane' | 'double-edge' | 'double-bane';
@@ -30,8 +40,9 @@ const EDGE_BANE_OPTIONS: ReadonlyArray<{
   { value: 'double-bane', short: '2B', title: 'Double bane (tier down)', edges: 0, banes: 2 },
 ];
 
-export function DiceRollControls({ send, className, variant = 'full' }: DiceRollControlsProps) {
-  const isFull = variant === 'full';
+export function DiceRollControls({ send, className, variant = 'full', fold = false }: DiceRollControlsProps) {
+  const { paused } = useSessionConnection();
+  const isFull = variant !== 'simple';
   const [modifier, setModifier] = useState('0');
   // Edge/bane is sticky across rolls — a GM often re-rolls under the same
   // condition. Only applies to power rolls.
@@ -52,6 +63,75 @@ export function DiceRollControls({ send, className, variant = 'full' }: DiceRoll
     });
   };
 
+  if (variant === 'bar') {
+    if (paused) {
+      return (
+        <div className="sb-roll" role="toolbar" aria-label="Dice">
+          <span className="sb-roll__wait">Dice, when back</span>
+        </div>
+      );
+    }
+    const edge = EDGE_BANE_OPTIONS.find((option) => option.value === edgeBane);
+    const edgeLabel = edgeBane === 'none' ? 'None' : edge?.short;
+    const modBox = (
+      <label>
+        Mod
+        <input type="number" aria-label="Modifier" value={modifier} onChange={(event) => setModifier(event.target.value)} />
+      </label>
+    );
+    if (fold) {
+      return (
+        <div className="sb-roll" role="toolbar" aria-label="Dice">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" data-on>Power<ChevronDown size={13} strokeWidth={3} aria-hidden="true" /></button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => roll('power')}>Power</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => roll('heroic-resource')}>Resource</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => roll('d6')}>d6</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {modBox}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label="Edge or bane (power rolls)">{edgeLabel}<ChevronDown size={13} strokeWidth={3} aria-hidden="true" /></button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {EDGE_BANE_OPTIONS.map((option) => (
+                <DropdownMenuItem key={option.value} onSelect={() => setEdgeBane(option.value)}>
+                  {option.value === 'none' ? 'None' : option.title}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    }
+    return (
+      <div className="sb-roll" role="toolbar" aria-label="Dice">
+        <button type="button" data-on onClick={() => roll('power')}>Power</button>
+        <button type="button" onClick={() => roll('heroic-resource')}>Resource</button>
+        <button type="button" onClick={() => roll('d6')}>d6</button>
+        {modBox}
+        <div className="flex items-center gap-0.5" role="group" aria-label="Edge or bane (power rolls)">
+          {EDGE_BANE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              title={option.title}
+              aria-pressed={option.value === edgeBane}
+              data-on={option.value === edgeBane || undefined}
+              onClick={() => setEdgeBane(option.value)}
+            >
+              {option.value === 'none' ? 'None' : option.short}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -63,20 +143,20 @@ export function DiceRollControls({ send, className, variant = 'full' }: DiceRoll
         <Dices className="size-3.5" />
       </span>
       <div className="flex items-center gap-1">
-        <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('power')}>
+        <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-xs" disabled={paused} onClick={() => roll('power')}>
           {isFull ? 'Power' : '2d10'}
         </Button>
         {isFull && (
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('heroic-resource')}>
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={paused} onClick={() => roll('heroic-resource')}>
             Resource
           </Button>
         )}
-        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => roll('d6')}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={paused} onClick={() => roll('d6')}>
           d6
         </Button>
       </div>
       {isFull && (
-        <label className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-zinc-500">
+        <label className="flex items-center gap-1 text-[13px] uppercase tracking-wider text-zinc-500">
           Mod
           <input
             type="number"

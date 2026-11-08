@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { ColorMatrixFilter, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Quadtree } from '../systems/Quadtree.js';
 import type { EntityData } from '../../types/protocol.js';
 import {
@@ -6,44 +6,27 @@ import {
   resolveApiBackedMediaUrl,
 } from '../../lib/api-url.js';
 import { conditionNames } from '../../lib/conditions.js';
-import { CANVAS_FONT, CANVAS_THEME, getCanvasTheme } from '../theme.js';
-
-/** Condition ID → emoji for badge display */
-const CONDITION_EMOJI: Record<string, string> = {
-  bleeding: '\u{1FA78}',
-  dazed: '\u{1F4AB}',
-  frightened: '\u{1F628}',
-  grabbed: '\u{270A}',
-  prone: '\u{1F53B}',
-  restrained: '\u26D3',
-  slowed: '\u{1F40C}',
-  taunted: '\u{1F624}',
-  weakened: '\u{1F494}',
-};
-
-/** Entity type → side colour (the same in both themes; removed in plan Task 14). */
-const SIDE_PALETTE = CANVAS_THEME.dark;
-const TYPE_COLORS: Record<string, number> = {
-  hero: SIDE_PALETTE.sideHero,
-  monster: SIDE_PALETTE.sideMonster,
-  npc: SIDE_PALETTE.sideNpc,
-};
-
-/** Entity type → center glyph */
-const TYPE_GLYPHS: Record<string, string> = {
-  hero: '\u{1F6E1}',     // shield
-  monster: '\u2694',       // crossed swords
-  npc: '\u{1F464}',       // bust in silhouette
-};
+import {
+  OCTAGON_POINTS,
+  entityPortrait,
+  faceKeyFor,
+  faceUrl,
+  isRoundToken,
+  staminaState,
+} from '../../lib/faces.js';
+import { isMapIcon, mapIconUrl, type MapIcon } from '../../lib/map-icons.js';
+import { artTexture } from '../face-textures.js';
+import { CANVAS_FONT, getCanvasTheme, toCssHex } from '../theme.js';
 
 export interface TokenStyle {
   size: number; // grid cells
-  color: number;
   selected: boolean;
-  /** Combatant is currently taking its turn (active-plate turn ring). */
+  /** Combatant is currently taking its turn (white disc, active-plate ring). */
   active?: boolean;
-  /** Combatant has already acted this round (dimmed + done badge). */
+  /** Combatant has already acted this round (done badge). */
   acted?: boolean;
+  /** Director's view only: this creature is under fog (shut-eye badge). */
+  hidden?: boolean;
 }
 
 interface TokenSprite {
@@ -53,11 +36,49 @@ interface TokenSprite {
   gridX: number;
   gridY: number;
   size: number;
-  conditionBadge: Text | null;
   selected: boolean;
   active: boolean;
   acted: boolean;
+  hidden: boolean;
 }
+
+/** What the label layer needs to know about a token. Positions are world pixels. */
+export interface TokenPlacement {
+  entity: EntityData;
+  x: number;
+  y: number;
+  px: number;
+  active: boolean;
+  visible: boolean;
+}
+
+interface MoveTween {
+  entityId: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  start: number;
+  trail: Graphics;
+}
+
+const TRAVEL_MS = 700;
+/** The travel curve, cubic-bezier(.45, 0, .1, 1). */
+function travelEase(t: number): number {
+  let lo = 0;
+  let hi = 1;
+  let u = t;
+  for (let i = 0; i < 12; i++) {
+    u = (lo + hi) / 2;
+    const x = 3 * (1 - u) * (1 - u) * u * 0.45 + 3 * (1 - u) * u * u * 0.1 + u * u * u;
+    if (x < t) lo = u;
+    else hi = u;
+  }
+  return 3 * (1 - u) * u * u + u * u * u;
+}
+
+const reducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export class TokenLayer extends Container {
   private tokens = new Map<string, TokenSprite>();
@@ -68,6 +89,16 @@ export class TokenLayer extends Container {
   // dynamically created textures when a container is destroyed, so they are
   // tracked here and released explicitly on token removal.
   private portraitResources = new Map<string, { img: HTMLImageElement; texture: Texture | null }>();
+  private tweens = new Map<string, MoveTween>();
+  private tweenFrame = 0;
+
+  /** Stamina went down on an existing token. The label layer pops the hit burst. */
+  onHit: ((entityId: string, amount: number) => void) | null = null;
+
+  constructor() {
+    super();
+    this.sortableChildren = true;
+  }
 
   setCellSize(size: number): void {
     if (this.cellSize === size) return;
@@ -77,18 +108,13 @@ export class TokenLayer extends Container {
       selected: token.selected,
       active: token.active,
       acted: token.acted,
+      hidden: token.hidden,
     }));
     this.cellSize = size;
     if (existingTokens.length === 0) return;
     this.clear();
-    for (const { entity, size: tokenSize, selected, active, acted } of existingTokens) {
-      this.addToken(entity, {
-        size: tokenSize,
-        color: TYPE_COLORS[entity.type] ?? SIDE_PALETTE.sideNpc,
-        selected,
-        active,
-        acted,
-      });
+    for (const { entity, size: tokenSize, selected, active, acted, hidden } of existingTokens) {
+      this.addToken(entity, { size: tokenSize, selected, active, acted, hidden });
     }
   }
 
@@ -96,195 +122,80 @@ export class TokenLayer extends Container {
     if (this.tokens.has(entity.id)) this.removeToken(entity.id);
 
     const container = new Container();
-    const size = style.size * this.cellSize;
-    const radius = size / 2 - 2;
-    const cx = size / 2;
-    const cy = size / 2;
-
+    const px = style.size * this.cellSize;
+    const c = px / 2;
     const palette = getCanvasTheme();
-    const typeColor = TYPE_COLORS[entity.type] ?? palette.sideNpc;
+    const round = isRoundToken(entity);
+    const dying = staminaState(entity, entity.type) === 'dying';
+    const portrait = entityPortrait(entity);
 
-    // Ink ring border
-    const ring = new Graphics();
-    ring.circle(cx, cy, radius);
-    ring.fill({ color: typeColor, alpha: 0.25 });
-    ring.circle(cx, cy, radius);
-    ring.stroke({ width: 3, color: palette.tokenOutline });
-    container.addChild(ring);
-
-    // Inner color ring (thinner, entity-type colored)
-    const innerRing = new Graphics();
-    innerRing.circle(cx, cy, radius - 2);
-    innerRing.stroke({ width: 2, color: typeColor, alpha: 0.8 });
-    container.addChild(innerRing);
-
-    // Portrait image or center glyph fallback
-    const portraitUrl = entity['portraitUrl'] as string | undefined;
-    if (portraitUrl) {
-      this.loadPortraitSprite(container, entity.id, portraitUrl, cx, cy, radius - 3);
-    } else {
-      const glyph = TYPE_GLYPHS[entity.type] ?? entity.name.slice(0, 2).toUpperCase();
-      const label = new Text({
-        text: glyph,
-        style: {
-          fontFamily: CANVAS_FONT,
-          fontSize: Math.max(10, size * 0.28),
-          fill: palette.tokenGlyph,
-        },
-      });
-      label.anchor.set(0.5);
-      label.x = cx;
-      label.y = cy;
-      container.addChild(label);
-    }
-
-    // Name label below token
-    const nameFontSize = Math.max(8, size * 0.18);
-    const nameWrapWidth = Math.max(72, size * 1.6);
-    const nameLabel = new Text({
-      text: entity.name,
-      style: {
-        fontFamily: CANVAS_FONT,
-        fontSize: nameFontSize,
-        fontWeight: 'bold',
-        fill: palette.labelPlate,
-        stroke: { color: palette.labelKeyline, width: 3, join: 'round' },
-        align: 'center',
-        breakWords: true,
-        lineHeight: Math.ceil(nameFontSize * 1.08),
-        wordWrap: true,
-        wordWrapWidth: nameWrapWidth,
-      },
-    });
-    nameLabel.anchor.set(0.5, 0);
-    nameLabel.x = cx;
-    nameLabel.y = size + 1;
-    container.addChild(nameLabel);
-
-    // Selection highlight — plate circle outline
-    if (style.selected) {
-      const sel = new Graphics();
-      sel.circle(cx, cy, radius + 3);
-      sel.stroke({ width: 2, color: palette.selection, alpha: 0.9 });
-      container.addChild(sel);
-    }
-
-    // Stamina arc — ink (recoloured only; plan Task 14 removes it)
-    const maxStamina = typeof entity['maxStamina'] === 'number' ? entity['maxStamina'] as number : 0;
-    const currentStamina = typeof entity['currentStamina'] === 'number' ? entity['currentStamina'] as number : maxStamina;
-    if (maxStamina > 0) {
-      const pct = Math.max(0, Math.min(1, currentStamina / maxStamina));
-      const arc = new Graphics();
-      const startAngle = -Math.PI / 2;
-      const endAngle = startAngle + Math.PI * 2 * pct;
-      arc.arc(cx, cy, radius + 1, startAngle, endAngle);
-      arc.stroke({ width: 3, color: palette.staminaArc });
-      container.addChild(arc);
-
-      // Stamina-state status ring (matches the context-menu badges): dying at
-      // ≤ 0 (hazard with an ink edge), winded at ≤ half (hazard). Sits outside
-      // the stamina arc.
-      if (currentStamina <= 0) {
-        const dyingRing = new Graphics();
-        dyingRing.circle(cx, cy, radius + 2);
-        dyingRing.stroke({ width: 5.5, color: palette.dyingEdge, alpha: 0.95 });
-        dyingRing.circle(cx, cy, radius + 2);
-        dyingRing.stroke({ width: 3.5, color: palette.dying, alpha: 1 });
-        container.addChild(dyingRing);
-      } else if (currentStamina <= maxStamina / 2) {
-        const windedRing = new Graphics();
-        windedRing.circle(cx, cy, radius + 2);
-        windedRing.stroke({ width: 2.5, color: palette.winded, alpha: 0.9 });
-        container.addChild(windedRing);
+    // Dying: a hazard burst behind the head (22-point star, ink edge 4).
+    if (dying) {
+      const burst = new Graphics();
+      const r = px * 0.92;
+      const points: number[] = [];
+      for (let i = 0; i < 22; i++) {
+        const a = (i / 22) * Math.PI * 2;
+        const k = i % 2 ? 0.66 : 1;
+        points.push(c + Math.cos(a) * r * k, c + Math.sin(a) * r * k);
       }
+      burst.poly(points).fill({ color: palette.dyingBurst }).stroke({ width: 4 * (px / 100), color: palette.tokenOutline, join: 'round' });
+      container.addChild(burst);
     }
 
-    // Condition emoji tags — positioned around the token ring starting at ~2 o'clock
-    const conditions = conditionNames(entity);
-    const conditionBadge: Text | null = null;
-    if (conditions.length > 0) {
-      // Start at ~1:30 (about -60°) and space each tag 30° clockwise
-      const startAngle = -Math.PI / 3; // -60° ≈ 2 o'clock
-      const angleStep = Math.PI / 6;   // 30° between tags
-      const tagRadius = radius + 8;    // Just outside the ring
-      const tagFontSize = Math.max(10, size * 0.24);
-
-      conditions.forEach((conditionId, i) => {
-        const emoji = CONDITION_EMOJI[conditionId];
-        if (!emoji) return;
-
-        const angle = startAngle + i * angleStep;
-        const tx = cx + Math.cos(angle) * tagRadius;
-        const ty = cy + Math.sin(angle) * tagRadius;
-
-        // Plate disc with an ink ring
-        const bg = new Graphics();
-        const bgRadius = tagFontSize * 0.65;
-        bg.circle(tx, ty, bgRadius);
-        bg.fill({ color: palette.conditionBadge, alpha: 1 });
-        bg.circle(tx, ty, bgRadius);
-        bg.stroke({ width: 2, color: palette.conditionRing, alpha: 1 });
-        container.addChild(bg);
-
-        const tag = new Text({
-          text: emoji,
-          style: {
-            fontFamily: CANVAS_FONT,
-            fontSize: tagFontSize,
-            fill: palette.labelText,
-          },
-        });
-        tag.anchor.set(0.5);
-        tag.x = tx;
-        tag.y = ty;
-        container.addChild(tag);
-      });
-    }
-
-    // Combat turn cues (tied to the initiative tracker's state).
-    // Acted this round → dim the token face + a "done" check badge. The active
-    // combatant is never dimmed and instead gets the blue turn ring.
-    if (style.acted && !style.active) {
-      const scrim = new Graphics();
-      scrim.circle(cx, cy, radius);
-      scrim.fill({ color: palette.doneScrim, alpha: 0.55 });
-      container.addChild(scrim);
-
-      const bR = Math.max(7, size * 0.14);
-      const bx = cx - radius * 0.68;
-      const by = cy - radius * 0.68;
-      const badge = new Graphics();
-      badge.circle(bx, by, bR);
-      badge.fill({ color: palette.doneBadge, alpha: 1 });
-      badge.circle(bx, by, bR);
-      badge.stroke({ width: 2, color: palette.doneRing, alpha: 1 });
-      container.addChild(badge);
-      const check = new Text({
-        text: '✓',
-        style: {
-          fontFamily: CANVAS_FONT,
-          fontSize: bR * 1.4,
-          fill: palette.doneMark,
-          fontWeight: 'bold',
-        },
-      });
-      check.anchor.set(0.5);
-      check.x = bx;
-      check.y = by;
-      container.addChild(check);
-    }
-
+    // Acting: a white disc behind the face, a 3.5 px blue ring, then ink out to 6 px.
     if (style.active) {
-      const activeRing = new Graphics();
-      activeRing.circle(cx, cy, radius + 4);
-      activeRing.stroke({ width: 3.5, color: palette.turn, alpha: 1 });
-      activeRing.circle(cx, cy, radius + 7);
-      activeRing.stroke({ width: 2.5, color: palette.turnOuter, alpha: 1 });
-      container.addChild(activeRing);
+      const disc = new Graphics();
+      disc.circle(c, c, c).fill({ color: palette.turnDisc });
+      disc.circle(c, c, c + 4.75).stroke({ width: 2.5, color: palette.turnOuter });
+      disc.circle(c, c, c + 1.75).stroke({ width: 3.5, color: palette.turn });
+      container.addChild(disc);
+    }
+
+    // Selected: a 3 px plate ring, then ink outside it. Sits outside the turn ring.
+    if (style.selected) {
+      const base = style.active ? c + 6 : c;
+      const ring = new Graphics();
+      ring.circle(c, c, base + 3.75).stroke({ width: 1.5, color: palette.tokenOutline });
+      ring.circle(c, c, base + 1.5).stroke({ width: 3, color: palette.selection });
+      container.addChild(ring);
+    }
+
+    // The head tilts when dying, so it gets its own pivoted box.
+    const head = new Container();
+    head.pivot.set(c, c);
+    head.position.set(c, c);
+    if (dying) head.rotation = (-14 * Math.PI) / 180;
+    container.addChild(head);
+    if (portrait) {
+      this.drawSticker(head, entity.id, portrait, px, round, dying);
+    } else {
+      this.drawHead(head, entity, px, dying);
+    }
+
+    const badge = Math.max(7, px * 0.195);
+    if (style.acted && !style.active) {
+      this.drawBadge(container, 'check', 6, 6, badge, palette.doneBadge, palette.doneRing, palette.doneMark, 3.5);
+    }
+
+    // Condition badges. Heroes bottom-right, creatures top-right, as in the demo.
+    const conditions = conditionNames(entity);
+    conditions.forEach((condition, i) => {
+      if (!isMapIcon(condition)) return;
+      const step = i * (badge * 2 + 2);
+      const x = round ? px - 6 - step : px - 4;
+      const y = round ? px - 6 : 4 + step;
+      this.drawBadge(container, condition, x, y, badge, palette.conditionBadge, palette.conditionRing, palette.tokenOutline, 2.5);
+    });
+
+    // Director's view of a creature under fog.
+    if (style.hidden) {
+      this.drawBadge(container, 'hidden', 4, px - 6, badge, palette.hiddenBadge, palette.hiddenRing, palette.hiddenMark, 2.5);
     }
 
     container.x = entity.x * this.cellSize;
     container.y = entity.y * this.cellSize;
+    container.zIndex = style.active || dying ? 3 : 1;
     container.eventMode = 'static';
     container.cursor = 'pointer';
 
@@ -296,22 +207,55 @@ export class TokenLayer extends Container {
       gridX: entity.x,
       gridY: entity.y,
       size: style.size,
-      conditionBadge,
       selected: style.selected,
       active: Boolean(style.active),
       acted: Boolean(style.acted),
+      hidden: Boolean(style.hidden),
     });
   }
 
-  /** Load a portrait image and add it as a circular-masked Sprite inside the token container. */
-  private loadPortraitSprite(
-    container: Container,
-    entityId: string,
-    url: string,
-    cx: number,
-    cy: number,
-    radius: number,
-  ): void {
+  /** A drawn head: the face plus the small offset shadow every head has on the map. */
+  private drawHead(head: Container, entity: EntityData, px: number, dying: boolean): void {
+    const palette = getCanvasTheme();
+    const url = faceUrl(faceKeyFor(entity), dying, 192);
+    artTexture(url, (texture) => {
+      if (head.destroyed) return;
+      const shadow = new Sprite(texture);
+      shadow.width = px;
+      shadow.height = px;
+      shadow.position.set(1.5, 2);
+      shadow.tint = palette.tokenOutline;
+      shadow.alpha = palette.tokenShadowAlpha;
+      const face = new Sprite(texture);
+      face.width = px;
+      face.height = px;
+      head.addChild(shadow, face);
+    });
+  }
+
+  /**
+   * An uploaded portrait as a sticker: clipped to the side's shape, a white keyline, the same
+   * 4-unit ink outline as a drawn head, and an offset ink shadow. Round for heroes and NPCs,
+   * eight-sided for creatures. Dying: greyscale with an X overlay.
+   */
+  private drawSticker(head: Container, entityId: string, url: string, px: number, round: boolean, dying: boolean): void {
+    const palette = getCanvasTheme();
+    const unit = px / 76;
+    const place = (scale: number, dx = 0, dy = 0) => (g: Graphics) => {
+      const s = unit * scale;
+      if (round) {
+        g.circle(px / 2 + dx * unit, px / 2 + dy * unit, 30 * s);
+      } else {
+        g.poly(OCTAGON_POINTS.flatMap(([x, y]) => [px / 2 + (x - 32) * s + dx * unit, px / 2 + (y - 32) * s + dy * unit]));
+      }
+      return g;
+    };
+    const shadow = place(1, 2.2, 2.6)(new Graphics()).fill({ color: palette.tokenOutline });
+    const outline = place(1)(new Graphics()).fill({ color: palette.tokenOutline }).stroke({ width: 4 * unit, color: palette.tokenOutline, join: 'round' });
+    const keyline = place(0.97)(new Graphics()).fill({ color: palette.tokenKeyline });
+    const holder = new Container();
+    head.addChild(shadow, outline, keyline, holder);
+
     const resolvedUrl = resolveApiBackedMediaUrl(url);
     const img = new Image();
     const crossOrigin = mediaElementCrossOrigin(resolvedUrl);
@@ -319,34 +263,57 @@ export class TokenLayer extends Container {
     // Track immediately so an in-flight load can be cancelled on removal.
     this.portraitResources.set(entityId, { img, texture: null });
     img.onload = () => {
-      // Guard: container may have been destroyed while loading
-      if (container.destroyed) return;
-
+      // Guard: the token may have been destroyed while loading
+      if (holder.destroyed) return;
       const texture = Texture.from(img);
       const tracked = this.portraitResources.get(entityId);
       if (tracked) tracked.texture = texture;
       const sprite = new Sprite(texture);
-
-      // Scale to cover the circle (like CSS object-fit: cover)
-      const diameter = radius * 2;
-      const scale = Math.max(diameter / texture.width, diameter / texture.height);
+      // Cover the shape, like CSS object-fit: cover.
+      const side = px * (60 * 0.88) / 76;
+      const scale = Math.max(side / texture.width, side / texture.height);
       sprite.width = texture.width * scale;
       sprite.height = texture.height * scale;
       sprite.anchor.set(0.5);
-      sprite.x = cx;
-      sprite.y = cy;
-
-      // Circular mask
-      const mask = new Graphics();
-      mask.circle(cx, cy, radius);
-      mask.fill({ color: 0xffffff });
-      container.addChild(mask);
+      sprite.position.set(px / 2, px / 2);
+      if (dying) {
+        const grey = new ColorMatrixFilter();
+        grey.desaturate();
+        sprite.filters = [grey];
+      }
+      const mask = place(0.88)(new Graphics()).fill({ color: 0xffffff });
+      holder.addChild(mask, sprite);
       sprite.mask = mask;
-
-      // Insert after rings (index 2) so it's below name/conditions but above rings
-      container.addChildAt(sprite, 2);
     };
     img.src = resolvedUrl;
+
+    if (dying) {
+      const k = px * 0.2;
+      const x = new Graphics();
+      for (const [w, color] of [[7 * unit, palette.tokenKeyline], [4 * unit, palette.tokenOutline]] as const) {
+        x.moveTo(px / 2 - k, px / 2 - k).lineTo(px / 2 + k, px / 2 + k);
+        x.moveTo(px / 2 + k, px / 2 - k).lineTo(px / 2 - k, px / 2 + k);
+        x.stroke({ width: w, color, cap: 'round' });
+      }
+      head.addChild(x);
+    }
+  }
+
+  private drawBadge(container: Container, icon: MapIcon, x: number, y: number, r: number, fill: number, ring: number, mark: number, weight: number): void {
+    const disc = new Graphics();
+    disc.circle(x, y, r).fill({ color: fill }).stroke({ width: 2, color: ring });
+    container.addChild(disc);
+    const holder = new Container();
+    container.addChild(holder);
+    artTexture(mapIconUrl(icon, toCssHex(mark), weight), (texture) => {
+      if (holder.destroyed) return;
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.position.set(x, y);
+      sprite.width = r * 1.5;
+      sprite.height = r * 1.5;
+      holder.addChild(sprite);
+    });
   }
 
   /**
@@ -375,15 +342,17 @@ export class TokenLayer extends Container {
     const portraitChanged = oldEntity['portraitUrl'] !== entity['portraitUrl'];
     const activeChanged = Boolean(style.active) !== existing.active;
     const actedChanged = Boolean(style.acted) !== existing.acted;
+    const hiddenChanged = Boolean(style.hidden) !== existing.hidden;
 
-    if (!staminaChanged && !conditionsChanged && !selectionChanged && !sizeChanged && !nameChanged && !portraitChanged && !activeChanged && !actedChanged) {
+    const before = typeof oldEntity['currentStamina'] === 'number' ? oldEntity['currentStamina'] : null;
+    const after = typeof entity['currentStamina'] === 'number' ? entity['currentStamina'] : null;
+    if (before !== null && after !== null && after < before) this.onHit?.(entity.id, before - after);
+
+    if (!staminaChanged && !conditionsChanged && !selectionChanged && !sizeChanged && !nameChanged && !portraitChanged && !activeChanged && !actedChanged && !hiddenChanged) {
       // Only position may have changed — sync from entity if not being dragged
       // (dragged tokens have their position updated by InteractionManager)
       if (existing.gridX !== entity.x || existing.gridY !== entity.y) {
-        existing.gridX = entity.x;
-        existing.gridY = entity.y;
-        existing.container.x = entity.x * this.cellSize;
-        existing.container.y = entity.y * this.cellSize;
+        this.travelTo(existing, entity.x, entity.y);
       }
       existing.entity = entity;
       return;
@@ -407,7 +376,94 @@ export class TokenLayer extends Container {
     }
   }
 
+  /**
+   * A move the server reported: the token travels in 0.7 s and draws a 5 px blue trail behind it.
+   * Under reduced motion it jumps and draws no trail. The grid position changes at once, so
+   * hit-testing never waits for the picture.
+   */
+  private travelTo(token: TokenSprite, gridX: number, gridY: number): void {
+    token.gridX = gridX;
+    token.gridY = gridY;
+    this.cancelTween(token.entityId);
+    const toX = gridX * this.cellSize;
+    const toY = gridY * this.cellSize;
+    if (reducedMotion()) {
+      token.container.x = toX;
+      token.container.y = toY;
+      return;
+    }
+    const trail = new Graphics();
+    trail.zIndex = 0;
+    this.addChild(trail);
+    this.tweens.set(token.entityId, {
+      entityId: token.entityId,
+      fromX: token.container.x,
+      fromY: token.container.y,
+      toX,
+      toY,
+      start: performance.now(),
+      trail,
+    });
+    if (!this.tweenFrame) this.tweenFrame = requestAnimationFrame(this.stepTweens);
+  }
+
+  private stepTweens = (now: number): void => {
+    this.tweenFrame = 0;
+    const palette = getCanvasTheme();
+    for (const tween of [...this.tweens.values()]) {
+      const token = this.tokens.get(tween.entityId);
+      if (!token) {
+        this.cancelTween(tween.entityId);
+        continue;
+      }
+      const t = Math.min(1, (now - tween.start) / TRAVEL_MS);
+      const e = travelEase(t);
+      const half = (token.size * this.cellSize) / 2;
+      token.container.x = tween.fromX + (tween.toX - tween.fromX) * e;
+      token.container.y = tween.fromY + (tween.toY - tween.fromY) * e;
+      tween.trail.clear();
+      tween.trail
+        .moveTo(tween.fromX + half, tween.fromY + half)
+        .lineTo(token.container.x + half, token.container.y + half)
+        .stroke({ width: 5, color: palette.moveTrail, cap: 'round' });
+      // The trail stays briefly after the token lands, then goes.
+      if (t >= 1) tween.trail.alpha = Math.max(0, 1 - (now - tween.start - TRAVEL_MS) / 300);
+      if (now - tween.start >= TRAVEL_MS + 300) this.cancelTween(tween.entityId);
+    }
+    if (this.tweens.size > 0 && !this.destroyed) this.tweenFrame = requestAnimationFrame(this.stepTweens);
+  };
+
+  private cancelTween(entityId: string): void {
+    const tween = this.tweens.get(entityId);
+    if (!tween) return;
+    this.tweens.delete(entityId);
+    this.removeChild(tween.trail);
+    tween.trail.destroy();
+  }
+
+  /** World pixels per grid square. */
+  cell(): number {
+    return this.cellSize;
+  }
+
+  /** Every token's place in world pixels, for the label layer. */
+  getPlacements(): TokenPlacement[] {
+    const out: TokenPlacement[] = [];
+    for (const token of this.tokens.values()) {
+      out.push({
+        entity: token.entity,
+        x: token.container.x,
+        y: token.container.y,
+        px: token.size * this.cellSize,
+        active: token.active,
+        visible: token.container.visible,
+      });
+    }
+    return out;
+  }
+
   clear(): void {
+    for (const entityId of [...this.tweens.keys()]) this.cancelTween(entityId);
     for (const [, token] of this.tokens) {
       this.removeChild(token.container);
       token.container.destroy({ children: true });
@@ -421,6 +477,7 @@ export class TokenLayer extends Container {
   }
 
   removeToken(entityId: string): void {
+    this.cancelTween(entityId);
     this.releasePortraitResources(entityId);
     const token = this.tokens.get(entityId);
     if (token) {
@@ -443,6 +500,7 @@ export class TokenLayer extends Container {
   moveToken(entityId: string, gridX: number, gridY: number): void {
     const token = this.tokens.get(entityId);
     if (token) {
+      this.cancelTween(entityId);
       token.gridX = gridX;
       token.gridY = gridY;
       token.container.x = gridX * this.cellSize;
@@ -503,6 +561,7 @@ export class TokenLayer extends Container {
 
     if (!this.distanceLabel) {
       this.distanceLabel = new Container();
+      this.distanceLabel.zIndex = 10;
       this.addChild(this.distanceLabel);
     }
 
@@ -524,18 +583,19 @@ export class TokenLayer extends Container {
     // Background pill
     const pad = 6;
     const bg = new Graphics();
-    bg.roundRect(
+    bg.rect(
       -text.width / 2 - pad,
       -text.height / 2 - pad / 2,
       text.width + pad * 2,
       text.height + pad,
-      4,
     );
     bg.fill({ color: palette.labelPlate, alpha: 1 });
     bg.stroke({ width: 1.5, color: palette.labelKeyline, alpha: 1 });
 
     this.distanceLabel.addChild(bg);
     this.distanceLabel.addChild(text);
+    // Map labels stay 13 px whatever the zoom.
+    this.distanceLabel.scale.set(1 / (this.parent?.scale.x || 1));
 
     // Position below the token
     const size = token.size * this.cellSize;
@@ -558,6 +618,7 @@ export class TokenLayer extends Container {
 
     if (!this.distanceLabel) {
       this.distanceLabel = new Container();
+      this.distanceLabel.zIndex = 10;
       this.addChild(this.distanceLabel);
     }
 
@@ -577,18 +638,19 @@ export class TokenLayer extends Container {
 
     const pad = 6;
     const bg = new Graphics();
-    bg.roundRect(
+    bg.rect(
       -text.width / 2 - pad,
       -text.height / 2 - pad / 2,
       text.width + pad * 2,
       text.height + pad,
-      4,
     );
     bg.fill({ color: palette.labelPlate, alpha: 1 });
     bg.stroke({ width: 1.5, color: palette.labelKeyline, alpha: 1 });
 
     this.distanceLabel.addChild(bg);
     this.distanceLabel.addChild(text);
+    // Map labels stay 13 px whatever the zoom.
+    this.distanceLabel.scale.set(1 / (this.parent?.scale.x || 1));
 
     // Position at the current cursor grid cell
     this.distanceLabel.x = currentGridX * this.cellSize + this.cellSize / 2;
@@ -608,6 +670,7 @@ export class TokenLayer extends Container {
   showSelectionRect(x: number, y: number, w: number, h: number): void {
     if (!this.selectionRect) {
       this.selectionRect = new Graphics();
+      this.selectionRect.zIndex = 10;
       this.addChild(this.selectionRect);
     }
     this.selectionRect.clear();
@@ -654,6 +717,7 @@ export class TokenLayer extends Container {
     for (const id of entityIds) {
       const token = this.tokens.get(id);
       if (token) {
+        this.cancelTween(id);
         token.gridX += deltaX;
         token.gridY += deltaY;
         token.container.x = token.gridX * this.cellSize;

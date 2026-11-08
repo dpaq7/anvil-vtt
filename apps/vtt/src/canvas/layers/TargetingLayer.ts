@@ -119,33 +119,40 @@ export class TargetingLayer extends Container {
         this.highlightG.rect(fp.x * cs - grow, fp.y * cs - grow, fp.size * cs + grow * 2, fp.size * cs + grow * 2);
       }
     };
-    drawInRange(0.75);
-    this.highlightG.stroke({ width: 4, color: palette.targetingEdge, alpha: 1 });
-    drawInRange(0);
-    this.highlightG.stroke({ width: 2.5, color: palette.targeting, alpha: 1 });
+    // Pixi re-styles the last shape when a fill or stroke has no path of its own, which painted
+    // every target solid. So each batch runs only when it has shapes.
+    if (inRange.length > 0) {
+      drawInRange(0.75);
+      this.highlightG.stroke({ width: 4, color: palette.targetingEdge, alpha: 1 });
+      drawInRange(0);
+      this.highlightG.stroke({ width: 2.5, color: palette.targeting, alpha: 1 });
+    }
 
-    for (const t of targets.filter((t) => !t.inRange)) {
+    const outOfRange = targets.filter((t) => !t.inRange);
+    for (const t of outOfRange) {
       const fp = t.footprint;
       this.highlightG.rect(fp.x * cs, fp.y * cs, fp.size * cs, fp.size * cs);
     }
-    this.highlightG.stroke({ width: 1.5, color: palette.targetInvalid, alpha: palette.targetInvalidAlpha });
+    if (outOfRange.length > 0) {
+      this.highlightG.stroke({ width: 1.5, color: palette.targetInvalid, alpha: palette.targetInvalidAlpha });
+    }
 
     // Advantage pips, drawn on top. Batch fills by color: flanking (top-left)
     // then high ground (top-right).
     const pipR = Math.max(3, cs * 0.11);
     const inset = pipR + 2;
-    for (const t of targets) {
-      if (!t.flanking) continue;
+    const flanking = targets.filter((t) => t.flanking);
+    for (const t of flanking) {
       const fp = t.footprint;
       this.highlightG.circle(fp.x * cs + inset, fp.y * cs + inset, pipR);
     }
-    this.highlightG.fill({ color: palette.targetFlankPip, alpha: 0.95 });
-    for (const t of targets) {
-      if (!t.highGround) continue;
+    if (flanking.length > 0) this.highlightG.fill({ color: palette.targetFlankPip, alpha: 0.95 });
+    const highGround = targets.filter((t) => t.highGround);
+    for (const t of highGround) {
       const fp = t.footprint;
       this.highlightG.circle((fp.x + fp.size) * cs - inset, fp.y * cs + inset, pipR);
     }
-    this.highlightG.fill({ color: palette.targetHighGroundPip, alpha: 0.95 });
+    if (highGround.length > 0) this.highlightG.fill({ color: palette.targetHighGroundPip, alpha: 0.95 });
   }
 
   clearTargeting(): void {

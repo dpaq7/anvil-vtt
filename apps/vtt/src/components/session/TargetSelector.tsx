@@ -57,17 +57,17 @@ export function TargetSelector({
               />
               <span>{entity.name}</span>
               {outOfRange && (
-                <span className="ml-auto rounded bg-zinc-700/70 px-1 text-[10px] text-zinc-300">
+                <span className="ml-auto rounded bg-zinc-700/70 px-1 text-[13px] text-zinc-300">
                   out of range
                 </span>
               )}
               {flanking && (
-                <span className={cn('rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300', outOfRange ? '' : 'ml-auto')}>
+                <span className={cn('rounded bg-emerald-500/20 px-1 text-[13px] text-emerald-300', outOfRange ? '' : 'ml-auto')}>
                   flanking
                 </span>
               )}
               {highGround && (
-                <span className="rounded bg-sky-500/20 px-1 text-[10px] text-sky-300">
+                <span className="rounded bg-sky-500/20 px-1 text-[13px] text-sky-300">
                   high ground
                 </span>
               )}

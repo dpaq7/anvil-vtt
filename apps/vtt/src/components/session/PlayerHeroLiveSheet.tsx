@@ -26,6 +26,7 @@ import { CharacterInventoryPanel } from '../CharacterInventoryPanel.js';
 import { normalizeInventory } from '../../lib/inventory.js';
 import type { CharacterInventoryItem } from '../../lib/inventory.js';
 import { conditionNames } from '../../lib/conditions.js';
+import { useSessionConnection } from './shell/connection-context.js';
 
 type RollCharacteristicHandler = (label: string, modifier: number) => void;
 
@@ -135,7 +136,7 @@ export function PlayerHeroCommandBar({
         </span>
         <span className="min-w-0">
           <span className="block truncate text-xs font-semibold text-zinc-100">{name}</span>
-          <span className="block truncate text-[10px] text-zinc-500">
+          <span className="block truncate text-[13px] text-zinc-500">
             L{level} {className ?? 'Hero'}
           </span>
         </span>
@@ -190,7 +191,7 @@ export function PlayerHeroCommandBar({
             <button
               key={key}
               type="button"
-              className="flex h-7 min-w-12 items-center justify-center gap-1 rounded px-1.5 text-[10px] text-zinc-400 transition hover:bg-zinc-800 hover:text-cyan-100 disabled:opacity-50"
+              className="flex h-7 min-w-12 items-center justify-center gap-1 rounded px-1.5 text-[13px] text-zinc-400 transition hover:bg-zinc-800 hover:text-cyan-100 disabled:opacity-50"
               disabled={!hero}
               onClick={() => onRollCharacteristic(label, value)}
               title={`Roll ${label}`}
@@ -220,6 +221,7 @@ export function PlayerHeroSheetPanel({
   onOpenAbilities,
   onInventoryChange,
 }: PlayerHeroSheetPanelProps) {
+  const { paused } = useSessionConnection();
   if (!hero) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-center text-xs text-zinc-500">
@@ -277,7 +279,7 @@ export function PlayerHeroSheetPanel({
             <p className="mt-0.5 text-xs text-zinc-400">
               L{level} {className ?? 'Hero'}{subclassName ? ` / ${subclassName}` : ''}
             </p>
-            <p className="mt-0.5 text-[11px] text-zinc-500">
+            <p className="mt-0.5 text-[13px] text-zinc-500">
               {[ancestryName, career?.name].filter(Boolean).join(' / ') || 'No identity recorded'}
             </p>
           </div>
@@ -292,20 +294,21 @@ export function PlayerHeroSheetPanel({
               value={`${currentStamina}/${maxStamina}`}
               sublabel="catch breath"
               onClick={onCatchBreath}
-              disabled={!combatActive}
+              disabled={paused || !combatActive}
             />
             <MetricButton
               label="Recoveries"
               value={`${recoveriesCurrent}/${recoveriesMax}`}
               sublabel={recoveryValue === null ? 'recovery' : `${recoveryValue} each`}
               onClick={onCatchBreath}
-              disabled={!combatActive}
+              disabled={paused || !combatActive}
             />
             <MetricButton
               label={resourceName}
               value={String(heroicResource)}
               sublabel="roll"
               onClick={onRollResource}
+              disabled={paused}
             />
             <MetricButton
               label="Victories / XP"
@@ -372,7 +375,7 @@ export function PlayerHeroSheetPanel({
                   title={`Roll ${label}`}
                 >
                   <Icon className="mx-auto mb-1 size-3.5 text-cyan-400" />
-                  <div className="text-[9px] font-semibold uppercase text-zinc-500">{short}</div>
+                  <div className="text-[13px] font-semibold uppercase text-zinc-500">{short}</div>
                   <div className="font-mono text-sm font-bold text-zinc-100">{formatModifier(value)}</div>
                 </button>
               );
@@ -388,11 +391,11 @@ export function PlayerHeroSheetPanel({
               variant="secondary"
               className="h-8 justify-start gap-1.5 text-xs"
               onClick={onCatchBreath}
-              disabled={!combatActive || !isMyTurn}
+              disabled={paused || !combatActive || !isMyTurn}
               title="Spend a recovery to regain stamina"
             >
               <HeartPulse className="size-3.5 text-emerald-300" />
-              Catch Breath
+              {paused ? 'Catch Breath, when back' : 'Catch Breath'}
             </Button>
             <Button
               type="button"
@@ -400,11 +403,11 @@ export function PlayerHeroSheetPanel({
               variant="secondary"
               className="h-8 justify-start gap-1.5 text-xs"
               onClick={onDefend}
-              disabled={!combatActive || !isMyTurn}
+              disabled={paused || !combatActive || !isMyTurn}
               title="Spend your main action to defend"
             >
               <Shield className="size-3.5 text-blue-300" />
-              Defend
+              {paused ? 'Defend, when back' : 'Defend'}
             </Button>
             <Button
               type="button"
@@ -412,11 +415,11 @@ export function PlayerHeroSheetPanel({
               variant="outline"
               className="h-8 justify-start gap-1.5 text-xs"
               onClick={onStandUp}
-              disabled={!combatActive || !isMyTurn || !isProne}
+              disabled={paused || !combatActive || !isMyTurn || !isProne}
               title="Use a maneuver to stand up"
             >
               <Footprints className="size-3.5 text-amber-300" />
-              Stand Up
+              {paused ? 'Stand Up, when back' : 'Stand Up'}
             </Button>
             <Button
               type="button"
@@ -424,22 +427,22 @@ export function PlayerHeroSheetPanel({
               variant="outline"
               className="h-8 justify-start gap-1.5 text-xs"
               onClick={onEscapeGrab}
-              disabled={!combatActive || !isMyTurn || !isGrabbed}
+              disabled={paused || !combatActive || !isMyTurn || !isGrabbed}
               title="Use a maneuver to escape a grab"
             >
               <Zap className="size-3.5 text-violet-300" />
-              Escape
+              {paused ? 'Escape, when back' : 'Escape'}
             </Button>
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
             {conditions.length > 0 ? (
               conditions.map((condition) => (
-                <Badge key={condition} variant="destructive" className="text-[10px] capitalize">
+                <Badge key={condition} variant="destructive" className="text-[13px] capitalize">
                   {condition}
                 </Badge>
               ))
             ) : (
-              <span className="text-[11px] text-zinc-600">No active conditions.</span>
+              <span className="text-[13px] text-zinc-600">No active conditions.</span>
             )}
           </div>
         </RailSection>
@@ -452,7 +455,7 @@ export function PlayerHeroSheetPanel({
           <DetailRow label="Primary" value={classDef?.primaryCharacteristic ?? null} />
           <DetailRow label="Potency" value={classDef?.potencyCharacteristic ?? null} />
           {classDef?.description && (
-            <p className="mt-2 rounded border border-zinc-800 bg-zinc-950/40 p-2 text-[11px] leading-relaxed text-zinc-400">
+            <p className="mt-2 rounded border border-zinc-800 bg-zinc-950/40 p-2 text-[13px] leading-relaxed text-zinc-400">
               {classDef.description}
             </p>
           )}
@@ -464,11 +467,11 @@ export function PlayerHeroSheetPanel({
                 .map((row) => (
                   <div key={row.level} className="rounded border border-zinc-800 bg-zinc-950/30 p-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Level {row.level}</span>
-                      <span className="text-[10px] text-cyan-300">{row.abilities}</span>
+                      <span className="text-[13px] font-semibold uppercase tracking-wide text-zinc-500">Level {row.level}</span>
+                      <span className="text-[13px] text-cyan-300">{row.abilities}</span>
                     </div>
                     {row.features.length > 0 && (
-                      <p className="mt-1 text-[11px] leading-snug text-zinc-300">{row.features.join(', ')}</p>
+                      <p className="mt-1 text-[13px] leading-snug text-zinc-300">{row.features.join(', ')}</p>
                     )}
                   </div>
                 ))}
@@ -482,12 +485,12 @@ export function PlayerHeroSheetPanel({
               {Object.entries(groupedSkills).map(([group, groupSkills]) => (
                 groupSkills.length > 0 && (
                   <div key={group}>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    <div className="mb-1 text-[13px] font-semibold uppercase tracking-wide text-zinc-500">
                       {SKILL_GROUP_LABELS[group] ?? titleCaseId(group)}
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {groupSkills.map((skill) => (
-                        <Badge key={skill.id} variant="secondary" className="rounded text-[10px]" title={skill.description ?? undefined}>
+                        <Badge key={skill.id} variant="secondary" className="rounded text-[13px]" title={skill.description ?? undefined}>
                           {skill.name}
                         </Badge>
                       ))}
@@ -559,7 +562,7 @@ function CommandTile({
     >
       <Icon className={cn('size-4 shrink-0', accent)} />
       <span className="min-w-0">
-        <span className="block truncate text-[9px] font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
+        <span className="block truncate text-[13px] font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
         <span className="block font-mono text-xs font-bold text-zinc-100">{value}</span>
       </span>
     </button>
@@ -579,7 +582,7 @@ function RailSection({
     <section className="rounded-md border border-zinc-800 bg-zinc-950/30 p-3">
       <div className="mb-2 flex items-center gap-2 border-b border-zinc-800 pb-2">
         <Icon className="size-3.5 text-cyan-400" />
-        <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-300">{title}</h3>
+        <h3 className="text-[13px] font-black uppercase tracking-[0.18em] text-zinc-300">{title}</h3>
       </div>
       {children}
     </section>
@@ -606,9 +609,9 @@ function MetricButton({
       onClick={onClick}
       disabled={disabled || !onClick}
     >
-      <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="text-[13px] font-semibold uppercase tracking-wide text-zinc-500">{label}</div>
       <div className="mt-1 font-mono text-sm font-bold text-zinc-100">{value}</div>
-      {sublabel && <div className="mt-0.5 truncate text-[10px] text-zinc-500">{sublabel}</div>}
+      {sublabel && <div className="mt-0.5 truncate text-[13px] text-zinc-500">{sublabel}</div>}
     </button>
   );
 }
@@ -616,7 +619,7 @@ function MetricButton({
 function DetailRow({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-zinc-800/60 py-1.5 last:border-0">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
+      <span className="text-[13px] font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
       <span className="min-w-0 text-right text-xs text-zinc-200">{value || '-'}</span>
     </div>
   );
@@ -633,16 +636,16 @@ function SourceNote({
 }) {
   return (
     <div className="rounded border border-zinc-800 bg-zinc-950/40 p-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="mt-1 text-[11px] text-zinc-200">{value}</div>
-      {description && <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-zinc-500">{description}</p>}
+      <div className="text-[13px] font-semibold uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="mt-1 text-[13px] text-zinc-200">{value}</div>
+      {description && <p className="mt-1 line-clamp-3 text-[13px] leading-snug text-zinc-500">{description}</p>}
     </div>
   );
 }
 
 function EmptyText({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded border border-dashed border-zinc-800 bg-zinc-950/30 p-2 text-[11px] text-zinc-600">
+    <div className="rounded border border-dashed border-zinc-800 bg-zinc-950/30 p-2 text-[13px] text-zinc-600">
       {children}
     </div>
   );

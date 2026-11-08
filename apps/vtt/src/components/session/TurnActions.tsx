@@ -28,7 +28,7 @@ export function TurnActions({ usedActions, isCurrentTurn }: TurnActionsProps) {
                     : `border-zinc-600 bg-zinc-800`
                 }`}
               />
-              <span className={`text-[10px] ${used ? 'text-zinc-400 line-through' : 'text-zinc-300'}`}>
+              <span className={`text-[13px] ${used ? 'text-zinc-400 line-through' : 'text-zinc-300'}`}>
                 {label}
               </span>
             </div>

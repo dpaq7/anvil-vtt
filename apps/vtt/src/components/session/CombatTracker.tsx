@@ -1,20 +1,25 @@
-import { useSessionConnection } from './shell/connection-context.js';
-import type { MouseEvent } from 'react';
-import { Clapperboard, Dices, Shield, Swords } from 'lucide-react';
-import { Button, cn } from '@anvil/ui';
+import { useState, type MouseEvent } from 'react';
+import { Check, ChevronDown, ChevronRight, EyeOff } from 'lucide-react';
+import { firstName, conditionLine, staminaOf } from '../../lib/faces.js';
 import type { CombatState, EntityData } from '../../types/protocol.js';
-import {
-  getVillainDisplayGroups,
-  type CombatDisplayGroup,
-} from '../../lib/combat-groups.js';
+import { HeroRow } from './battle/HeroRow.js';
+import { TokenFace } from './battle/TokenFace.js';
+import { SMALL_SESSION, useHitFlash, useMediaQuery, useRollingNumber } from './battle/hooks.js';
+import { buildUnitRows, type UnitRowData } from './battle/unit-rows.js';
+import { EndCombatButton } from './battle/EndCombatButton.js';
+import { MalicePanel } from './MalicePanel.js';
+import { useSessionConnection } from './shell/connection-context.js';
+import './battle/battle.css';
 
 interface CombatTrackerProps {
   combat: CombatState;
+  /** What this viewer may see. A Player's list comes through the fog helper. */
   entities: EntityData[];
   selectedEntityIds?: string[];
   isDirector: boolean;
   currentHeroEntityId: string | null;
-  onClaimTurn: (entityId: string) => void;
+  /** Director's view: creatures under fog, marked with the shut eye. */
+  hiddenIds?: Set<string>;
   onSelectEntities?: (entityIds: string[]) => void;
   onSelectTurn: (entityId: string) => void;
   onFocusEntity?: (entityId: string) => void;
@@ -24,39 +29,14 @@ interface CombatTrackerProps {
   onRollInitiative?: () => void;
 }
 
-type CombatSide = 'heroes' | 'villains';
-
-const SIDE_CONFIG: Record<CombatSide, {
-  label: string;
-  Icon: typeof Swords;
-  accent: string;
-  border: string;
-  active: string;
-}> = {
-  heroes: {
-    label: 'Heroes',
-    Icon: Swords,
-    accent: 'text-blue-300',
-    border: 'border-blue-500/40',
-    active: 'bg-blue-500/15 text-blue-100',
-  },
-  villains: {
-    label: 'Director',
-    Icon: Clapperboard,
-    accent: 'text-red-300',
-    border: 'border-red-500/40',
-    active: 'bg-red-500/15 text-red-100',
-  },
-};
-type SideConfig = (typeof SIDE_CONFIG)[CombatSide];
-
+/** Left rail in Battle: the party, then the Director's side (demos `battle-director`, `battle-player`). */
 export function CombatTracker({
   combat,
   entities,
   selectedEntityIds = [],
   isDirector,
   currentHeroEntityId,
-  onClaimTurn,
+  hiddenIds,
   onSelectEntities,
   onSelectTurn,
   onFocusEntity,
@@ -67,423 +47,213 @@ export function CombatTracker({
 }: CombatTrackerProps) {
   // During a drop the table stays readable; actions that need the server wait.
   const { paused } = useSessionConnection();
+  const small = useMediaQuery(SMALL_SESSION);
   const entityMap = new Map(entities.map((e) => [e.id, e]));
   const selectedSet = new Set(selectedEntityIds);
   const initiativePending = combat.initiativeRoll === null || combat.firstSide === null || combat.activeSide === null;
-  const heroPosition = combat.firstSide === null
-    ? 'pending'
-    : combat.firstSide === 'heroes'
-      ? 'first'
-      : 'second';
+  const heroes = combat.heroEntities.flatMap((id) => entityMap.get(id) ?? []);
+  const acted = heroes.filter((h) => combat.actedThisRound.includes(h.id)).length;
+  const active = combat.activeEntityId ? entityMap.get(combat.activeEntityId) : undefined;
 
-  const sideOrder: CombatSide[] = combat.firstSide
-    ? [combat.firstSide, combat.firstSide === 'heroes' ? 'villains' : 'heroes']
-    : ['heroes', 'villains'];
-
-  const canClaimTurn =
-    !initiativePending &&
-    combat.activeSide === 'heroes' &&
-    !combat.activeEntityId &&
-    currentHeroEntityId &&
-    !combat.actedThisRound.includes(currentHeroEntityId);
-
-  const isMyTurn = combat.activeEntityId === currentHeroEntityId;
-
-  const selectEntity = (event: MouseEvent, entityId: string) => {
-    const additive = event.ctrlKey || event.metaKey || event.shiftKey;
-    const next = additive
-      ? toggleSelection(selectedSet, entityId)
-      : [entityId];
-    onSelectEntities?.(next);
-  };
-
-  const maybeSelectVillainTurn = (entityId: string) => {
-    if (
-      isDirector &&
-      combat.activeSide === 'villains' &&
-      !combat.activeEntityId &&
-      !combat.actedThisRound.includes(entityId)
-    ) {
-      onSelectTurn(entityId);
+  const selectIds = (event: MouseEvent, ids: string[]) => {
+    if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
+      onSelectEntities?.(ids);
+      return;
     }
+    const next = new Set(selectedSet);
+    for (const id of ids) {
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+    }
+    onSelectEntities?.([...next]);
   };
+
+  const pickVillainTurn = (ids: string[]) => {
+    if (!isDirector || combat.activeSide !== 'villains' || combat.activeEntityId || paused) return;
+    const next = ids.find((id) => !combat.actedThisRound.includes(id));
+    if (next) onSelectTurn(next);
+  };
+
+  // Squads fold on the Director's view and on the Player's at the small size.
+  const rows = buildUnitRows(combat, entityMap, isDirector || small);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase text-zinc-500">Combat</span>
-        <span className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
-          Round {combat.round}
-        </span>
-      </div>
-
-      {initiativePending ? (
-        <div className="rounded border border-amber-500/30 bg-amber-950/20 p-2">
-          <div className="flex items-center gap-2">
-            <Dices className="size-4 text-amber-300" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-amber-100">Initiative d10</p>
-              <p className="text-[11px] text-amber-200/70">6+ heroes act first. 5 or less puts the Director first.</p>
-            </div>
-          </div>
-          {onRollInitiative && (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className="mt-2 w-full"
-              disabled={paused}
-              onClick={onRollInitiative}
-            >
-              Roll d10
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="rounded bg-zinc-800/50 px-2 py-1.5 text-center text-[10px] text-zinc-400">
-          Initiative: {combat.initiativeRoll} - Heroes are {heroPosition}
-          {combat.initiativeRollerName ? ` (${combat.initiativeRollerName})` : ''}
-        </div>
+    <div className="sb-tracker">
+      {initiativePending && onRollInitiative && (
+        <section className="sb-sec">
+          <p className="m-0 text-[13px]">Initiative d10. 6 or higher, heroes act first.</p>
+          <button type="button" className={`sb-end ${paused ? 'sb-wait-btn' : ''}`} disabled={paused} onClick={onRollInitiative}>
+            {paused ? 'Roll d10, when back' : 'Roll d10'}
+          </button>
+        </section>
       )}
-
-      <div className="grid grid-cols-2 gap-1.5">
-        {sideOrder.map((side, index) => (
-          <SidePill
-            key={side}
-            side={side}
-            order={index + 1}
-            combat={combat}
-            entityMap={entityMap}
+      <div className="sb-sub"><b>Heroes</b><span>{acted} of {heroes.length} acted</span></div>
+      <div className="sb-heroes">
+        {heroes.map((hero) => (
+          <HeroRow
+            key={hero.id}
+            hero={hero}
+            active={combat.activeEntityId === hero.id}
+            done={combat.actedThisRound.includes(hero.id)}
+            own={hero.id === currentHeroEntityId}
+            selected={selectedSet.has(hero.id)}
+            onClick={(event) => selectIds(event, [hero.id])}
+            onDoubleClick={() => onFocusEntity?.(hero.id)}
           />
         ))}
       </div>
-
-      <div className={cn(
-        'rounded px-2 py-1.5 text-center text-xs font-medium',
-        initiativePending
-          ? 'bg-zinc-800/70 text-zinc-400'
-          : combat.activeSide === 'heroes'
-            ? 'bg-blue-500/20 text-blue-300'
-            : 'bg-red-500/20 text-red-300',
-      )}>
-        {initiativePending
-          ? 'Waiting for initiative'
-          : combat.activeSide === 'heroes'
-            ? 'Heroes Turn'
-            : 'Director Turn'}
+      <div className="sb-sub sb-sub--dir">
+        <b>Director</b>
+        <MalicePanel malice={combat.malice} isDirector={isDirector} onAdjust={onAdjustMalice} />
       </div>
-
-      <div className="flex flex-col gap-2">
-        <InitiativeGroup
-          side="heroes"
-          combat={combat}
-          entityMap={entityMap}
-          selectedSet={selectedSet}
-          onEntityClick={selectEntity}
-          onEntityDoubleClick={onFocusEntity}
-        />
-        <InitiativeGroup
-          side="villains"
-          combat={combat}
-          entityMap={entityMap}
-          selectedSet={selectedSet}
-          onEntityClick={(event, entityId) => {
-            selectEntity(event, entityId);
-            if (!(event.ctrlKey || event.metaKey || event.shiftKey)) maybeSelectVillainTurn(entityId);
-          }}
-          onEntityDoubleClick={onFocusEntity}
-        />
+      <div className="sb-units">
+        {rows.map((row) => (
+          <UnitRow
+            key={row.id}
+            row={row}
+            combat={combat}
+            isDirector={isDirector}
+            hiddenIds={hiddenIds}
+            selectedSet={selectedSet}
+            onClick={(event, ids) => {
+              selectIds(event, ids);
+              if (!(event.ctrlKey || event.metaKey || event.shiftKey)) pickVillainTurn(ids);
+            }}
+            onFocus={onFocusEntity}
+          />
+        ))}
       </div>
-
-      {/* Malice is the Director's alone (DESIGN.md section 7). */}
       {isDirector && (
-        <div className="flex items-center justify-between rounded bg-zinc-800/50 px-2 py-1.5">
-          <span className="text-xs text-zinc-400">Malice</span>
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-5"
-              disabled={paused}
-              onClick={() => onAdjustMalice(-1)}
-            >
-              <span className="text-xs">-</span>
-            </Button>
-            <span className="min-w-[20px] text-center text-sm font-bold text-purple-400">
-              {combat.malice}
-            </span>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-5"
-              disabled={paused}
-              onClick={() => onAdjustMalice(1)}
-            >
-              <span className="text-xs">+</span>
-            </Button>
-          </div>
+        <div className="sb-foot">
+          <button
+            type="button"
+            className="sb-end"
+            data-wait={paused || undefined}
+            disabled={paused || !combat.activeEntityId}
+            onClick={onEndTurn}
+          >
+            {paused ? 'End turn, when back' : active ? `End ${firstName(active.name)}’s turn` : 'End turn'}
+          </button>
+          <EndCombatButton onEnd={onEndCombat} />
         </div>
       )}
-
-      {canClaimTurn && !isDirector && (
-        <Button
-          size="sm"
-          disabled={paused}
-          onClick={() => {
-            if (currentHeroEntityId) onClaimTurn(currentHeroEntityId);
-          }}
-        >
-          {paused ? 'Take My Turn, when back' : 'Take My Turn'}
-        </Button>
-      )}
-
-      {isMyTurn && !isDirector && (
-        <Button size="sm" variant="outline" disabled={paused} onClick={onEndTurn}>
-          {paused ? 'End My Turn, when back' : 'End My Turn'}
-        </Button>
-      )}
-
-      {isDirector && combat.activeEntityId && (
-        <Button size="sm" variant="outline" disabled={paused} onClick={onEndTurn}>
-          {paused ? 'End Turn, when back' : 'End Turn'}
-        </Button>
-      )}
-
-      {isDirector && (
-        <Button size="sm" variant="ghost" disabled={paused} onClick={onEndCombat} className="text-zinc-500">
-          {paused ? 'End Combat, when back' : 'End Combat'}
-        </Button>
-      )}
     </div>
   );
 }
 
-function toggleSelection(selectedSet: Set<string>, entityId: string): string[] {
-  const next = new Set(selectedSet);
-  if (next.has(entityId)) next.delete(entityId);
-  else next.add(entityId);
-  return [...next];
-}
-
-function SidePill({
-  side,
-  order,
+function UnitRow({
+  row,
   combat,
-  entityMap,
-}: {
-  side: CombatSide;
-  order: number;
-  combat: CombatState;
-  entityMap: Map<string, EntityData>;
-}) {
-  const config = SIDE_CONFIG[side];
-  const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
-  const villainGroups = side === 'villains' ? getVillainDisplayGroups(combat, entityMap) : [];
-  const usesGroups = villainGroups.some((group) => group.isGroup);
-  const acted = usesGroups
-    ? villainGroups.filter((group) => group.entityIds.every((id) => combat.actedThisRound.includes(id))).length
-    : ids.filter((id) => combat.actedThisRound.includes(id)).length;
-  const total = usesGroups ? villainGroups.length : ids.length;
-  const isActive = combat.activeSide === side;
-  const Icon = config.Icon;
-
-  return (
-    <div
-      className={cn(
-        'rounded border px-2 py-1.5',
-        isActive ? cn(config.border, config.active) : 'border-zinc-800 bg-zinc-900/50 text-zinc-400',
-      )}
-      title={usesGroups
-        ? `${config.label}: ${acted}/${total} groups complete; ${ids.filter((id) => combat.actedThisRound.includes(id)).length}/${ids.length} creatures acted`
-        : `${config.label}: ${acted}/${total} acted`}
-    >
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-semibold tabular-nums text-zinc-500">{order}</span>
-        <Icon className={cn('size-3.5', config.accent)} />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{config.label}</span>
-        <span className="text-[10px] tabular-nums text-zinc-500">{acted}/{total}</span>
-      </div>
-    </div>
-  );
-}
-
-function InitiativeGroup({
-  side,
-  combat,
-  entityMap,
+  isDirector,
+  hiddenIds,
   selectedSet,
-  onEntityClick,
-  onEntityDoubleClick,
+  onClick,
+  onFocus,
 }: {
-  side: CombatSide;
+  row: UnitRowData;
   combat: CombatState;
-  entityMap: Map<string, EntityData>;
+  isDirector: boolean;
+  hiddenIds?: Set<string>;
   selectedSet: Set<string>;
-  onEntityClick: (event: MouseEvent, entityId: string) => void;
-  onEntityDoubleClick?: (entityId: string) => void;
+  onClick: (event: MouseEvent, ids: string[]) => void;
+  onFocus?: (entityId: string) => void;
 }) {
-  const config = SIDE_CONFIG[side];
-  const ids = side === 'heroes' ? combat.heroEntities : combat.villainEntities;
-  const Icon = side === 'heroes' ? Swords : Shield;
-  const villainGroups = side === 'villains' ? getVillainDisplayGroups(combat, entityMap) : [];
-  const showVillainGroups = side === 'villains' && villainGroups.some((group) => group.isGroup);
+  const [open, setOpen] = useState(false);
+  const cur = row.members.reduce((sum, m) => sum + staminaOf(m).cur, 0);
+  const max = row.members.reduce((sum, m) => sum + staminaOf(m).max, 0);
+  const shown = useRollingNumber(cur);
+  const hit = useHitFlash(cur);
+  const ids = row.members.map((m) => m.id);
+  const active = Boolean(combat.activeEntityId && ids.includes(combat.activeEntityId));
+  const done = ids.every((id) => combat.actedThisRound.includes(id));
+  const hidden = isDirector && ids.some((id) => hiddenIds?.has(id));
+  const first = row.members[0];
+  if (!first) return null;
+  const words = row.members.flatMap((m) => conditionLine(m));
+  const folded = row.members.length > 1;
 
   return (
-    <section className={cn('rounded border bg-zinc-950/25', config.border)}>
-      <div className="flex items-center gap-1.5 border-b border-zinc-800/70 px-2 py-1.5">
-        <Icon className={cn('size-3.5', config.accent)} />
-        <span className={cn('text-[10px] font-semibold uppercase tracking-wider', config.accent)}>
-          {side === 'heroes' ? 'Heroes' : 'Villains'}
-        </span>
-      </div>
-      <div className="max-h-52 overflow-y-auto p-1">
-        {ids.length === 0 ? (
-          <p className="px-2 py-2 text-xs text-zinc-600">None</p>
-        ) : showVillainGroups ? (
-          <div className="flex flex-col gap-1">
-            {villainGroups.map((group) => (
-              group.isGroup ? (
-                <VillainDisplayGroup
-                  key={group.id}
-                  group={group}
-                  combat={combat}
-                  entityMap={entityMap}
-                  selectedSet={selectedSet}
-                  config={config}
-                  onEntityClick={onEntityClick}
-                  onEntityDoubleClick={onEntityDoubleClick}
-                />
-              ) : (
-                <CombatantRow
-                  key={group.entityIds[0]}
-                  entityId={group.entityIds[0]!}
-                  combat={combat}
-                  entityMap={entityMap}
-                  selectedSet={selectedSet}
-                  config={config}
-                  onEntityClick={onEntityClick}
-                  onEntityDoubleClick={onEntityDoubleClick}
-                />
-              )
-            ))}
-          </div>
-        ) : (
-          ids.map((id) => (
-            <CombatantRow
-              key={id}
-              entityId={id}
-              combat={combat}
-              entityMap={entityMap}
-              selectedSet={selectedSet}
-              config={config}
-              onEntityClick={onEntityClick}
-              onEntityDoubleClick={onEntityDoubleClick}
-            />
-          ))
+    <>
+      <div className="relative">
+        <button
+          type="button"
+          className="sb-unit"
+          data-active={active || undefined}
+          data-done={done || undefined}
+          data-sel={ids.some((id) => selectedSet.has(id)) || undefined}
+          data-hit={(isDirector && hit) || undefined}
+          onClick={(event) => onClick(event, ids)}
+          onDoubleClick={() => onFocus?.(first.id)}
+        >
+          <TokenFace entity={first} size={22} />
+          <span>
+            <em title={isDirector ? first.name : undefined}>{row.name}</em>
+            {done && <Check size={13} strokeWidth={3.5} aria-label="Done" className="flex-none" />}
+            {hidden && <EyeOff size={13} strokeWidth={2.6} aria-label="Hidden from players" className="flex-none" />}
+          </span>
+          {isDirector ? (
+            <b className={folded ? 'pr-5' : undefined}>{shown}/{max}</b>
+          ) : words.length === 1 ? (
+            <small className={folded ? 'pr-5' : undefined}>{words[0]}</small>
+          ) : <i className={folded ? 'pr-5' : undefined} />}
+        </button>
+        {folded && (
+          <button
+            type="button"
+            className="absolute right-1 top-1/2 grid size-5 -translate-y-1/2 place-items-center text-inherit"
+            aria-expanded={open}
+            aria-label={`${open ? 'Fold' : 'Show each of'} ${row.name}`}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? <ChevronDown size={15} strokeWidth={3} aria-hidden="true" /> : <ChevronRight size={15} strokeWidth={3} aria-hidden="true" />}
+          </button>
         )}
       </div>
-    </section>
+      {folded && open && row.members.map((member) => (
+        <MemberRow
+          key={member.id}
+          member={member}
+          combat={combat}
+          isDirector={isDirector}
+          hidden={isDirector && Boolean(hiddenIds?.has(member.id))}
+          selected={selectedSet.has(member.id)}
+          onClick={(event) => onClick(event, [member.id])}
+          onDoubleClick={() => onFocus?.(member.id)}
+        />
+      ))}
+    </>
   );
 }
 
-function VillainDisplayGroup({
-  group,
-  combat,
-  entityMap,
-  selectedSet,
-  config,
-  onEntityClick,
-  onEntityDoubleClick,
-}: {
-  group: CombatDisplayGroup;
+function MemberRow({ member, combat, isDirector, hidden, selected, onClick, onDoubleClick }: {
+  member: EntityData;
   combat: CombatState;
-  entityMap: Map<string, EntityData>;
-  selectedSet: Set<string>;
-  config: SideConfig;
-  onEntityClick: (event: MouseEvent, entityId: string) => void;
-  onEntityDoubleClick?: (entityId: string) => void;
+  isDirector: boolean;
+  hidden: boolean;
+  selected: boolean;
+  onClick: (event: MouseEvent) => void;
+  onDoubleClick: () => void;
 }) {
-  const acted = group.entityIds.filter((id) => combat.actedThisRound.includes(id)).length;
-  const isActive = Boolean(combat.activeEntityId && group.entityIds.includes(combat.activeEntityId));
-  const isComplete = acted === group.entityIds.length;
-
-  return (
-    <div className={cn(
-      'rounded border bg-zinc-950/30',
-      isActive ? config.border : 'border-zinc-800/80',
-    )}>
-      <div className={cn(
-        'flex items-center gap-2 border-b border-zinc-800/70 px-2 py-1.5 text-xs',
-        isActive ? config.active : 'text-zinc-400',
-      )}>
-        <Shield className={cn('size-3.5 shrink-0', config.accent)} />
-        <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
-        <span className={cn(
-          'text-[10px] tabular-nums',
-          isComplete ? 'text-zinc-500' : 'text-zinc-300',
-        )}>
-          {acted}/{group.entityIds.length}
-        </span>
-      </div>
-      <div className="px-1 py-1">
-        {group.entityIds.map((id) => (
-          <CombatantRow
-            key={id}
-            entityId={id}
-            combat={combat}
-            entityMap={entityMap}
-            selectedSet={selectedSet}
-            config={config}
-            onEntityClick={onEntityClick}
-            onEntityDoubleClick={onEntityDoubleClick}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CombatantRow({
-  entityId,
-  combat,
-  entityMap,
-  selectedSet,
-  config,
-  onEntityClick,
-  onEntityDoubleClick,
-}: {
-  entityId: string;
-  combat: CombatState;
-  entityMap: Map<string, EntityData>;
-  selectedSet: Set<string>;
-  config: SideConfig;
-  onEntityClick: (event: MouseEvent, entityId: string) => void;
-  onEntityDoubleClick?: (entityId: string) => void;
-}) {
-  const entity = entityMap.get(entityId);
-  const acted = combat.actedThisRound.includes(entityId);
-  const isActive = combat.activeEntityId === entityId;
-  const isSelected = selectedSet.has(entityId);
-
+  const { cur, max } = staminaOf(member);
+  const done = combat.actedThisRound.includes(member.id);
+  const words = conditionLine(member);
   return (
     <button
       type="button"
-      className={cn(
-        'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition',
-        isSelected && 'bg-sky-500/15 ring-1 ring-sky-400/60',
-        isActive
-          ? cn(config.active, 'font-medium')
-          : acted
-            ? 'text-zinc-600 line-through hover:bg-zinc-800/40'
-            : 'text-zinc-300 hover:bg-zinc-800/60',
-      )}
-      onClick={(event) => onEntityClick(event, entityId)}
-      onDoubleClick={() => onEntityDoubleClick?.(entityId)}
+      className="sb-unit sb-unit--sub"
+      data-active={combat.activeEntityId === member.id || undefined}
+      data-done={done || undefined}
+      data-sel={selected || undefined}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
     >
-      <span className={cn('size-1.5 shrink-0 rounded-full', isActive ? 'bg-amber-400' : acted ? 'bg-zinc-700' : 'bg-zinc-400')} />
-      <span className="min-w-0 flex-1 truncate">{entity?.name ?? entityId}</span>
-      {isActive && <span className="text-[9px] uppercase text-zinc-300">Active</span>}
-      {acted && !isActive && <span className="text-[10px] text-zinc-600">Done</span>}
+      <TokenFace entity={member} size={22} />
+      <span>
+        <em>{member.name}</em>
+        {done && <Check size={13} strokeWidth={3.5} aria-label="Done" className="flex-none" />}
+        {hidden && <EyeOff size={13} strokeWidth={2.6} aria-label="Hidden from players" className="flex-none" />}
+      </span>
+      {isDirector ? <b>{cur}/{max}</b> : words.length === 1 ? <small>{words[0]}</small> : <i />}
     </button>
   );
 }

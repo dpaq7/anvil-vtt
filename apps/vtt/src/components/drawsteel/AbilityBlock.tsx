@@ -42,7 +42,7 @@ function TierBadge({ label, compact }: { label: string; compact?: boolean }) {
     <span
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded border border-flow-player/30 bg-flow-player/10 font-mono font-black leading-none text-flow-player',
-        compact ? 'h-5 min-w-11 px-1.5 text-[10px]' : 'h-7 min-w-14 px-2 text-xs',
+        compact ? 'h-5 min-w-11 px-1.5 text-[13px]' : 'h-7 min-w-14 px-2 text-xs',
       )}
     >
       {label}
@@ -59,7 +59,7 @@ function KeywordPills({ keywords, compact }: { keywords?: string[]; compact?: bo
           key={keyword}
           className={cn(
             'rounded border border-zinc-700 bg-zinc-950/55 font-semibold uppercase tracking-wide text-zinc-300',
-            compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-1 text-[11px]',
+            compact ? 'px-1.5 py-0.5 text-[13px]' : 'px-2 py-1 text-[13px]',
           )}
         >
           {keyword}
@@ -91,11 +91,11 @@ function InfoItem({
     >
       <div className="flex items-center gap-2">
         <Icon className={cn('shrink-0 text-flow-player/70', compact ? 'size-3' : 'size-4')} />
-        <span className={cn('font-black uppercase tracking-[0.12em] text-zinc-500', compact ? 'text-[9px]' : 'text-[10px]')}>
+        <span className={cn('font-black uppercase tracking-[0.12em] text-zinc-500', compact ? 'text-[13px]' : 'text-[13px]')}>
           {label}
         </span>
       </div>
-      <p className={cn('mt-1.5 break-words font-medium leading-snug text-zinc-200', compact ? 'text-[11px]' : 'text-sm')}>
+      <p className={cn('mt-1.5 break-words font-medium leading-snug text-zinc-200', compact ? 'text-[13px]' : 'text-sm')}>
         {value}
       </p>
     </div>
@@ -124,11 +124,11 @@ function PowerRollBlock({ powerRoll, compact }: { powerRoll: DrawSteelPowerRoll;
     <section className={cn('rounded-md border border-amber-400/20 bg-amber-400/[0.04]', compact ? 'p-2' : 'p-3')}>
       <div className="flex items-center gap-2">
         <Crosshair className={cn('shrink-0 text-amber-200/75', compact ? 'size-3.5' : 'size-4')} />
-        <div className={cn('font-black uppercase tracking-[0.08em] text-amber-100', compact ? 'text-[11px]' : 'text-sm')}>
+        <div className={cn('font-black uppercase tracking-[0.08em] text-amber-100', compact ? 'text-[13px]' : 'text-sm')}>
           {powerRoll.roll || 'Power Roll'}
         </div>
       </div>
-      <div className={cn('mt-3 grid overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/45', compact ? 'text-[11px]' : 'text-sm')}>
+      <div className={cn('mt-3 grid overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/45', compact ? 'text-[13px]' : 'text-sm')}>
           {TIER_LABELS.map(([label, key]) => {
             const text = powerRoll[key];
             if (!text) return null;
@@ -156,10 +156,10 @@ function EffectsBlock({ effects, compact }: { effects?: DrawSteelEffectBlock[]; 
             {effect.name ? (
               <div className="flex items-center gap-2">
                 <Sparkles className={cn('shrink-0 text-rose-200/70', compact ? 'size-3' : 'size-4')} />
-                <div className={cn('font-black uppercase tracking-[0.1em] text-zinc-200', compact ? 'text-[10px]' : 'text-xs')}>{effect.name}</div>
+                <div className={cn('font-black uppercase tracking-[0.1em] text-zinc-200', compact ? 'text-[13px]' : 'text-xs')}>{effect.name}</div>
               </div>
             ) : null}
-            <p className={cn('whitespace-pre-wrap leading-relaxed text-zinc-300', compact ? 'mt-1 text-[11px]' : 'mt-2 text-sm')}>
+            <p className={cn('whitespace-pre-wrap leading-relaxed text-zinc-300', compact ? 'mt-1 text-[13px]' : 'mt-2 text-sm')}>
               {effect.text}
             </p>
           </div>
@@ -212,7 +212,7 @@ export function AbilityBlock({ ability, className, compact = false, disabled = f
               signature
                 ? 'border-flow-player/40 bg-flow-player/10 text-flow-player'
                 : 'border-creator-highlight/40 bg-creator-highlight/10 text-creator-highlight',
-              compact ? 'max-w-24 text-[9px]' : 'max-w-32 text-[10px]',
+              compact ? 'max-w-24 text-[13px]' : 'max-w-32 text-[13px]',
             )}
           >
             {type}

@@ -13,6 +13,7 @@ import type { SceneType } from "@anvil/ui";
 import type {
   SessionState,
   ClientMessage,
+  EntityData,
   AbilityResult,
 } from "../../types/protocol.js";
 import type { ConnectionStatus } from "../../hooks/useSessionSocket.js";
@@ -22,7 +23,14 @@ import {
   parseRespiteData,
   parseBattleData,
 } from "../../lib/scene-data.js";
-import { filterVisibleEntities } from "../../lib/fog-visibility.js";
+import {
+  filterVisibleEntities,
+  maskHiddenNames,
+} from "../../lib/fog-visibility.js";
+import { useSessionConnection } from "../../components/session/shell/connection-context.js";
+import { PlayerHeroCard } from "../../components/session/battle/PlayerHeroCard.js";
+import { RailLog } from "../../components/session/battle/RailLog.js";
+import type { AbilityGroup } from "../../components/session/battle/turn-slots.js";
 import { useAuthStore } from "../../stores/authStore.js";
 import { useAudioSync } from "../../hooks/useAudioSync.js";
 import { ParticipantStatusBar } from "../../components/session/ParticipantStatusBar.js";
@@ -83,6 +91,13 @@ export function PlayerView({
 }: PlayerViewProps) {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
+  // During a drop the table stays readable; actions that need the server wait.
+  const { paused } = useSessionConnection();
+  const [barTarget, setBarTarget] = useState<HTMLDivElement | null>(null);
+  const [abilityFilter, setAbilityFilter] = useState<{
+    group: AbilityGroup;
+    nonce: number;
+  } | null>(null);
 
   // Sync server audio commands to local HTML5 Audio playback
   const audioPlayback = useAudioSync(sessionState.audio);
@@ -94,18 +109,52 @@ export function PlayerView({
   );
   // Director-broadcast camera focus ("pull everyone here").
   const focusRequest = useSessionStore((s) => s.focusRequest);
-  const [rightRailTab, setRightRailTab] = useState<RightRailTab>("sheet");
+  const [rightRailTab, setRightRailTab] = useState<RightRailTab>("log");
   const [focusMode, setFocusMode] = useState(false);
   const initiativePromptedRef = useRef(false);
   const { scenes, activeSceneId, participants, entities, combat } =
     sessionState;
   const activeScene = scenes.find((s) => s.id === activeSceneId);
   const sceneType = (activeScene?.type as SceneType) ?? null;
-  const sceneData = activeScene?.data ?? {};
-  const entityNames = useMemo(
-    () => new Map(entities.map((e) => [e.id, e.name])),
-    [entities],
+  const sceneData = useMemo(() => activeScene?.data ?? {}, [activeScene?.data]);
+  // Everything a Player reads draws through the fog helpers: hidden creatures are absent from the
+  // tracker, the map and the roll card, and read "Something" in the log (DESIGN.md section 7).
+  const battleFog = useMemo(
+    () => (sceneType === "battle" ? parseBattleData(sceneData).fogZones : []),
+    [sceneData, sceneType],
   );
+  const playerVisibleEntities = useMemo(
+    () => filterVisibleEntities(entities, battleFog),
+    [entities, battleFog],
+  );
+  const entityNames = useMemo(
+    () => new Map(playerVisibleEntities.map((e) => [e.id, e.name])),
+    [playerVisibleEntities],
+  );
+  // The server leaves fogged creatures out of a Player's state and writes "Something" as it logs.
+  // A creature that walks into fog later is the gap: its older rows would still name it. Remember
+  // names seen; a creature still in the fight but no longer visible is hidden. One removed from the
+  // fight keeps its name, because that is history, not a secret.
+  const knownCreatures = useRef(new Map<string, EntityData>());
+  for (const entity of playerVisibleEntities) {
+    if (entity.type !== "hero") knownCreatures.current.set(entity.id, entity);
+  }
+  const playerLog = useMemo(() => {
+    const entries = sessionState.actionLog ?? [];
+    const visibleIds = new Set(playerVisibleEntities.map((e) => e.id));
+    const inFight = new Set(combat?.villainEntities ?? []);
+    const hidden = [...knownCreatures.current.values()].filter(
+      (e) => inFight.has(e.id) && !visibleIds.has(e.id),
+    );
+    if (hidden.length === 0) return entries;
+    const mask = (text: string) => maskHiddenNames(text, hidden, playerVisibleEntities);
+    return entries.map((entry) => ({
+      ...entry,
+      title: mask(entry.title),
+      ...(entry.detail ? { detail: mask(entry.detail) } : {}),
+      ...(entry.actorName ? { actorName: mask(entry.actorName) } : {}),
+    }));
+  }, [sessionState.actionLog, combat?.villainEntities, playerVisibleEntities]);
 
   // Find this player's hero entity
   const me = participants.find((p) => p.userId === user?.id);
@@ -187,13 +236,25 @@ export function PlayerView({
     return used;
   }, [turnActions]);
 
+  // In Battle the hero card holds the turn, pinned above these tabs (`battle-player`).
   const rightRailTabs = useMemo<RightRailTab[]>(() => {
-    const tabs: RightRailTab[] = ["sheet"];
+    const tabs: RightRailTab[] = [];
     if (heroAbilities.length > 0) tabs.push("abilities");
-    if (combat) tabs.push("turn");
+    tabs.push("sheet");
+    if (combat && sceneType !== "battle") tabs.push("turn");
     if (sceneType) tabs.push("log");
     return tabs;
   }, [combat, heroAbilities.length, sceneType]);
+
+  const openAbilities = useCallback((group: AbilityGroup) => {
+    setAbilityFilter({ group, nonce: Date.now() });
+    setRightRailTab("abilities");
+  }, []);
+
+  // Leave targeting if the table drops: the click that confirms a target needs the server.
+  useEffect(() => {
+    if (paused) setPendingAction(null);
+  }, [paused]);
 
   useEffect(() => {
     if (!rightRailTabs.includes(rightRailTab)) {
@@ -555,6 +616,9 @@ export function PlayerView({
             onTargetCancel={handleTargetCancel}
             onRequestTargeting={handleRequestTargeting}
             ownHeroEntityId={heroEntityId}
+            sceneKey={activeSceneId}
+            barTarget={barTarget}
+            rollAnchorId={heroEntityId}
             onSelectEntity={handleSelectEntity}
             onSelectEntities={handleSelectEntities}
             onRollInitiative={handleRollInitiative}
@@ -571,10 +635,6 @@ export function PlayerView({
     }
   };
 
-  const battleFog =
-    sceneType === "battle" ? parseBattleData(sceneData).fogZones : [];
-  // A Player's tracker draws through the fog helper: fogged creatures are absent.
-  const playerVisibleEntities = filterVisibleEntities(entities, battleFog);
   const directorName =
     participants.find((p) => p.role === "director")?.username ?? null;
   const mayTakeTurn = canClaimTurn(combat, heroEntityId);
@@ -623,32 +683,24 @@ export function PlayerView({
       }
       left={
         focusMode ? undefined : combat ? (
-          <div className="h-full overflow-y-auto p-3">
-            <CombatTracker
-              combat={combat}
-              entities={playerVisibleEntities}
-              selectedEntityIds={selectedEntityIds}
-              isDirector={false}
-              currentHeroEntityId={heroEntityId}
-              onClaimTurn={(entityId) =>
-                send({
-                  type: "combat_action",
-                  action: { type: "CLAIM_TURN", entityId },
-                })
-              }
-              onSelectEntities={handleSelectEntities}
-              onSelectTurn={() => {}}
-              onEndTurn={() =>
-                send({
-                  type: "combat_action",
-                  action: { type: "END_TURN" },
-                })
-              }
-              onEndCombat={() => {}}
-              onAdjustMalice={() => {}}
-              onRollInitiative={handleRollInitiative}
-            />
-          </div>
+          <CombatTracker
+            combat={combat}
+            entities={playerVisibleEntities}
+            selectedEntityIds={selectedEntityIds}
+            isDirector={false}
+            currentHeroEntityId={heroEntityId}
+            onSelectEntities={handleSelectEntities}
+            onSelectTurn={() => {}}
+            onEndTurn={() =>
+              send({
+                type: "combat_action",
+                action: { type: "END_TURN" },
+              })
+            }
+            onEndCombat={() => {}}
+            onAdjustMalice={() => {}}
+            onRollInitiative={handleRollInitiative}
+          />
         ) : (
           <PlayerCharactersPanel
             participants={participants}
@@ -658,10 +710,30 @@ export function PlayerView({
       }
       right={
         focusMode ? undefined : (
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          {sceneType === "battle" && heroEntity && (
+            <PlayerHeroCard
+              hero={heroEntity}
+              turnActions={turnActions}
+              isMyTurn={isMyTurn}
+              conditions={heroConditions}
+              onCatchBreath={handleCatchBreath}
+              onDefend={handleDefend}
+              onEndTurn={() =>
+                send({
+                  type: "combat_action",
+                  action: { type: "END_TURN" },
+                })
+              }
+              onOpenAbilities={openAbilities}
+              onRollCharacteristic={handleRollCharacteristic}
+              onRollResource={handleRollResource}
+            />
+          )}
           <Tabs
             value={rightRailTab}
             onValueChange={(value) => setRightRailTab(value as RightRailTab)}
-            className="flex h-full min-h-0 flex-col overflow-hidden"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <TabsList className={RAIL_TABS_LIST_CLASS}>
               {rightRailTabs.includes("sheet") && (
@@ -711,6 +783,7 @@ export function PlayerView({
                 abilities={heroAbilities}
                 usedActionTypes={usedActionTypes}
                 onUseAbility={handleUseAbility}
+                requestedFilter={abilityFilter}
               />
             </TabsContent>
 
@@ -738,20 +811,33 @@ export function PlayerView({
             )}
 
             <TabsContent value="log" className={RAIL_TAB_CONTENT_CLASS}>
-              <ActionLogPanel
-                entries={sessionState.actionLog ?? []}
-                sceneType={sceneType}
-                activeSceneId={activeSceneId}
-                send={send}
-                showDiceControls={sceneType !== "battle"}
-                className="h-full border-0"
-              />
+              {sceneType === "battle" ? (
+                <div className="sb-rail-body h-full">
+                  <RailLog
+                    entries={playerLog}
+                    sceneType={sceneType}
+                    activeSceneId={activeSceneId}
+                  />
+                </div>
+              ) : (
+                <ActionLogPanel
+                  entries={playerLog}
+                  sceneType={sceneType}
+                  activeSceneId={activeSceneId}
+                  send={send}
+                  showDiceControls
+                  className="h-full border-0"
+                />
+              )}
             </TabsContent>
           </Tabs>
+          </div>
         )
       }
       bar={
-        focusMode ? undefined : (
+        sceneType === "battle" ? (
+          <div ref={setBarTarget} className="flex h-full min-w-0 flex-1 items-center" />
+        ) : focusMode ? undefined : (
           <PlayerHeroCommandBar
             hero={heroEntity ?? null}
             combatActive={Boolean(combat)}

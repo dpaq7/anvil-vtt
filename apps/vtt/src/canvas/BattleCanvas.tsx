@@ -12,6 +12,9 @@ import { FogLayer } from './layers/FogLayer.js';
 import { DrawingLayer } from './layers/DrawingLayer.js';
 import { TerrainLayer } from './layers/TerrainLayer.js';
 import { TargetingLayer } from './layers/TargetingLayer.js';
+import { LabelLayer } from './layers/LabelLayer.js';
+import { buildTokenLabels } from './labels.js';
+import { isInFog } from '../lib/fog-visibility.js';
 import { ViewportSystem } from './systems/ViewportSystem.js';
 import { InteractionManager } from './systems/InteractionManager.js';
 import type {
@@ -19,7 +22,7 @@ import type {
   TargetingModeContext,
 } from './systems/InteractionManager.js';
 import type { Segment } from './vision/VisibilityCalculator.js';
-import type { EntityData } from '../types/protocol.js';
+import type { CombatState, EntityData } from '../types/protocol.js';
 import type { DrawingData } from './layers/DrawingLayer.js';
 import type { TerrainZoneData } from './layers/TerrainLayer.js';
 import type { FogZoneData } from './layers/FogLayer.js';
@@ -35,14 +38,8 @@ import {
   useCanvasTheme,
 } from './theme.js';
 
-/** Map colours are art: the same in both themes. Side colours go in plan Task 14. */
+/** Map colours are art: the same in both themes. Side reads by shape, not colour. */
 const ART_PALETTE = CANVAS_THEME.dark;
-
-const sideColorForType = (type: string): number => {
-  if (type === 'hero') return ART_PALETTE.sideHero;
-  if (type === 'monster') return ART_PALETTE.sideMonster;
-  return ART_PALETTE.sideNpc;
-};
 
 type RendererPreference = 'webgl' | 'canvas';
 
@@ -82,7 +79,7 @@ const getEntityTokenSize = (entity: EntityData): number => {
   return Number.isFinite(size) ? Math.max(1, size) : 1;
 };
 
-const tokenColorForType = (type: string): string => toCssHex(sideColorForType(type));
+const tokenColorForType = (_type: string): string => toCssHex(ART_PALETTE.tokenOutline);
 
 const formatErrorForLog = (error: unknown): string => {
   if (error instanceof Error) return `${error.name}: ${error.message}`;
@@ -339,6 +336,10 @@ export interface BattleCanvasProps {
   walls?: Segment[];
   isDirector: boolean;
   heroPosition?: { x: number; y: number } | null;
+  /** For squad labels: which creatures act together. */
+  combat?: CombatState | null;
+  /** The viewer's own hero: its label reads "You". */
+  ownEntityId?: string | null;
   onSelectEntity: (entityId: string | null) => void;
   onMoveEntity: (entityId: string, x: number, y: number) => void;
   onMultiSelectEntities?: (entityIds: string[]) => void;
@@ -433,6 +434,8 @@ export function BattleCanvas({
   walls: _walls = [],
   isDirector,
   heroPosition: _heroPosition,
+  combat,
+  ownEntityId = null,
   onSelectEntity,
   onMoveEntity,
   onMultiSelectEntities,
@@ -486,12 +489,15 @@ export function BattleCanvas({
     tokens: TokenLayer;
     targeting: TargetingLayer;
     fog: FogLayer;
+    labels: LabelLayer;
     world: Container;
     viewport: ViewportSystem;
     interaction: InteractionManager;
   } | null>(null);
 
   // Keep callback refs fresh to avoid stale closures in the init effect
+  const isDirectorRef = useRef(isDirector);
+  isDirectorRef.current = isDirector;
   const onZoomChangeRef = useRef(onZoomChange);
   onZoomChangeRef.current = onZoomChange;
   const onBackgroundLoadedRef = useRef(onBackgroundLoaded);
@@ -623,6 +629,16 @@ export function BattleCanvas({
           world,
           canvas,
         );
+        // Fixed-size plates sit over the world, not in it, and take no pointer events.
+        const labels = new LabelLayer(tokens, world, () => viewport.getViewSize());
+        labels.sortableChildren = true;
+        app.stage.addChild(labels);
+        app.ticker.add(() => labels.tick());
+        tokens.onHit = (entityId, amount) => {
+          // A Player never reads a creature's numbers: the burst pops without one.
+          const entity = tokens.getTokenEntity(entityId);
+          labels.showHit(entityId, isDirectorRef.current || entity?.type === 'hero' ? amount : null);
+        };
         viewport.onZoomChange = (zoom) => onZoomChangeRef.current?.(zoom);
 
         // Expose viewport to parent via ref
@@ -697,6 +713,7 @@ export function BattleCanvas({
           tokens,
           targeting,
           fog,
+          labels,
           world,
           viewport,
           interaction,
@@ -834,34 +851,36 @@ export function BattleCanvas({
 
     // Add new tokens or update changed ones
     for (const entity of entities) {
-      const color = sideColorForType(entity.type);
       const size = getEntityTokenSize(entity);
       const active = activeEntityId === entity.id;
       const acted = actedSet.has(entity.id);
+      // Director only: the shut-eye badge. Fog logic stays in fog-visibility.ts.
+      const hidden = isDirector && entity.type !== 'hero' && isInFog(entity.x, entity.y, fogZones);
       if (!prevIds.has(entity.id)) {
         // New entity — add token
         layers.tokens.addToken(entity, {
           size,
-          color,
           selected: selectedSet.has(entity.id),
           active,
           acted,
+          hidden,
         });
       } else {
         // Existing entity — update in place (position, selection, stamina, conditions, turn cues)
         layers.tokens.updateToken(entity, {
           size,
-          color,
           selected: selectedSet.has(entity.id),
           active,
           acted,
+          hidden,
         });
       }
     }
 
     prevEntityIdsRef.current = currentIds;
     layers.interaction.rebuildIndex();
-  }, [entities, selectedEntityId, selectedEntityIds, actedEntityIds, activeEntityId, pixiReady]);
+    layers.labels.setContext({ labels: buildTokenLabels(entities, combat ?? null), ownEntityId });
+  }, [entities, selectedEntityId, selectedEntityIds, actedEntityIds, activeEntityId, isDirector, fogZones, combat, ownEntityId, pixiReady]);
 
   // Update fog zones
   useEffect(() => {
@@ -869,6 +888,7 @@ export function BattleCanvas({
     if (!layers) return;
     layers.fog.setDirectorMode(isDirector);
     layers.fog.sync(fogZones);
+    layers.labels.setContext({ isDirector, fogZones, panelRoot: containerRef.current?.parentElement ?? null });
   }, [isDirector, fogZones, pixiReady]);
 
   // Wire (or detach) the editable overlay layers whenever the editing role

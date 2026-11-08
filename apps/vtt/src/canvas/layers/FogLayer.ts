@@ -62,14 +62,43 @@ export class FogLayer extends Container {
     const color = this.directorMode ? palette.fogPreview : palette.fog;
     const alpha = this.directorMode ? palette.fogPreviewAlpha : palette.fogAlpha;
 
+    // The client can hold one zone twice. Draw it once, or its hatching doubles.
+    const seen = new Set<string>();
+    const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
     for (const zone of this.zones) {
-      const px = zone.x * this.cellSize;
-      const py = zone.y * this.cellSize;
-      const pw = zone.w * this.cellSize;
-      const ph = zone.h * this.cellSize;
-      this.fog.rect(px, py, pw, ph);
+      const key = `${zone.x},${zone.y},${zone.w},${zone.h}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rects.push({
+        x: zone.x * this.cellSize,
+        y: zone.y * this.cellSize,
+        w: zone.w * this.cellSize,
+        h: zone.h * this.cellSize,
+      });
     }
+
+    for (const r of rects) this.fog.rect(r.x, r.y, r.w, r.h);
     this.fog.fill({ color, alpha });
+
+    // The Director's preview is hatched: 3 px ink stripes, 12 px apart, at 45 degrees.
+    if (this.directorMode) {
+      const gap = 12 * Math.SQRT2;
+      for (const r of rects) {
+        const first = Math.ceil((r.x + r.y) / gap) * gap;
+        for (let k = first; k < r.x + r.w + r.y + r.h; k += gap) {
+          // The line x + y = k, clipped to this rectangle.
+          const x0 = Math.max(r.x, k - (r.y + r.h));
+          const x1 = Math.min(r.x + r.w, k - r.y);
+          if (x1 <= x0) continue;
+          this.fog.moveTo(x0, k - x0).lineTo(x1, k - x1);
+        }
+      }
+      this.fog.stroke({ width: 3, color: palette.fogHatch });
+    }
+
+    // Every fog has a 3 px ink edge.
+    for (const r of rects) this.fog.rect(r.x, r.y, r.w, r.h);
+    this.fog.stroke({ width: 3, color: palette.fogEdge });
   }
 
   /**

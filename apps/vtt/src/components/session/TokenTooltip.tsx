@@ -1,61 +1,38 @@
+import { cleanName, conditionLine, staminaOf, staminaState } from '../../lib/faces.js';
 import type { EntityData } from '../../types/protocol.js';
-import { conditionNames } from '../../lib/conditions.js';
-
-/** Condition ID → display name */
-const CONDITION_NAMES: Record<string, string> = {
-  bleeding: 'Bleeding',
-  dazed: 'Dazed',
-  frightened: 'Frightened',
-  grabbed: 'Grabbed',
-  prone: 'Prone',
-  restrained: 'Restrained',
-  slowed: 'Slowed',
-  taunted: 'Taunted',
-  weakened: 'Weakened',
-};
+import { Meter } from './battle/HeroRow.js';
 
 export interface TokenTooltipProps {
   entity: EntityData;
   x: number;
   y: number;
+  /** A Player reads a creature by condition words, never by stamina. */
+  isDirector?: boolean;
 }
 
 /**
- * Floating tooltip shown above a hovered token on the battle canvas.
- * Displays name, current/max stamina, and active conditions.
+ * Floating box above a hovered token. Name, stamina for those who may read it, and conditions.
+ * Uses the popover's box (DESIGN.md, Popover). Winded and dying say so in words.
  */
-export function TokenTooltip({ entity, x, y }: TokenTooltipProps) {
-  const maxStamina = typeof entity['maxStamina'] === 'number' ? (entity['maxStamina'] as number) : 0;
-  const currentStamina = typeof entity['currentStamina'] === 'number' ? (entity['currentStamina'] as number) : maxStamina;
-  const conditions = conditionNames(entity) as string[];
+export function TokenTooltip({ entity, x, y, isDirector = false }: TokenTooltipProps) {
+  const { cur, max } = staminaOf(entity);
+  const showStamina = max > 0 && (isDirector || entity.type === 'hero');
+  const state = entity.type === 'hero' ? staminaState(entity, 'hero') : 'healthy';
+  const conditions = conditionLine(entity);
 
   return (
-    <div
-      className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-full rounded-lg border border-zinc-700/50 bg-zinc-900/90 px-3 py-1.5 shadow-xl backdrop-blur-sm"
-      style={{ left: x, top: y - 12 }}
-    >
-      {/* Name */}
-      <p className="whitespace-nowrap text-xs font-semibold text-zinc-100">
-        {entity.name}
-      </p>
-
-      {/* Stamina */}
-      {maxStamina > 0 && (
-        <p className="text-[10px] text-zinc-400">
-          Stamina:{' '}
-          <span className={currentStamina <= maxStamina * 0.25 ? 'text-red-400' : currentStamina <= maxStamina * 0.5 ? 'text-amber-400' : 'text-emerald-400'}>
-            {currentStamina}
-          </span>
-          <span className="text-zinc-500"> / {maxStamina}</span>
-        </p>
-      )}
-
-      {/* Conditions */}
-      {conditions.length > 0 && (
-        <p className="mt-0.5 text-[10px] text-amber-400/80">
-          {conditions.map((c) => CONDITION_NAMES[c] ?? c).join(', ')}
-        </p>
-      )}
+    <div className="sb-tip" style={{ left: x, top: y }} data-map-panel>
+      <div className="sb-pop">
+        <strong>{cleanName(entity.name)}</strong>
+        {showStamina && (
+          <>
+            <div className="sb-pop__st"><span>Stamina</span><b>{cur} / {max}</b></div>
+            <Meter cur={cur} max={max} winded={state === 'winded'} />
+          </>
+        )}
+        {state !== 'healthy' && <p className="sb-note"><b>{state === 'dying' ? 'Dying' : 'Winded'}</b></p>}
+        {conditions.length > 0 && <p className="sb-note">{conditions.join(', ')}</p>}
+      </div>
     </div>
   );
 }

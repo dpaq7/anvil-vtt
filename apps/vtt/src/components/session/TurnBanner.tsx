@@ -2,6 +2,8 @@ import type { SceneType } from '@anvil/ui';
 import type { CombatState, EntityData } from '../../types/protocol.js';
 import { useSessionConnection } from './shell/connection-context.js';
 import { canClaimTurn } from '../../lib/turn.js';
+import { firstName } from '../../lib/faces.js';
+import { TokenFace } from './battle/TokenFace.js';
 
 /*
  * The Player's top row beside the live board (DESIGN.md sections 4 and 6).
@@ -20,7 +22,6 @@ interface PlayerTopBandProps {
   onTakeTurn: (heroEntityId: string) => void;
 }
 
-const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
 export function PlayerTopBand({ mode, sceneName, combat, hero, entities, directorName, onTakeTurn }: PlayerTopBandProps) {
   const { paused } = useSessionConnection();
@@ -32,11 +33,10 @@ export function PlayerTopBand({ mode, sceneName, combat, hero, entities, directo
   if (battle && hero && (mayTake || acting)) {
     const lastId = combat.actedThisRound[combat.actedThisRound.length - 1];
     const last = lastId ? entities.find((e) => e.id === lastId && e.type === 'hero') : undefined;
-    const portrait = typeof hero['portraitUrl'] === 'string' ? (hero['portraitUrl'] as string) : null;
     return (
       <div className="sb-turn" role="status">
         <div className="sb-turn__f" aria-hidden="true">
-          {portrait ? <img src={portrait} alt="" /> : firstName(hero.name).slice(0, 1).toUpperCase()}
+          <TokenFace entity={hero} size={38} />
         </div>
         <strong>Your turn, {firstName(hero.name)}</strong>
         <small>
@@ -87,7 +87,7 @@ function bandLine(
       if (!combat) return 'The fight has not started yet.';
       if (combat.initiativeRoll === null || combat.activeSide === null) return 'Roll initiative to start.';
       const active = combat.activeEntityId ? entities.find((e) => e.id === combat.activeEntityId) : undefined;
-      if (active?.type === 'hero') return `${active.name} is acting.`;
+      if (active?.type === 'hero') return `${firstName(active.name)} is acting.`;
       if (combat.activeSide === 'villains') return `${director}'s side is acting.`;
       return `Round ${combat.round}. Heroes choose who goes next.`;
     }

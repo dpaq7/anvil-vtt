@@ -3,6 +3,8 @@ import { Skull, Minus, Plus } from 'lucide-react';
 import { Badge, ScrollArea, Button } from '@anvil/ui';
 import type { EntityData, CombatState, ClientMessage } from '../../types/protocol.js';
 import { CreatureCard } from './CreatureCard.js';
+import { TokenFace } from './battle/TokenFace.js';
+import { useSessionConnection } from './shell/connection-context.js';
 
 export interface CreatureTrackerProps {
   entities: EntityData[];
@@ -84,12 +86,12 @@ export function CreatureTracker({ entities, combat, selectedEntityIds = [], onSe
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2">
-        <Skull className="size-3.5 text-red-400" />
+        <Skull className="size-3.5" />
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Creatures
         </span>
         {totalCount > 0 && (
-          <Badge variant="secondary" className="ml-auto px-1.5 py-0 text-[10px]">
+          <Badge variant="secondary" className="ml-auto px-1.5 py-0 text-[13px]">
             {totalCount}
           </Badge>
         )}
@@ -101,7 +103,7 @@ export function CreatureTracker({ entities, combat, selectedEntityIds = [], onSe
           <p className="p-4 text-center text-xs text-zinc-600">
             No creatures in scene.
             <br />
-            <span className="text-[10px] text-zinc-700">
+            <span className="text-[13px] text-zinc-700">
               Add via Bestiary or Assets panel.
             </span>
           </p>
@@ -196,28 +198,26 @@ function SquadCard({ squad, currentTurnEntityId, selectedEntityIds, onSelect, se
   };
 
   return (
-    <div className={`border-b border-zinc-800/50 ${isActive ? 'bg-red-950/20' : ''}`}>
+    <div className={`border-b border-zinc-800/50 ${isActive ? 'bg-active-soft' : ''}`}>
       {/* Header */}
       <button
         type="button"
-        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition hover:bg-zinc-800/50 ${isSelected ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-400/50' : ''}`}
+        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition hover:bg-zinc-800/50 ${isSelected ? 'outline outline-2 -outline-offset-2 outline-text' : ''}`}
         onClick={(event) => onSelect?.(
           members.map((member) => member.id),
           event.ctrlKey || event.metaKey || event.shiftKey,
         )}
       >
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-950/40 ring-2 ring-red-500/70">
-          <span className="text-[10px] font-bold text-red-300">{alive}</span>
-        </div>
+        {members[0] && <TokenFace entity={members[0]} size={28} />}
         <div className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium text-zinc-200">
             {baseName} Squad
           </span>
-          <span className="text-[10px] text-zinc-500">
+          <span className="text-[13px] text-zinc-500">
             {alive} minion{alive !== 1 ? 's' : ''} alive
           </span>
         </div>
-        <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
+        <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[13px]">
           Minion
         </Badge>
       </button>
@@ -225,13 +225,13 @@ function SquadCard({ squad, currentTurnEntityId, selectedEntityIds, onSelect, se
       {/* Collective stamina bar */}
       {totalMaxStamina > 0 && (
         <div className="px-3 pb-1">
-          <div className="flex items-baseline justify-between text-[10px]">
+          <div className="flex items-baseline justify-between text-[13px]">
             <span className="text-zinc-500">Squad HP</span>
             <span className="text-zinc-400">{totalStamina} / {totalMaxStamina}</span>
           </div>
-          <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-zinc-800">
+          <div className="mt-0.5 h-2 overflow-hidden bg-well">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500 transition-all"
+              className="h-full rounded-full bg-text transition-all"
               style={{ width: `${totalMaxStamina > 0 ? (totalStamina / totalMaxStamina) * 100 : 0}%` }}
             />
           </div>
@@ -247,11 +247,12 @@ function SquadCard({ squad, currentTurnEntityId, selectedEntityIds, onSelect, se
 // ── Quick damage/heal input for squads ──
 
 function SquadDamageRow({ onDamage, onHeal }: { onDamage: (n: number) => void; onHeal: (n: number) => void }) {
+  const { paused } = useSessionConnection();
   const [input, setInput] = useState('');
 
   const handleSubmit = () => {
     const val = parseInt(input, 10);
-    if (!val || val === 0) return;
+    if (!val || val === 0 || paused) return;
     if (val > 0) onDamage(val);
     else onHeal(Math.abs(val));
     setInput('');
@@ -260,19 +261,21 @@ function SquadDamageRow({ onDamage, onHeal }: { onDamage: (n: number) => void; o
   return (
     <div className="flex items-center gap-1 px-3 py-1.5">
       {/* size-9 keeps these frequent combat controls tappable on tablets */}
-      <Button variant="ghost" size="icon" className="size-9" onClick={() => onDamage(1)} title="1 damage">
-        <Minus className="size-3.5 text-red-400" />
+      <Button variant="ghost" size="icon" className="size-9" disabled={paused} onClick={() => onDamage(1)} title="1 damage" aria-label="1 damage">
+        <Minus className="size-3.5" />
       </Button>
       <input
         type="number"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
-        placeholder="+/-"
+        aria-label="Squad damage or healing"
+        disabled={paused}
+        placeholder={paused ? 'Back' : '+/-'}
         className="h-9 w-12 rounded border border-zinc-700 bg-zinc-800 px-1 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
       />
-      <Button variant="ghost" size="icon" className="size-9" onClick={() => onHeal(1)} title="1 heal">
-        <Plus className="size-3.5 text-emerald-400" />
+      <Button variant="ghost" size="icon" className="size-9" disabled={paused} onClick={() => onHeal(1)} title="1 heal" aria-label="1 heal">
+        <Plus className="size-3.5" />
       </Button>
     </div>
   );

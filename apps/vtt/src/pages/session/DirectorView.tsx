@@ -52,6 +52,9 @@ import { PlayerCharactersPanel } from "../../components/session/PlayerCharacters
 import { getJoinedPlayerCharacters } from "../../components/session/player-characters.js";
 import { CreatureTracker } from "../../components/session/CreatureTracker.js";
 import { CombatTracker } from "../../components/session/CombatTracker.js";
+import { NowCard } from "../../components/session/battle/NowCard.js";
+import { RailLog } from "../../components/session/battle/RailLog.js";
+import { hiddenEntities } from "../../lib/fog-visibility.js";
 import { DamageDialog } from "../../components/session/DamageDialog.js";
 import { ActionLogPanel } from "../../components/session/ActionLogPanel.js";
 import { AssetPanel } from "../../components/session/AssetPanel.js";
@@ -128,6 +131,9 @@ export function DirectorView({
   onRetry,
 }: DirectorViewProps) {
   const navigate = useNavigate();
+  // During a drop the table stays readable; actions that need the server wait.
+  const { paused } = useSessionConnection();
+  const [barTarget, setBarTarget] = useState<HTMLDivElement | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
   const monsterPortraits = useAssetsStore((s) => s.monsterPortraits);
@@ -148,7 +154,9 @@ export function DirectorView({
 
   const [showHelp, setShowHelp] = useState(false);
   const [leftRailTab, setLeftRailTab] = useState<LeftRailTab>("combat");
-  const [rightRailTab, setRightRailTab] = useState<RightRailTab>("assets");
+  const [rightRailTab, setRightRailTab] = useState<RightRailTab>(
+    sceneType === "battle" ? "combat" : "assets",
+  );
   const [focusMode, setFocusMode] = useState(false);
   const [focusEntityRequest, setFocusEntityRequest] = useState<{
     entityId: string;
@@ -213,6 +221,12 @@ export function DirectorView({
   const currentGridOffsetY = clampGridOffset(
     gridOffsetYOverride ?? battleData?.gridOffsetY ?? 0,
     currentGridSquareSize,
+  );
+
+  // Director's view of who is under fog (the shut-eye marks). Fog logic stays in the helper.
+  const hiddenIds = useMemo(
+    () => new Set(hiddenEntities(entities, battleData?.fogZones ?? []).map((e) => e.id)),
+    [entities, battleData?.fogZones],
   );
 
   const heroCount = useMemo(
@@ -450,11 +464,18 @@ export function DirectorView({
   useKeyboardShortcuts({
     onEscape: () => handleSelectEntity(null),
     onSpace: () => {
+      // The End turn button says it is waiting; nothing is queued.
+      if (paused) return;
       if (combat && combat.activeEntityId)
         send({ type: "combat_action", action: { type: "END_TURN" } });
     },
     onHelp: () => setShowHelp((v) => !v),
   });
+
+  // Leave targeting if the table drops: the click that confirms a target needs the server.
+  useEffect(() => {
+    if (paused) setPendingAction(null);
+  }, [paused]);
 
   useEffect(() => {
     handleSelectEntity(null);
@@ -761,6 +782,9 @@ export function DirectorView({
               onSelectEntities={handleSelectEntities}
               onRollInitiative={undefined}
               focusEntityRequest={effectiveFocus}
+              sceneKey={activeSceneId}
+              barTarget={barTarget}
+              rollAnchorId={combat?.activeEntityId ?? null}
               send={send}
             />
             <OpportunityAttackPrompt send={send} />
@@ -857,7 +881,7 @@ export function DirectorView({
             {sceneType === "battle" && combat && (
               <TabsContent
                 value="combat"
-                className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-3`}
+                className={RAIL_TAB_CONTENT_CLASS}
               >
                 <CombatTracker
                   combat={combat}
@@ -865,7 +889,7 @@ export function DirectorView({
                   selectedEntityIds={selectedEntityIds}
                   isDirector
                   currentHeroEntityId={null}
-                  onClaimTurn={() => {}}
+                  hiddenIds={hiddenIds}
                   onSelectEntities={handleSelectEntities}
                   onSelectTurn={(entityId) =>
                     send({
@@ -997,61 +1021,65 @@ export function DirectorView({
             )}
 
             {sceneType === "battle" && (
-              <TabsContent
-                value="combat"
-                className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-4`}
-              >
-                {!combat ? (
-                  <div className="rounded border border-zinc-800 bg-zinc-900/70 p-3">
-                    <div className="mb-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                        Combat
-                      </p>
-                      <p className="mt-1 text-xs text-zinc-400">
-                        {heroCount} heroes · {creatureCount} villains
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="w-full bg-red-600 hover:bg-red-700"
-                      disabled={
-                        entities.some((entity) => entity.type === "hero") ===
-                          false ||
-                        entities.some(
-                          (entity) =>
-                            entity.type === "monster" || entity.type === "npc",
-                        ) === false
-                      }
-                      onClick={handleStartCombat}
-                    >
-                      Draw Steel!
-                    </Button>
-                  </div>
-                ) : (
-                  <DamageDialog
-                    entities={entities}
-                    onApplyDamage={(entityId, amount) =>
-                      send({
-                        type: "token_action",
-                        action: {
-                          kind: "manual-damage",
-                          targetId: entityId,
-                          amount,
-                        },
-                      })
-                    }
-                    onApplyHealing={(entityId, amount) =>
-                      send({
-                        type: "token_action",
-                        action: {
-                          kind: "manual-heal",
-                          targetId: entityId,
-                          amount,
-                        },
-                      })
-                    }
+              <TabsContent value="combat" className={RAIL_TAB_CONTENT_CLASS}>
+                <div className="sb-rail-body h-full">
+                  {!combat ? (
+                    <section className="sb-sec">
+                      <div className="sb-sub sb-sub--flat">
+                        <b>Combat</b>
+                        <span>{heroCount} heroes, {creatureCount} creatures</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="sb-end"
+                        data-wait={paused || undefined}
+                        disabled={
+                          paused ||
+                          entities.some((entity) => entity.type === "hero") === false ||
+                          entities.some(
+                            (entity) =>
+                              entity.type === "monster" || entity.type === "npc",
+                          ) === false
+                        }
+                        onClick={handleStartCombat}
+                      >
+                        {paused ? "Draw Steel!, when back" : "Draw Steel!"}
+                      </button>
+                    </section>
+                  ) : (
+                    <>
+                      <DamageDialog
+                        entities={entities}
+                        onApplyDamage={(entityId, amount) =>
+                          send({
+                            type: "token_action",
+                            action: {
+                              kind: "manual-damage",
+                              targetId: entityId,
+                              amount,
+                            },
+                          })
+                        }
+                        onApplyHealing={(entityId, amount) =>
+                          send({
+                            type: "token_action",
+                            action: {
+                              kind: "manual-heal",
+                              targetId: entityId,
+                              amount,
+                            },
+                          })
+                        }
+                      />
+                      <NowCard combat={combat} entities={entities} />
+                    </>
+                  )}
+                  <RailLog
+                    entries={sessionState.actionLog ?? []}
+                    sceneType={sceneType}
+                    activeSceneId={activeSceneId}
                   />
-                )}
+                </div>
               </TabsContent>
             )}
 
@@ -1232,6 +1260,11 @@ export function DirectorView({
             )}
           </Tabs>
         )
+      }
+      bar={
+        sceneType === "battle" ? (
+          <div ref={setBarTarget} className="flex h-full min-w-0 flex-1 items-center" />
+        ) : undefined
       }
       screen={renderStage()}
     >

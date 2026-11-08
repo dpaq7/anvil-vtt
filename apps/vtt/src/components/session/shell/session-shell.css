@@ -88,9 +88,6 @@
 
 /* Middle: two fixed rails, the screen takes what is left */
 .sb-mid { display: grid; grid-template-columns: var(--shape-rail-left) minmax(0, 1fr) var(--shape-rail-right); gap: 8px; min-height: 0; }
-.sb-mid[data-rails="right"] { grid-template-columns: minmax(0, 1fr) var(--shape-rail-right); }
-.sb-mid[data-rails="left"] { grid-template-columns: var(--shape-rail-left) minmax(0, 1fr); }
-.sb-mid[data-rails="none"] { grid-template-columns: minmax(0, 1fr); }
 .sb-rail { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 /* Rail tabs: one row of equal tabs, 34 px, 13 px bold; counts in regular weight */
 .sb-rail [role="tablist"] { display: flex; flex: none; width: 100%; height: var(--layout-tabs); min-height: var(--layout-tabs); padding: 0; box-shadow: none; border-bottom: var(--shape-frame-quiet) solid var(--color-line); background: var(--color-well); }
@@ -98,6 +95,8 @@
 .sb-rail [role="tab"][data-state="active"] { background: var(--color-text); color: var(--color-surface); }
 .sb-rail [role="tab"] em { font-style: normal; font-weight: 400; }
 .sb-rail [role="tabpanel"] { margin-top: 0; }
+/* The Player's tabs sit under the pinned hero card. */
+.sb-sec + [role="tablist"], .sb-sec + div > [role="tablist"] { border-top: var(--shape-frame-quiet) solid var(--color-line); }
 
 /* Centre: the screen in heavy ink, the bar under it */
 .sb-centre { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }

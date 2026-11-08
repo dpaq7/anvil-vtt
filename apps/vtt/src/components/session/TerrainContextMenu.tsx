@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Eye, EyeOff, Trash2, X } from 'lucide-react';
 import { Button } from '@anvil/ui';
+import { useSessionConnection } from './shell/connection-context.js';
 import type { TerrainZoneData } from '../../canvas/layers/TerrainLayer.js';
 
 interface TerrainContextMenuProps {
@@ -20,6 +21,7 @@ export function TerrainContextMenu({
   onDelete,
   onClose,
 }: TerrainContextMenuProps) {
+  const { paused } = useSessionConnection();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,51 +57,46 @@ export function TerrainContextMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute z-40 w-[220px] overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/95 shadow-2xl backdrop-blur-sm"
+      className="sb-pop absolute z-40 w-[var(--pop)]"
+      data-map-panel
       style={{ left: clampedX, top: clampedY }}
       onContextMenu={(event) => event.stopPropagation()}
     >
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-zinc-100">{terrain.name}</p>
-          <p className="text-[10px] text-zinc-500">
-            {terrain.w} x {terrain.h} tiles
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 text-zinc-500 hover:text-zinc-300"
-          onClick={onClose}
-        >
+      <div className="flex items-start gap-1">
+        <strong className="min-w-0 flex-1">{terrain.name}</strong>
+        <Button variant="ghost" size="icon" className="size-6 shrink-0" aria-label="Close menu" onClick={onClose}>
           <X className="size-3.5" />
         </Button>
       </div>
-
-      <div className="p-2">
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
-          onClick={() => {
-            onToggleHidden(terrain);
-            onClose();
-          }}
-        >
-          <HiddenIcon className="size-4 text-zinc-500" />
-          {terrain.hidden ? 'Show to players' : 'Hide from players'}
-        </button>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm text-red-300 transition hover:bg-red-950/40 hover:text-red-200"
-          onClick={() => {
-            onDelete(terrain.id);
-            onClose();
-          }}
-        >
-          <Trash2 className="size-4" />
+      <p className="sb-note">{terrain.w} x {terrain.h} tiles</p>
+      <button
+        type="button"
+        className="sb-pop__row"
+        disabled={paused}
+        onClick={() => {
+          onToggleHidden(terrain);
+          onClose();
+        }}
+      >
+        <span className="flex items-center gap-1.5">
+          <HiddenIcon className="size-3.5" aria-hidden="true" />
+          {paused ? 'Wait, when back' : terrain.hidden ? 'Show to players' : 'Hide from players'}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="sb-pop__row"
+        disabled={paused}
+        onClick={() => {
+          onDelete(terrain.id);
+          onClose();
+        }}
+      >
+        <span className="flex items-center gap-1.5">
+          <Trash2 className="size-3.5" aria-hidden="true" />
           Delete tile
-        </button>
-      </div>
+        </span>
+      </button>
     </div>
   );
 }

@@ -3,24 +3,12 @@ import { ChevronDown, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react';
 import { StaminaBar, Badge, Button } from '@anvil/ui';
 import type { EntityData, ClientMessage } from '../../types/protocol.js';
 import { conditionNames } from '../../lib/conditions.js';
+import { conditionLine } from '../../lib/faces.js';
+import { TokenFace } from './battle/TokenFace.js';
+import { CONDITION_ICONS } from './battle/condition-icons.js';
+import { useSessionConnection } from './shell/connection-context.js';
 
-/** Compact condition ID → emoji mapping (Draw Steel 9 conditions) */
-const CONDITION_EMOJIS: Record<string, string> = {
-  bleeding: '\u{1FA78}',
-  dazed: '\u{1F4AB}',
-  frightened: '\u{1F628}',
-  grabbed: '\u{270A}',
-  prone: '\u{1F53B}',
-  restrained: '\u26D3\uFE0F',
-  slowed: '\u{1F40C}',
-  taunted: '\u{1F624}',
-  weakened: '\u{1F494}',
-};
-
-const ALL_CONDITION_IDS = Object.keys(CONDITION_EMOJIS);
-
-/** Color ring for monster type/role */
-const MONSTER_RING = 'ring-red-500/70';
+const ALL_CONDITION_IDS = Object.keys(CONDITION_ICONS);
 
 export interface CreatureCardProps {
   entity: EntityData;
@@ -38,9 +26,10 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
   const currentStamina = (entity['currentStamina'] as number) ?? maxStamina;
   const level = (entity['level'] as number) ?? 1;
   const conditions = conditionNames(entity) as string[];
+  const { paused } = useSessionConnection();
 
   const handleDamage = (amount: number) => {
-    if (amount <= 0) return;
+    if (amount <= 0 || paused) return;
     send({
       type: 'combat_action',
       action: { type: 'APPLY_DAMAGE', entityId: entity.id, amount },
@@ -48,7 +37,7 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
   };
 
   const handleHeal = (amount: number) => {
-    if (amount <= 0) return;
+    if (amount <= 0 || paused) return;
     send({
       type: 'combat_action',
       action: { type: 'APPLY_HEALING', entityId: entity.id, amount },
@@ -87,7 +76,7 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
 
   return (
     <div
-      className={`border-b border-zinc-800/50 ${isActive ? 'bg-red-950/20' : ''} ${selected ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-400/50' : ''}`}
+      className={`border-b border-zinc-800/50 ${isActive ? 'bg-active-soft' : ''} ${selected ? 'outline outline-2 -outline-offset-2 outline-text' : ''}`}
     >
       {/* Header row */}
       <button
@@ -99,18 +88,8 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
         }}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition hover:bg-zinc-800/50"
       >
-        {/* Color ring avatar */}
-        <div
-          className={`flex size-7 shrink-0 items-center justify-center rounded-full ring-2 ${MONSTER_RING} bg-red-950/40`}
-        >
-          <span className="text-xs">
-            {expanded ? (
-              <ChevronDown className="size-3 text-zinc-400" />
-            ) : (
-              <ChevronRight className="size-3 text-zinc-400" />
-            )}
-          </span>
-        </div>
+        <TokenFace entity={entity} size={28} />
+        {expanded ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
 
         {/* Name + level */}
         <div className="min-w-0 flex-1">
@@ -119,13 +98,13 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
           </span>
           {/* Condition emoji row (compact) */}
           {conditions.length > 0 && (
-            <span className="text-[10px]">
-              {conditions.map((c) => CONDITION_EMOJIS[c] ?? c).join(' ')}
+            <span className="text-[13px]">
+              {conditionLine(entity).join(', ')}
             </span>
           )}
         </div>
 
-        <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
+        <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[13px]">
           Lv{level}
         </Badge>
       </button>
@@ -147,10 +126,12 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
               variant="ghost"
               size="icon"
               className="size-9"
+              disabled={paused}
+              aria-label="1 damage"
               onClick={() => handleDamage(1)}
               title="1 damage"
             >
-              <Minus className="size-3.5 text-red-400" />
+              <Minus className="size-3.5" />
             </Button>
             <input
               type="number"
@@ -159,22 +140,28 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleQuickDamageHeal();
               }}
-              placeholder="+/-"
+              aria-label="Change in stamina"
+              disabled={paused}
+              placeholder={paused ? 'Back' : '+/-'}
               className="h-9 w-14 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
             />
             <Button
               variant="ghost"
               size="icon"
               className="size-9"
+              disabled={paused}
+              aria-label="1 heal"
               onClick={() => handleHeal(1)}
               title="1 heal"
             >
-              <Plus className="size-3.5 text-emerald-400" />
+              <Plus className="size-3.5" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="ml-auto size-9 text-zinc-500 hover:text-red-400"
+              disabled={paused}
+              aria-label="Remove creature"
               onClick={handleRemove}
               title="Remove creature"
             >
@@ -186,19 +173,23 @@ export function CreatureCard({ entity, isActive, selected = false, onSelect, sen
           <div className="flex flex-wrap gap-1">
             {ALL_CONDITION_IDS.map((id) => {
               const active = conditions.includes(id);
+              const Icon = CONDITION_ICONS[id];
               return (
                 <button
                   key={id}
                   type="button"
+                  disabled={paused}
+                  aria-pressed={active}
                   onClick={() => handleToggleCondition(id)}
                   title={id}
-                  className={`rounded px-1 py-0.5 text-[10px] transition ${
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[13px] font-bold capitalize ${
                     active
-                      ? 'bg-amber-900/50 text-amber-300 ring-1 ring-amber-600/50'
-                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                      ? 'bg-text text-surface'
+                      : 'text-text-soft shadow-[inset_0_0_0_1.5px_var(--color-line-quiet)] hover:bg-well'
                   }`}
                 >
-                  {CONDITION_EMOJIS[id]} {id.slice(0, 4)}
+                  {Icon && <Icon size={13} strokeWidth={2.6} aria-hidden="true" />}
+                  {id}
                 </button>
               );
             })}

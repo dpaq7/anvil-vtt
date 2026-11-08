@@ -25,9 +25,11 @@ export interface CanvasPalette {
   /** Player fog: solid ink. */
   fog: number;
   fogAlpha: number;
-  /** Director's fog preview fill (`--art-fog-hatch`). */
+  /** Director's fog preview fill (`--art-fog-hatch`), its ink hatching, and every fog's edge. */
   fogPreview: number;
   fogPreviewAlpha: number;
+  fogHatch: number;
+  fogEdge: number;
   /** Fog being drawn (derived: as the Director preview) and its edge. */
   fogDraft: number;
   fogDraftAlpha: number;
@@ -69,21 +71,14 @@ export interface CanvasPalette {
 
   /** Ink outline round every token, all sides. */
   tokenOutline: number;
-  /** Text and glyphs on a token face. */
-  tokenGlyph: number;
-  /**
-   * Side colours of the current token rings. The approved demo has no side
-   * colours (side reads by shape); plan Task 14 removes these.
-   */
-  sideHero: number;
-  sideMonster: number;
-  sideNpc: number;
-  /** Stamina arc and winded ring: recoloured only, removed in plan Task 14. */
-  staminaArc: number;
-  winded: number;
-  /** Dying ring until Task 14 draws the burst. */
-  dying: number;
-  dyingEdge: number;
+  /** White keyline inside an upload's outline. */
+  tokenKeyline: number;
+  /** Small offset shadow under every head. */
+  tokenShadowAlpha: number;
+  /** White disc behind the acting token. */
+  turnDisc: number;
+  /** Hazard burst behind a dying hero (22-point star, ink edge). */
+  dyingBurst: number;
 
   /** Map labels: plate, its text and its keyline. */
   labelPlate: number;
@@ -93,11 +88,24 @@ export interface CanvasPalette {
   doneBadge: number;
   doneMark: number;
   doneRing: number;
-  /** Scrim over a token that has acted. */
-  doneScrim: number;
   /** Condition badge: plate disc, ink ring. */
   conditionBadge: number;
   conditionRing: number;
+  /** Hidden badge, Director only: ink disc, white shut eye, plate ring. */
+  hiddenBadge: number;
+  hiddenMark: number;
+  hiddenRing: number;
+  /** Map labels on heroes and on the acting token. */
+  heroLabelPlate: number;
+  heroLabelText: number;
+  activeLabelPlate: number;
+  activeLabelText: number;
+  /** Mini-map marks. */
+  miniMapFoe: number;
+  miniMapHero: number;
+  /** Squad number plates. */
+  squadNumberPlate: number;
+  squadNumberText: number;
 
   /** Terrain zones without a colour of their own (scene data, kept). */
   terrainDefault: number;
@@ -117,6 +125,8 @@ export interface CanvasPalette {
 
 /** Body font for text drawn on the map (DESIGN.md 3.1). */
 export const CANVAS_FONT = '"Atkinson Hyperlegible", system-ui, sans-serif';
+/** Display font for hero labels, the shout and the hit number. */
+export const CANVAS_DISPLAY_FONT = '"Bricolage Grotesque Variable", system-ui, sans-serif';
 
 const INK = 0x15171c;
 const PLATE = 0xffffff;
@@ -134,6 +144,8 @@ const SHARED: Omit<CanvasPalette, 'background' | 'mapDim'> = {
   fogAlpha: 1,
   fogPreview: FOG_HATCH,
   fogPreviewAlpha: 0.42,
+  fogHatch: INK,
+  fogEdge: INK,
   fogDraft: FOG_HATCH,
   fogDraftAlpha: 0.42,
   fogDraftEdge: INK,
@@ -162,14 +174,10 @@ const SHARED: Omit<CanvasPalette, 'background' | 'mapDim'> = {
   ruler: INK,
 
   tokenOutline: INK,
-  tokenGlyph: PLATE,
-  sideHero: 0x3b82f6,
-  sideMonster: 0xef4444,
-  sideNpc: 0x8b5cf6,
-  staminaArc: INK,
-  winded: HAZARD,
-  dying: HAZARD,
-  dyingEdge: INK,
+  tokenKeyline: PLATE,
+  tokenShadowAlpha: 0.9,
+  turnDisc: PLATE,
+  dyingBurst: HAZARD,
 
   labelPlate: PLATE,
   labelText: INK,
@@ -177,9 +185,19 @@ const SHARED: Omit<CanvasPalette, 'background' | 'mapDim'> = {
   doneBadge: INK,
   doneMark: PLATE,
   doneRing: PLATE,
-  doneScrim: INK,
   conditionBadge: PLATE,
   conditionRing: INK,
+  hiddenBadge: INK,
+  hiddenMark: PLATE,
+  hiddenRing: PLATE,
+  heroLabelPlate: INK,
+  heroLabelText: PLATE,
+  activeLabelPlate: ACTIVE_PLATE,
+  activeLabelText: PLATE,
+  miniMapFoe: 0xd6372c,
+  miniMapHero: INK,
+  squadNumberPlate: PLATE,
+  squadNumberText: INK,
 
   terrainDefault: 0x3b82f6,
   terrainDifficult: 0xf59e0b,

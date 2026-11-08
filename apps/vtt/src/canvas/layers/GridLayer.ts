@@ -13,6 +13,10 @@ export interface GridConfig {
   showLabels?: boolean;
 }
 
+/** Grid lines are dashed, 2 on and 6 off (`InkMap` in the demo). */
+const DASH_ON = 2;
+const DASH_OFF = 6;
+
 export class GridLayer extends Container {
   private grid: Graphics;
 
@@ -50,16 +54,20 @@ export class GridLayer extends Container {
     // Vertical lines. Start one cell before the map when offset so shifted grids
     // still cover the full stage bounds.
     for (let x = xOffset === 0 ? 0 : xOffset - cellSize; x <= width; x += cellSize) {
-      this.grid.moveTo(x, 0);
-      this.grid.lineTo(x, height);
+      for (let y = 0; y < height; y += DASH_ON + DASH_OFF) {
+        this.grid.moveTo(x, y);
+        this.grid.lineTo(x, Math.min(height, y + DASH_ON));
+      }
     }
 
     // Horizontal lines
     for (let y = yOffset === 0 ? 0 : yOffset - cellSize; y <= height; y += cellSize) {
-      this.grid.moveTo(0, y);
-      this.grid.lineTo(width, y);
+      for (let x = 0; x < width; x += DASH_ON + DASH_OFF) {
+        this.grid.moveTo(x, y);
+        this.grid.lineTo(Math.min(width, x + DASH_ON), y);
+      }
     }
 
-    this.grid.stroke({ width: 1, color: lineColor, alpha: lineAlpha });
+    this.grid.stroke({ width: 1.25, color: lineColor, alpha: lineAlpha });
   }
 }

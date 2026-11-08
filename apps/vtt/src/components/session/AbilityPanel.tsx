@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSessionConnection } from './shell/connection-context.js';
 import { AbilityCard } from './AbilityCard.js';
 import type { AbilityInfo } from './AbilityCard.js';
 
@@ -6,6 +7,8 @@ interface AbilityPanelProps {
   abilities: AbilityInfo[];
   usedActionTypes: string[];
   onUseAbility: (abilityId: string) => void;
+  /** Open on this kind of action (from the hero card's Main, Maneuver and Triggered). */
+  requestedFilter?: { group: string; nonce: number } | null;
 }
 
 const ACTION_FILTERS = ['all', 'action', 'maneuver', 'triggered', 'free'] as const;
@@ -18,8 +21,12 @@ const ACTION_CATEGORY_LABELS: Record<ActionCategory, string> = {
   free: 'Free Actions',
 };
 
-export function AbilityPanel({ abilities, usedActionTypes, onUseAbility }: AbilityPanelProps) {
+export function AbilityPanel({ abilities, usedActionTypes, onUseAbility, requestedFilter }: AbilityPanelProps) {
+  const { paused } = useSessionConnection();
   const [filter, setFilter] = useState<string>('all');
+  useEffect(() => {
+    if (requestedFilter) setFilter(requestedFilter.group);
+  }, [requestedFilter]);
 
   const grouped = ACTION_FILTERS.filter((category): category is ActionCategory => category !== 'all')
     .map((category) => ({
@@ -39,7 +46,7 @@ export function AbilityPanel({ abilities, usedActionTypes, onUseAbility }: Abili
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`rounded px-2 py-0.5 text-[10px] capitalize ${
+            className={`px-2 py-0.5 text-[13px] capitalize ${
               filter === f ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
@@ -50,13 +57,14 @@ export function AbilityPanel({ abilities, usedActionTypes, onUseAbility }: Abili
 
       <div className="flex-1 overflow-y-auto p-3">
         <div className="flex flex-col gap-4">
+          {paused && <p className="sb-roll__wait">Abilities, when back</p>}
           {visibleGroups.map((group) => (
             <section key={group.category} className="flex flex-col gap-2">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-1">
-                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                <h3 className="text-[13px] font-semibold uppercase tracking-wider text-zinc-500">
                   {ACTION_CATEGORY_LABELS[group.category]}
                 </h3>
-                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[13px] text-zinc-500">
                   {group.abilities.length}
                 </span>
               </div>
@@ -66,7 +74,7 @@ export function AbilityPanel({ abilities, usedActionTypes, onUseAbility }: Abili
                   <AbilityCard
                     key={ability.id}
                     ability={{ ...ability, actionType: category }}
-                    disabled={usedActionTypes.includes(category)}
+                    disabled={paused || usedActionTypes.includes(category)}
                     onUse={onUseAbility}
                   />
                 );

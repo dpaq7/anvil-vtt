@@ -243,7 +243,6 @@ export function PhoneDirectorView({
                 entities={state.entities}
                 isDirector
                 currentHeroEntityId={null}
-                onClaimTurn={() => {}}
                 onSelectTurn={(entityId) => {
                   if (!canMutate) return;
                   send({ type: 'combat_action', action: { type: 'SELECT_TURN', entityId } });

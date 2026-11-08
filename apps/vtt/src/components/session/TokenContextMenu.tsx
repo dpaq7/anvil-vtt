@@ -13,8 +13,13 @@ import {
   Shield,
   Crosshair,
   ChevronRight,
+  Skull,
 } from 'lucide-react';
-import { StaminaBar, Badge, Button } from '@anvil/ui';
+import { Button } from '@anvil/ui';
+import { cleanName } from '../../lib/faces.js';
+import { Meter } from './battle/HeroRow.js';
+import { CONDITION_ICONS } from './battle/condition-icons.js';
+import { useSessionConnection } from './shell/connection-context.js';
 import type { EntityData, ClientMessage, TokenActionKind } from '../../types/protocol.js';
 import type { ConditionName } from '@anvil/types';
 import { drawSteelAbilityFromLike, type DrawSteelAbilityView } from '../drawsteel/abilityData.js';
@@ -26,27 +31,6 @@ import {
   CONDITION_IDS,
   type ConditionEndType,
 } from '../../lib/conditions.js';
-
-/** Condition emojis for Draw Steel's 9 conditions */
-const CONDITION_EMOJIS: Record<string, string> = {
-  bleeding: '\u{1FA78}',
-  dazed: '\u{1F4AB}',
-  frightened: '\u{1F628}',
-  grabbed: '\u{270A}',
-  prone: '\u{1F53B}',
-  restrained: '⛓️',
-  slowed: '\u{1F40C}',
-  taunted: '\u{1F624}',
-  weakened: '\u{1F494}',
-};
-
-
-/** Entity type → display badge color */
-const TYPE_BADGE_COLORS: Record<string, string> = {
-  hero: 'bg-blue-900/60 text-blue-300',
-  monster: 'bg-red-900/60 text-red-300',
-  npc: 'bg-purple-900/60 text-purple-300',
-};
 
 type ActionCategory = 'main' | 'maneuver' | 'triggered' | 'free';
 
@@ -114,6 +98,10 @@ export interface TokenContextMenuProps {
   entity: EntityData;
   x: number;
   y: number;
+  /** The token's width on screen, so a menu that flips left clears the token. */
+  tokenWidth?: number;
+  stageWidth?: number;
+  stageHeight?: number;
   isDirector: boolean;
   /** The requesting player's own hero entity id (enables acting on that token). */
   ownHeroEntityId?: string | null;
@@ -134,12 +122,16 @@ export function TokenContextMenu({
   entity,
   x,
   y,
+  tokenWidth = 0,
+  stageWidth = window.innerWidth,
+  stageHeight = window.innerHeight,
   isDirector,
   ownHeroEntityId,
   send,
   onRequestTargeting,
   onClose,
 }: TokenContextMenuProps) {
+  const { paused } = useSessionConnection();
   const [damageInput, setDamageInput] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -149,6 +141,8 @@ export function TokenContextMenu({
   const conditionObjects = useMemo(() => readConditions(entity), [entity]);
   const conditions = useMemo(() => conditionObjects.map((c) => c.name), [conditionObjects]);
   const isHero = entity.type === 'hero';
+  // A Player never reads a creature's stamina, level or stat block (DESIGN.md section 7).
+  const creatureForPlayer = !isDirector && !isHero;
 
   // Stamina-derived states (Draw Steel): winded at ≤ half, dying at ≤ 0.
   const dying = maxStamina > 0 && currentStamina <= 0;
@@ -168,6 +162,7 @@ export function TokenContextMenu({
 
   // The actor's own abilities (heroes) / features (monsters), grouped by economy.
   const abilityEntries = useMemo<AbilityEntry[]>(() => {
+    if (creatureForPlayer) return [];
     const raw: Array<Record<string, unknown>> = isHero
       ? (Array.isArray(entity['abilities']) ? (entity['abilities'] as Record<string, unknown>[]) : [])
       : (Array.isArray(entity['features'])
@@ -191,25 +186,25 @@ export function TokenContextMenu({
         view,
       };
     });
-  }, [entity, isHero]);
+  }, [entity, isHero, creatureForPlayer]);
 
   // Standard Draw Steel actions available to the actor, gated by state.
   const standardActions = useMemo<StandardAction[]>(() => {
     const list: StandardAction[] = [
-      { label: 'Free Strike', icon: <Swords className="size-3.5 text-zinc-300" />, kind: 'free-strike', category: 'main', targeted: true, distance: 'Melee 1' },
-      { label: 'Charge', icon: <Zap className="size-3.5 text-red-400" />, kind: 'charge', category: 'main', targeted: true, distance: 'Melee 1' },
-      { label: 'Grab', icon: <Hand className="size-3.5 text-amber-400" />, kind: 'grab', category: 'maneuver', targeted: true, distance: 'Melee 1' },
-      { label: 'Knockback', icon: <Wind className="size-3.5 text-sky-400" />, kind: 'knockback', category: 'maneuver', targeted: true, distance: 'Melee 1' },
+      { label: 'Free Strike', icon: <Swords className="size-3.5" />, kind: 'free-strike', category: 'main', targeted: true, distance: 'Melee 1' },
+      { label: 'Charge', icon: <Zap className="size-3.5" />, kind: 'charge', category: 'main', targeted: true, distance: 'Melee 1' },
+      { label: 'Grab', icon: <Hand className="size-3.5" />, kind: 'grab', category: 'maneuver', targeted: true, distance: 'Melee 1' },
+      { label: 'Knockback', icon: <Wind className="size-3.5" />, kind: 'knockback', category: 'maneuver', targeted: true, distance: 'Melee 1' },
     ];
     if (conditions.includes('prone')) {
-      list.push({ label: 'Stand Up', icon: <ArrowUpFromLine className="size-3.5 text-emerald-400" />, kind: 'stand-up', category: 'maneuver', targeted: false });
+      list.push({ label: 'Stand Up', icon: <ArrowUpFromLine className="size-3.5" />, kind: 'stand-up', category: 'maneuver', targeted: false });
     }
     if (conditions.includes('grabbed') || conditions.includes('restrained')) {
-      list.push({ label: 'Escape Grab', icon: <Unlink className="size-3.5 text-emerald-400" />, kind: 'escape-grab', category: 'maneuver', targeted: false });
+      list.push({ label: 'Escape Grab', icon: <Unlink className="size-3.5" />, kind: 'escape-grab', category: 'maneuver', targeted: false });
     }
     if (isHero) {
-      list.push({ label: 'Catch Breath', icon: <HeartPulse className="size-3.5 text-emerald-400" />, kind: 'catch-breath', category: 'maneuver', targeted: false });
-      list.push({ label: 'Defend', icon: <Shield className="size-3.5 text-blue-400" />, kind: 'defend', category: 'main', targeted: false });
+      list.push({ label: 'Catch Breath', icon: <HeartPulse className="size-3.5" />, kind: 'catch-breath', category: 'maneuver', targeted: false });
+      list.push({ label: 'Defend', icon: <Shield className="size-3.5" />, kind: 'defend', category: 'main', targeted: false });
     }
     return list;
   }, [conditions, isHero]);
@@ -242,18 +237,18 @@ export function TokenContextMenu({
 
   const handleDamage = useCallback(
     (amount: number) => {
-      if (amount <= 0) return;
+      if (amount <= 0 || paused) return;
       send({ type: 'token_action', action: { kind: 'manual-damage', targetId: entity.id, amount } });
     },
-    [send, entity.id],
+    [send, entity.id, paused],
   );
 
   const handleHeal = useCallback(
     (amount: number) => {
-      if (amount <= 0) return;
+      if (amount <= 0 || paused) return;
       send({ type: 'token_action', action: { kind: 'manual-heal', targetId: entity.id, amount } });
     },
-    [send, entity.id],
+    [send, entity.id, paused],
   );
 
   const applyStatus = useCallback(
@@ -278,7 +273,7 @@ export function TokenContextMenu({
 
   const runStandard = useCallback(
     (action: StandardAction) => {
-      if (!canAct) return;
+      if (!canAct || paused) return;
       if (action.targeted) {
         onRequestTargeting?.({
           sourceId: entity.id,
@@ -291,12 +286,12 @@ export function TokenContextMenu({
       }
       onClose();
     },
-    [canAct, entity.id, onClose, onRequestTargeting, send],
+    [canAct, paused, entity.id, onClose, onRequestTargeting, send],
   );
 
   const runAbility = useCallback(
     (ability: AbilityEntry) => {
-      if (!canAct) return;
+      if (!canAct || paused) return;
       if (isTargetedDistance(ability.distance)) {
         onRequestTargeting?.({
           sourceId: entity.id,
@@ -313,12 +308,12 @@ export function TokenContextMenu({
       }
       onClose();
     },
-    [canAct, entity.id, onClose, onRequestTargeting, send],
+    [canAct, paused, entity.id, onClose, onRequestTargeting, send],
   );
 
   const handleQuickDamageHeal = () => {
     const val = parseInt(damageInput, 10);
-    if (!val || val === 0) return;
+    if (!val || val === 0 || paused) return;
     if (val > 0) handleDamage(val);
     else handleHeal(Math.abs(val));
     setDamageInput('');
@@ -326,58 +321,48 @@ export function TokenContextMenu({
 
   const hasActions = abilityEntries.length > 0 || (canAct && standardActions.length > 0);
 
-  // Compact top level + a flyout panel beside it. Flip the flyout left when it
-  // would overrun the right edge; the flyout scrolls so it never runs off-screen.
-  const TOP_W = 190;
+  // Compact top level + a flyout panel beside it. Both flip left when they would run off the stage;
+  // the flyout scrolls so it never runs off-screen. x and y are relative to the stage.
+  const TOP_W = stageWidth < 720 ? 148 : 178;
   const FLYOUT_W = 244;
-  const flipLeft = x + TOP_W + FLYOUT_W + 16 > window.innerWidth;
-  const totalW = openPanel ? TOP_W + FLYOUT_W + 8 : TOP_W;
-  const clampedX = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - totalW - 8));
-  const clampedY = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 140));
+  const flipLeft = x + TOP_W + (openPanel ? FLYOUT_W + 6 : 0) > stageWidth - 4;
+  const clampedX = Math.max(4, flipLeft ? Math.min(x, stageWidth) - TOP_W - tokenWidth - 16 - (openPanel ? FLYOUT_W + 6 : 0) : x);
+  const clampedY = Math.min(Math.max(4, y), Math.max(4, stageHeight - 180));
 
-  const badgeColor = TYPE_BADGE_COLORS[entity.type] ?? TYPE_BADGE_COLORS['npc'];
-
-  const categoryRow = (id: 'actions' | 'status' | 'hp', label: string, Icon: typeof Swords) => (
+  const categoryRow = (id: 'actions' | 'status' | 'hp', label: string) => (
     <button
       type="button"
+      className="sb-pop__row"
+      data-on={openPanel === id || undefined}
+      aria-expanded={openPanel === id}
       onClick={() => setOpenPanel((p) => (p === id ? null : id))}
-      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition ${
-        openPanel === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-300 hover:bg-zinc-800/60'
-      }`}
     >
-      <Icon className="size-3.5 shrink-0 text-zinc-400" />
-      <span className="flex-1 truncate">{label}</span>
-      <ChevronRight className="size-3.5 shrink-0 text-zinc-500" />
+      <span>{label}</span>
+      <ChevronRight size={15} strokeWidth={3} aria-hidden="true" />
     </button>
   );
 
   return (
     <div
       ref={menuRef}
-      className={`absolute z-40 flex items-start gap-1 ${flipLeft ? 'flex-row-reverse' : ''}`}
+      className="sb-menu"
+      data-map-panel
+      data-flip={flipLeft || undefined}
       style={{ left: clampedX, top: clampedY }}
       onContextMenu={(e) => e.stopPropagation()}
     >
-      {/* Top level — compact */}
-      <div className="flex w-[190px] flex-col overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-900/95 shadow-2xl backdrop-blur-sm">
-        <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-zinc-100">{entity.name}</p>
-            <div className="flex items-center gap-1.5">
-              <span className={`inline-block rounded px-1 py-0.5 text-[10px] font-medium ${badgeColor}`}>
-                {entity.type}
-              </span>
-              <Badge variant="secondary" className="px-1 py-0 text-[10px]">
-                Lv{level}
-              </Badge>
-            </div>
-          </div>
+      {/* Top level, compact */}
+      <div className="sb-pop">
+        <div className="flex items-start gap-1">
+          <strong className="min-w-0 flex-1">{cleanName(entity.name)}</strong>
           {isDirector && (
             <Button
               variant="ghost"
               size="icon"
-              className="size-6 shrink-0 text-zinc-500 hover:text-amber-300"
+              className="size-6 shrink-0"
               title="Pull everyone's view here"
+              aria-label="Pull everyone's view here"
+              disabled={paused}
               onClick={() => {
                 send({ type: 'director_focus', entityId: entity.id });
                 onClose();
@@ -386,94 +371,70 @@ export function TokenContextMenu({
               <Crosshair className="size-3.5" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0 text-zinc-500 hover:text-zinc-300"
-            onClick={onClose}
-          >
+          <Button variant="ghost" size="icon" className="size-6 shrink-0" aria-label="Close menu" onClick={onClose}>
             <X className="size-3.5" />
           </Button>
         </div>
+        {!creatureForPlayer && <div className="sb-note capitalize">{entity.type}, level {level}</div>}
 
-        {maxStamina > 0 && (
-          <div className="px-3 pt-2">
-            <div className="mb-1 flex items-baseline justify-between">
-              <span className="text-[10px] font-medium text-zinc-500">Stamina</span>
-              <span className="text-[10px] text-zinc-400">
-                {currentStamina} / {maxStamina}
-              </span>
-            </div>
-            <StaminaBar current={currentStamina} max={maxStamina} className="h-2" />
-            {(dying || winded) && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {dying && (
-                  <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 ring-1 ring-red-500/40">
-                    💀 Dying
-                  </span>
-                )}
-                {winded && !dying && (
-                  <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-500/40">
-                    🫁 Winded
-                  </span>
-                )}
-              </div>
+        {maxStamina > 0 && !creatureForPlayer && (
+          <>
+            <div className="sb-pop__st"><span>Stamina</span><b>{currentStamina} / {maxStamina}</b></div>
+            <Meter cur={currentStamina} max={maxStamina} winded={winded} />
+            {dying && isHero && (
+              <p className="sb-note flex items-center gap-1"><Skull size={13} strokeWidth={3} aria-hidden="true" /><b>Dying</b></p>
             )}
-          </div>
+            {winded && (
+              <p className="pt-1"><em className="sb-winded ml-0">Winded</em></p>
+            )}
+          </>
         )}
+        {paused && <p className="sb-note">Actions wait until the table is back.</p>}
 
-        <div className="flex flex-col gap-0.5 p-1.5">
-          {hasActions && categoryRow('actions', 'Actions', Swords)}
-          {categoryRow('status', 'Status', HeartPulse)}
-          {isDirector && categoryRow('hp', 'Adjust HP', Plus)}
+        <div className="mt-1.5 flex flex-col">
+          {hasActions && categoryRow('actions', 'Actions')}
+          {categoryRow('status', 'Status')}
+          {isDirector && categoryRow('hp', 'Adjust HP')}
         </div>
       </div>
 
       {/* Flyout panel */}
       {openPanel && (
-        <div className="max-h-[70vh] w-[244px] overflow-y-auto rounded-lg border border-zinc-700/60 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur-sm">
+        <div className="sb-pop sb-pop--fly">
           {openPanel === 'actions' && (
-            <div className="flex flex-col gap-3">
-              {!canAct && (
-                <p className="rounded bg-zinc-800/60 px-2 py-1 text-[10px] text-zinc-500">
-                  Reference only — you don't control this token.
-                </p>
-              )}
+            <div className="flex flex-col gap-2">
+              {!canAct && <p className="sb-note">Reference only. You do not control this token.</p>}
               {CATEGORY_ORDER.map((category) => {
                 const standards = canAct ? standardActions.filter((a) => a.category === category) : [];
                 const abilities = abilityEntries.filter((a) => a.category === category);
                 if (standards.length === 0 && abilities.length === 0) return null;
                 return (
-                  <section key={category} className="flex flex-col gap-0.5">
-                    <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                      {CATEGORY_LABELS[category]}
-                    </h3>
+                  <section key={category} className="flex flex-col">
+                    <h3 className="sb-pop__h3">{CATEGORY_LABELS[category]}</h3>
                     {standards.map((action) => (
                       <button
                         key={action.label}
                         type="button"
+                        className="sb-pop__row"
+                        disabled={paused}
                         onClick={() => runStandard(action)}
-                        title={action.targeted ? `${action.label} — pick a target` : action.label}
-                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] text-zinc-300 hover:bg-zinc-800/60"
+                        title={action.targeted ? `${action.label}: pick a target` : action.label}
                       >
-                        {action.icon}
-                        <span className="flex-1 truncate">{action.label}</span>
-                        {action.targeted && <span className="shrink-0 text-[9px] text-zinc-500">target</span>}
+                        <span className="flex items-center gap-1.5">{action.icon}{action.label}</span>
+                        {action.targeted && <small>target</small>}
                       </button>
                     ))}
                     {abilities.map((ability) => (
                       <button
                         key={ability.key}
                         type="button"
-                        disabled={!canAct}
+                        className="sb-pop__row"
+                        disabled={!canAct || paused}
                         onClick={() => runAbility(ability)}
                         title={ability.name}
-                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] text-zinc-200 hover:bg-zinc-800/60 disabled:opacity-50 disabled:hover:bg-transparent"
                       >
-                        <span className="flex-1 truncate">{ability.name}</span>
-                        {ability.distance && (
-                          <span className="shrink-0 text-[9px] text-zinc-500">{ability.distance}</span>
-                        )}
+                        <span>{ability.name}</span>
+                        {ability.distance && <small>{ability.distance}</small>}
                       </button>
                     ))}
                   </section>
@@ -484,77 +445,59 @@ export function TokenContextMenu({
 
           {openPanel === 'status' && (
             <div className="flex flex-col gap-2">
-              <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Status</h3>
+              <h3 className="sb-pop__h3">Status</h3>
               {conditionObjects.length > 0 ? (
-                <div className="flex flex-col gap-1">
-                  {conditionObjects.map((c) => (
-                    <div
-                      key={c.name}
-                      className="flex items-center gap-1.5 rounded bg-zinc-800/50 px-1.5 py-1 text-[11px]"
-                    >
-                      <span>{CONDITION_EMOJIS[c.name] ?? '•'}</span>
-                      <span className="capitalize text-zinc-200">{c.name}</span>
-                      <span
-                        className={`rounded px-1 text-[9px] ${
-                          c.endType === 'save'
-                            ? 'bg-amber-500/15 text-amber-300'
-                            : c.endType === 'eot'
-                              ? 'bg-sky-500/15 text-sky-300'
-                              : 'bg-zinc-700/60 text-zinc-400'
-                        }`}
-                      >
-                        {endTypeLabel(c.endType)}
-                      </span>
-                      {canAct && (
-                        <button
-                          type="button"
-                          className="ml-auto text-zinc-500 hover:text-red-400"
-                          title={`Remove ${c.name}`}
-                          onClick={() => removeStatus(c.name)}
-                        >
-                          <X className="size-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex flex-col">
+                  {conditionObjects.map((c) => {
+                    const Icon = CONDITION_ICONS[c.name];
+                    return (
+                      <div key={c.name} className="sb-pop__row font-normal">
+                        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          {Icon && <Icon size={14} strokeWidth={2.5} aria-hidden="true" />}
+                          <b className="capitalize">{c.name}</b>
+                          <small>{endTypeLabel(c.endType)}</small>
+                        </span>
+                        {canAct && (
+                          <button type="button" aria-label={`Remove ${c.name}`} title={`Remove ${c.name}`} disabled={paused} onClick={() => removeStatus(c.name)}>
+                            <X className="size-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-[10px] text-zinc-600">No conditions.</p>
+                <p className="sb-note">No conditions.</p>
               )}
               {canAct && (
                 <div className="flex items-center gap-1">
                   <select
+                    aria-label="Condition"
                     value={addCondition}
                     onChange={(e) => {
                       const next = e.target.value as ConditionName;
                       setAddCondition(next);
                       setAddEndType(defaultEndType(next));
                     }}
-                    className="h-7 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-1 text-[11px] capitalize text-zinc-100"
+                    className="h-7 min-w-0 flex-1 bg-raised px-1 capitalize text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]"
                   >
                     {CONDITION_IDS.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
+                      <option key={id} value={id}>{id}</option>
                     ))}
                   </select>
                   <select
+                    aria-label="How the condition ends"
                     value={addEndType}
                     onChange={(e) => setAddEndType(e.target.value as ConditionEndType)}
-                    className="h-7 rounded border border-zinc-700 bg-zinc-950 px-1 text-[10px] text-zinc-100"
+                    className="h-7 w-[74px] bg-raised px-1 text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]"
                     title="How the condition ends"
                   >
                     <option value="save">save 6+</option>
                     <option value="eot">end turn</option>
                     <option value="manual">manual</option>
                   </select>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7 px-2 text-[11px]"
-                    onClick={() => applyStatus(addCondition, addEndType)}
-                  >
-                    Add
+                  <Button size="sm" variant="secondary" className="h-7 px-2" disabled={paused} onClick={() => applyStatus(addCondition, addEndType)}>
+                    {paused ? 'When back' : 'Add'}
                   </Button>
                 </div>
               )}
@@ -563,27 +506,28 @@ export function TokenContextMenu({
 
           {openPanel === 'hp' && isDirector && (
             <div className="flex flex-col gap-2">
-              <h3 className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Adjust HP</h3>
+              <h3 className="sb-pop__h3">Adjust HP</h3>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="size-7" onClick={() => handleDamage(1)} title="1 damage">
-                  <Minus className="size-3.5 text-red-400" />
+                <Button variant="ghost" size="icon" className="size-7" disabled={paused} onClick={() => handleDamage(1)} title="1 damage" aria-label="1 damage">
+                  <Minus className="size-3.5" />
                 </Button>
                 <input
                   type="number"
+                  aria-label="Change in stamina"
                   value={damageInput}
                   onChange={(e) => setDamageInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleQuickDamageHeal();
                   }}
                   placeholder="+/- HP"
-                  className="h-7 flex-1 rounded border border-zinc-700 bg-zinc-800 px-1.5 text-center text-xs text-zinc-200 placeholder:text-zinc-600"
+                  className="h-7 min-w-0 flex-1 bg-raised px-1.5 text-center text-text shadow-[inset_0_0_0_1.5px_var(--color-line)] placeholder:text-text-soft"
                 />
-                <Button variant="ghost" size="icon" className="size-7" onClick={() => handleHeal(1)} title="1 heal">
-                  <Plus className="size-3.5 text-emerald-400" />
+                <Button variant="ghost" size="icon" className="size-7" disabled={paused} onClick={() => handleHeal(1)} title="1 heal" aria-label="1 heal">
+                  <Plus className="size-3.5" />
                 </Button>
               </div>
-              <Button size="sm" variant="secondary" className="h-7 text-[11px]" onClick={handleQuickDamageHeal}>
-                Apply
+              <Button size="sm" variant="secondary" className="h-7" disabled={paused} onClick={handleQuickDamageHeal}>
+                {paused ? 'Apply, when back' : 'Apply'}
               </Button>
             </div>
           )}

@@ -29,6 +29,7 @@ export class ViewportSystem {
   private pinchActive = false;
   private pinchLastDist = 0;
   private pinchLastMid = { x: 0, y: 0 };
+  private viewListeners = new Set<() => void>();
 
   /** Optional callback invoked whenever zoom changes (for React state sync). */
   onZoomChange: ((zoom: number) => void) | null = null;
@@ -229,6 +230,19 @@ export class ViewportSystem {
     this.world.scale.set(this.zoom);
     this.world.x = this.panX;
     this.world.y = this.panY;
+    for (const listener of this.viewListeners) listener();
+  }
+
+  /** Be told whenever the view moves (the mini-map follows it). Display only. */
+  subscribe(listener: () => void): () => void {
+    this.viewListeners.add(listener);
+    return () => this.viewListeners.delete(listener);
+  }
+
+  /** The canvas's size in CSS pixels. */
+  getViewSize(): { width: number; height: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
   }
 
   /** Convert screen coords to grid coords */

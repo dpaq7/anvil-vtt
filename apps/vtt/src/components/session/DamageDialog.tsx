@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { Button, Input } from '@anvil/ui';
+import { ChevronDown } from 'lucide-react';
+import { cleanName } from '../../lib/faces.js';
 import type { EntityData } from '../../types/protocol.js';
+import { useSessionConnection } from './shell/connection-context.js';
+import './battle/battle.css';
 
 interface DamageDialogProps {
   entities: EntityData[];
@@ -8,13 +11,16 @@ interface DamageDialogProps {
   onApplyHealing: (entityId: string, amount: number) => void;
 }
 
+/** Damage / Heal at the top of the Director's right rail (`sb-seg`, `sb-input--target`, `sb-amt`). */
 export function DamageDialog({ entities, onApplyDamage, onApplyHealing }: DamageDialogProps) {
+  const { paused } = useSessionConnection();
   const [targetId, setTargetId] = useState('');
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'damage' | 'heal'>('damage');
+  const target = entities.find((e) => e.id === targetId);
 
   const handleApply = () => {
-    if (!targetId || !amount) return;
+    if (!targetId || !amount || paused) return;
     const num = parseInt(amount, 10);
     if (isNaN(num) || num <= 0) return;
 
@@ -26,56 +32,42 @@ export function DamageDialog({ entities, onApplyDamage, onApplyHealing }: Damage
     setAmount('');
   };
 
+  const label = mode === 'damage' ? 'Apply damage' : 'Apply healing';
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-1">
-        <button
-          onClick={() => setMode('damage')}
-          className={`flex-1 rounded px-2 py-1 text-xs ${
-            mode === 'damage' ? 'bg-red-500/20 text-red-400' : 'text-zinc-500'
-          }`}
-        >
-          Damage
-        </button>
-        <button
-          onClick={() => setMode('heal')}
-          className={`flex-1 rounded px-2 py-1 text-xs ${
-            mode === 'heal' ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-500'
-          }`}
-        >
-          Heal
+    <section className="sb-sec">
+      <div className="sb-seg" role="group" aria-label="Damage or heal">
+        <button type="button" data-on={mode === 'damage' || undefined} aria-pressed={mode === 'damage'} onClick={() => setMode('damage')}>Damage</button>
+        <button type="button" data-on={mode === 'heal' || undefined} aria-pressed={mode === 'heal'} onClick={() => setMode('heal')}>Heal</button>
+      </div>
+      {/* A native select can't wrap a long name, so it sits unseen over a box that can. */}
+      <div className="sb-input sb-input--target">
+        <span>{target ? cleanName(target.name) : 'Select target…'}</span>
+        <ChevronDown size={16} strokeWidth={3} aria-hidden="true" className="flex-none" />
+        <select aria-label="Target" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+          <option value="">Select target…</option>
+          {entities.map((e) => (
+            <option key={e.id} value={e.id}>{cleanName(e.name)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="sb-amt">
+        <div className="sb-input">
+          <input
+            type="number"
+            aria-label="Amount"
+            placeholder="Amount"
+            min={1}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleApply();
+            }}
+          />
+        </div>
+        <button type="button" className={paused ? 'sb-wait-btn' : undefined} disabled={paused || !targetId || !amount} onClick={handleApply}>
+          {paused ? 'Apply, when back' : label}
         </button>
       </div>
-
-      <select
-        className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-        value={targetId}
-        onChange={(e) => setTargetId(e.target.value)}
-      >
-        <option value="">Select target...</option>
-        {entities.map((e) => (
-          <option key={e.id} value={e.id}>
-            {e.name}
-          </option>
-        ))}
-      </select>
-
-      <Input
-        type="number"
-        placeholder="Amount"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        min={1}
-      />
-
-      <Button
-        size="sm"
-        onClick={handleApply}
-        disabled={!targetId || !amount}
-        className="w-full"
-      >
-        Apply {mode === 'damage' ? 'Damage' : 'Healing'}
-      </Button>
-    </div>
+    </section>
   );
 }

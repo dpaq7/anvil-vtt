@@ -276,7 +276,8 @@ export function useSessionSocket(sessionId: string | null, options: UseSessionSo
         message: 'WebSocket closed, reconnecting',
         data: { code: event.code, retry: retriesRef.current },
       });
-      toast.warning('Connection lost. Reconnecting...');
+      // On a laptop the strip on the screen and the status chip say this; a toast would sit on the dice.
+      if (clientKind === 'phone') toast.warning('Connection lost. Reconnecting...');
     };
 
     ws.onerror = () => {

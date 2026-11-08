@@ -73,7 +73,7 @@ export function ActionLogPanel({
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-2 text-xs text-zinc-300">
         <Icon className="size-3.5 text-zinc-500" />
         <span className="min-w-0 flex-1 font-semibold uppercase tracking-wider text-zinc-500">Action Log</span>
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{currentEntries.length}</span>
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[13px] text-zinc-500">{currentEntries.length}</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -110,9 +110,9 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="break-words font-medium text-zinc-200">{entry.title}</p>
-          {entry.detail && <p className="mt-0.5 break-words text-[11px] leading-snug text-zinc-500">{entry.detail}</p>}
+          {entry.detail && <p className="mt-0.5 break-words text-[13px] leading-snug text-zinc-500">{entry.detail}</p>}
         </div>
-        <time className="shrink-0 text-[10px] text-zinc-600">{formatTime(entry.timestamp)}</time>
+        <time className="shrink-0 text-[13px] text-zinc-600">{formatTime(entry.timestamp)}</time>
       </div>
       {(entry.dice?.length || entry.total !== undefined) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -121,12 +121,12 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
           ))}
           {entry.total !== undefined && (
             <>
-              <span className="text-[11px] text-zinc-600">=</span>
+              <span className="text-[13px] text-zinc-600">=</span>
               <span className="font-mono text-sm font-bold tabular-nums text-zinc-100">{entry.total}</span>
             </>
           )}
           {entry.tier && (
-            <span className="ml-auto rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
+            <span className="ml-auto rounded bg-zinc-800 px-1.5 py-0.5 text-[13px] font-semibold text-zinc-300">
               T{entry.tier}
             </span>
           )}
@@ -147,7 +147,7 @@ function DieChip({ die }: { die: DrawSteelDieResult }) {
     <span
       title={label}
       className={cn(
-        'flex size-6 items-center justify-center bg-zinc-800 font-mono text-[11px] font-bold text-zinc-100 ring-1 ring-zinc-700',
+        'flex size-6 items-center justify-center bg-zinc-800 font-mono text-[13px] font-bold text-zinc-100 ring-1 ring-zinc-700',
         die.shape === 'd6' && 'rounded-md',
       )}
       style={die.shape === 'd20' ? { clipPath: 'polygon(50% 0%, 88% 14%, 100% 50%, 88% 86%, 50% 100%, 12% 86%, 0 50%, 12% 14%)' } : undefined}

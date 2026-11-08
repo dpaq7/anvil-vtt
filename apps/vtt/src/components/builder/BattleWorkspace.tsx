@@ -728,12 +728,8 @@ export function BattleWorkspace({
         x: Math.floor(effectiveCols / 2),
         y: Math.floor(effectiveRows / 2),
         size: 1,
-        color:
-          type === 'hero'
-            ? CANVAS_THEME.dark.sideHero
-            : type === 'monster'
-              ? CANVAS_THEME.dark.sideMonster
-              : CANVAS_THEME.dark.sideNpc,
+        // Saved with the scene for older data. The map no longer draws it: side reads by shape.
+        color: type === 'hero' ? 0x3b82f6 : type === 'monster' ? 0xef4444 : 0x8b5cf6,
         type,
         ...extra,
       };

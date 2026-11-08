@@ -1,18 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import type {
-  CSSProperties,
-  PointerEvent as ReactPointerEvent,
-  ReactNode,
-} from 'react';
-import { Dices, GripVertical, Hand, MousePointer2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import { AbilityLogic, GeometryLogic, MovementLogic } from '@anvil/data';
 import type { ConditionName } from '@anvil/types';
 import { BattleCanvas } from '../../canvas/BattleCanvas.js';
 import type { TargetingModeContext } from '../../canvas/systems/InteractionManager.js';
 import type { PendingTargetedAction } from '../../lib/targeting.js';
 import { conditionNames } from '../../lib/conditions.js';
-import { BattleToolbar } from '../builder/BattleToolbar.js';
-import { ViewportControls } from '../builder/ViewportControls.js';
 import type { BattleTool, FogBrushMode } from '../builder/BattleToolbar.js';
 import type { ViewportSystem } from '../../canvas/systems/ViewportSystem.js';
 import type {
@@ -27,6 +21,11 @@ import type { TerrainZoneData } from '../../canvas/layers/TerrainLayer.js';
 import { BattleTurnTracker } from '../session/BattleTurnTracker.js';
 import { DiceTray } from '../session/DiceTray.js';
 import { DiceRollControls } from '../session/DiceRollControls.js';
+import { MapTools, ToolOptions } from '../session/battle/MapTools.js';
+import { MapNav } from '../session/battle/MapNav.js';
+import { SMALL_SESSION, useMediaQuery } from '../session/battle/hooks.js';
+import { useSessionConnection } from '../session/shell/connection-context.js';
+import { useSessionStore } from '../../stores/sessionStore.js';
 import { TokenTooltip } from '../session/TokenTooltip.js';
 import { TokenContextMenu } from '../session/TokenContextMenu.js';
 import { TerrainContextMenu } from '../session/TerrainContextMenu.js';
@@ -66,18 +65,6 @@ function splitFogZoneAroundCell(
   return pieces;
 }
 
-type StageDockEdge = 'top' | 'bottom' | 'left' | 'right';
-
-interface StagePanelPlacement {
-  edge: StageDockEdge;
-  offset: number;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  if (min > max) return 0.5;
-  return Math.max(min, Math.min(max, value));
-}
-
 function isInitiativePending(combat: CombatState): boolean {
   return (
     combat.initiativeRoll === null ||
@@ -104,256 +91,6 @@ function expandGridPath(
     path.push({ x: cx, y: cy });
   }
   return path;
-}
-
-function loadPanelPlacement(
-  storageKey: string,
-  fallback: StagePanelPlacement,
-): StagePanelPlacement {
-  if (typeof window === 'undefined') return fallback;
-
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<StagePanelPlacement>;
-    if (
-      (parsed.edge === 'top' ||
-        parsed.edge === 'bottom' ||
-        parsed.edge === 'left' ||
-        parsed.edge === 'right') &&
-      typeof parsed.offset === 'number' &&
-      Number.isFinite(parsed.offset)
-    ) {
-      return { edge: parsed.edge, offset: clamp(parsed.offset, 0.05, 0.95) };
-    }
-  } catch {
-    // Ignore invalid persisted panel placement.
-  }
-
-  return fallback;
-}
-
-function savePanelPlacement(
-  storageKey: string,
-  placement: StagePanelPlacement,
-): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(placement));
-  } catch {
-    // Ignore localStorage failures; controls still move for the current drag.
-  }
-}
-
-function styleForPanelPlacement(
-  placement: StagePanelPlacement,
-  inset: number,
-): CSSProperties {
-  switch (placement.edge) {
-    case 'bottom':
-      return {
-        bottom: inset,
-        left: `${placement.offset * 100}%`,
-        transform: 'translateX(-50%)',
-      };
-    case 'left':
-      return {
-        left: inset,
-        top: `${placement.offset * 100}%`,
-        transform: 'translateY(-50%)',
-      };
-    case 'right':
-      return {
-        right: inset,
-        top: `${placement.offset * 100}%`,
-        transform: 'translateY(-50%)',
-      };
-    case 'top':
-    default:
-      return {
-        top: inset,
-        left: `${placement.offset * 100}%`,
-        transform: 'translateX(-50%)',
-      };
-  }
-}
-
-interface StagePanelFit {
-  stageWidth: number;
-  stageHeight: number;
-  panelWidth: number;
-  panelHeight: number;
-}
-
-/** Move a docked panel's offset along its edge so the whole panel stays on the stage. */
-function fitPlacement(
-  placement: StagePanelPlacement,
-  fit: StagePanelFit | null,
-  inset: number,
-): StagePanelPlacement {
-  if (!fit) return placement;
-  const alongX = placement.edge === 'top' || placement.edge === 'bottom';
-  const length = alongX ? fit.stageWidth : fit.stageHeight;
-  const size = alongX ? fit.panelWidth : fit.panelHeight;
-  if (length <= 0) return placement;
-  const min = (size / 2 + inset) / length;
-  // A panel taller than the stage keeps its start in view.
-  if (min >= 0.5) return { ...placement, offset: min };
-  return { ...placement, offset: clamp(placement.offset, min, 1 - min) };
-}
-
-interface FloatingStagePanelProps {
-  children: ReactNode;
-  storageKey: string;
-  initialPlacement: StagePanelPlacement;
-  stageRef: { current: HTMLDivElement | null };
-  inset?: number;
-  label: string;
-}
-
-function FloatingStagePanel({
-  children,
-  storageKey,
-  initialPlacement,
-  stageRef,
-  inset = 12,
-  label,
-}: FloatingStagePanelProps) {
-  const [placement, setPlacement] = useState(() =>
-    loadPanelPlacement(storageKey, initialPlacement),
-  );
-  const [dragPosition, setDragPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const snapToNearestEdge = useCallback(
-    (x: number, y: number, width: number, height: number) => {
-      const stage = stageRef.current;
-      if (!stage) return placement;
-
-      const stageWidth = Math.max(1, stage.clientWidth);
-      const stageHeight = Math.max(1, stage.clientHeight);
-      const centerX = x + width / 2;
-      const centerY = y + height / 2;
-      const distances: Record<StageDockEdge, number> = {
-        top: centerY,
-        bottom: stageHeight - centerY,
-        left: centerX,
-        right: stageWidth - centerX,
-      };
-      const edge = (Object.entries(distances).sort(
-        (a, b) => a[1] - b[1],
-      )[0]?.[0] ?? 'top') as StageDockEdge;
-      const horizontalMin = Math.min(0.5, (width / 2 + 8) / stageWidth);
-      const verticalMin = Math.min(0.5, (height / 2 + 8) / stageHeight);
-      const offset =
-        edge === 'top' || edge === 'bottom'
-          ? clamp(centerX / stageWidth, horizontalMin, 1 - horizontalMin)
-          : clamp(centerY / stageHeight, verticalMin, 1 - verticalMin);
-
-      return { edge, offset };
-    },
-    [placement, stageRef],
-  );
-
-  const startDrag = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      const panel = panelRef.current;
-      const stage = stageRef.current;
-      if (!panel || !stage) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const stageRect = stage.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const start = {
-        pointerX: event.clientX,
-        pointerY: event.clientY,
-        x: panelRect.left - stageRect.left,
-        y: panelRect.top - stageRect.top,
-        width: panelRect.width,
-        height: panelRect.height,
-      };
-      let latest = { x: start.x, y: start.y };
-      setDragPosition(latest);
-
-      const handleMove = (moveEvent: PointerEvent) => {
-        const maxX = Math.max(0, stage.clientWidth - start.width);
-        const maxY = Math.max(0, stage.clientHeight - start.height);
-        latest = {
-          x: clamp(start.x + moveEvent.clientX - start.pointerX, 0, maxX),
-          y: clamp(start.y + moveEvent.clientY - start.pointerY, 0, maxY),
-        };
-        setDragPosition(latest);
-      };
-
-      const handleUp = () => {
-        window.removeEventListener('pointermove', handleMove);
-        window.removeEventListener('pointerup', handleUp);
-        const nextPlacement = snapToNearestEdge(
-          latest.x,
-          latest.y,
-          start.width,
-          start.height,
-        );
-        setPlacement(nextPlacement);
-        savePanelPlacement(storageKey, nextPlacement);
-        setDragPosition(null);
-      };
-
-      window.addEventListener('pointermove', handleMove);
-      window.addEventListener('pointerup', handleUp, { once: true });
-    },
-    [snapToNearestEdge, stageRef, storageKey],
-  );
-
-  // Keep the docked panel inside the stage at any size, including a saved placement. The
-  // stage can be small: at 1280 x 720 it is about 640 x 570 between the fixed rails.
-  const [panelFit, setPanelFit] = useState<StagePanelFit | null>(null);
-  // A passive effect: a parent's ref is not attached yet when a child's layout effect runs.
-  useEffect(() => {
-    const panel = panelRef.current;
-    const stage = stageRef.current;
-    if (!panel || !stage) return;
-    const measure = () =>
-      setPanelFit({
-        stageWidth: stage.clientWidth,
-        stageHeight: stage.clientHeight,
-        panelWidth: panel.offsetWidth,
-        panelHeight: panel.offsetHeight,
-      });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(panel);
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, [stageRef]);
-
-  const style = dragPosition
-    ? { left: dragPosition.x, top: dragPosition.y, transform: 'none' }
-    : styleForPanelPlacement(fitPlacement(placement, panelFit, inset), inset);
-
-  return (
-    <div
-      ref={panelRef}
-      className="pointer-events-auto absolute z-30 flex items-center gap-1"
-      style={style}
-    >
-      <button
-        type="button"
-        className="flex size-7 cursor-grab items-center justify-center rounded-md border border-zinc-800 bg-zinc-950/85 text-zinc-500 shadow-lg backdrop-blur transition hover:border-zinc-600 hover:text-zinc-200 active:cursor-grabbing"
-        title={`Move ${label}; release near an edge to stick`}
-        aria-label={`Move ${label}`}
-        onPointerDown={startDrag}
-      >
-        <GripVertical className="size-3.5" />
-      </button>
-      {children}
-    </div>
-  );
 }
 
 /**
@@ -421,8 +158,14 @@ interface BattleStageProps {
   onSelectEntities?: (entityIds: string[]) => void;
   onRollInitiative?: () => void;
   send: (msg: ClientMessage) => void;
-  /** Hide the floating dice roller (e.g. read-only pop-out display). */
+  /** False on the read-only Display: no tools, dice, zoom or mini-map. */
   showDiceControls?: boolean;
+  /** The token a roll from the bar opens beside. */
+  rollAnchorId?: string | null;
+  /** The bar under the screen. Tools and dice render into it. */
+  barTarget?: HTMLElement | null;
+  /** Changes with the live scene, so a new scene opens on its own action. */
+  sceneKey?: string | null;
 }
 
 export function BattleStage({
@@ -457,7 +200,14 @@ export function BattleStage({
   onRollInitiative,
   send,
   showDiceControls = true,
+  rollAnchorId = null,
+  barTarget = null,
+  sceneKey = null,
 }: BattleStageProps) {
+  // During a drop the map stays readable and only pans: drags and tools need the server.
+  const { paused } = useSessionConnection();
+  const small = useMediaQuery(SMALL_SESSION);
+  const lastRoll = useSessionStore((s) => s.lastRoll);
   // Tool state (director only)
   const [activeTool, setActiveTool] = useState<BattleTool>('select');
   // Players don't get the full toolbar, but can toggle select/pan on the canvas.
@@ -482,7 +232,6 @@ export function BattleStage({
   const [coverLevel, setCoverLevel] = useState<AbilityLogic.CoverLevel>('none');
 
   // Viewport
-  const [zoom, setZoom] = useState(1);
   const [bgNaturalSize, setBgNaturalSize] = useState<{
     width: number;
     height: number;
@@ -522,6 +271,79 @@ export function BattleStage({
   const entityMap = useMemo(
     () => new Map(entities.map((e) => [e.id, e])),
     [entities],
+  );
+
+  // Battle opens on the action for the Director, and on their own token for a Player. Camera only:
+  // "Show all", the mini-map and "N above view" keep the whole map in reach.
+  const openedSceneRef = useRef<string | null | undefined>(undefined);
+  const worldWidth = Math.max(bgNaturalSize?.width ?? 0, cols * cellSize);
+  const worldHeight = Math.max(bgNaturalSize?.height ?? 0, rows * cellSize);
+  useEffect(() => {
+    if (openedSceneRef.current === sceneKey) return;
+    const timer = setInterval(() => {
+      const viewport = viewportRef.current;
+      if (!viewport || !showDiceControls) return;
+      const { width, height } = viewport.getViewSize();
+      if (width < 50 || height < 50 || openedSceneRef.current === sceneKey) return;
+      openedSceneRef.current = sceneKey;
+      clearInterval(timer);
+      const own = ownHeroEntityId ? entityMap.get(ownHeroEntityId) : undefined;
+      const acting = combat?.activeEntityId ? entityMap.get(combat.activeEntityId) : undefined;
+      const focus = isDirector ? acting : (own ?? acting);
+      const others = entities.filter((e) => e.type !== 'npc');
+      if (!focus && others.length === 0) {
+        viewport.fitToRect(worldWidth, worldHeight);
+        return;
+      }
+      const cx = focus ? focus.x + entitySizeOf(focus) / 2 : others.reduce((n, e) => n + e.x + 0.5, 0) / others.length;
+      const cy = focus ? focus.y + entitySizeOf(focus) / 2 : others.reduce((n, e) => n + e.y + 0.5, 0) / others.length;
+      // About 17 squares across, as in the demos. The map fills the screen wherever it can.
+      const zoom = Math.max(0.25, Math.min(1.25, width / (17 * cellSize)));
+      viewport.centerOnGrid(cx, cy, cellSize, zoom);
+      const pan = viewport.getPan();
+      const fit = (value: number, view: number, world: number) =>
+        world * zoom <= view ? (view - world * zoom) / 2 : Math.min(0, Math.max(view - world * zoom, value));
+      viewport.setPan(fit(pan.x, width, worldWidth), fit(pan.y, height, worldHeight));
+    }, 120);
+    return () => clearInterval(timer);
+  }, [sceneKey, showDiceControls, entityMap, entities, combat?.activeEntityId, ownHeroEntityId, isDirector, cellSize, worldWidth, worldHeight]);
+
+  const showAll = useCallback(() => {
+    viewportRef.current?.fitToRect(worldWidth, worldHeight);
+  }, [worldWidth, worldHeight]);
+
+  /** Where a token is on screen, relative to the stage. Popovers open beside it. */
+  const tokenRect = useCallback(
+    (entityId: string) => {
+      const entity = entityMap.get(entityId);
+      const viewport = viewportRef.current;
+      if (!entity || !viewport) return null;
+      const pan = viewport.getPan();
+      const zoom = viewport.getZoom();
+      const px = entitySizeOf(entity) * cellSize * zoom;
+      return { x: pan.x + entity.x * cellSize * zoom, y: pan.y + entity.y * cellSize * zoom, w: px, h: px };
+    },
+    [entityMap, cellSize],
+  );
+  // Dev only: lets the browser journey find a grid square on the canvas.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const probe = window as unknown as { __anvilGridToClient?: (gx: number, gy: number) => { x: number; y: number } | null };
+    probe.__anvilGridToClient = (gx, gy) => {
+      const viewport = viewportRef.current;
+      const rect = stageRef.current?.getBoundingClientRect();
+      if (!viewport || !rect) return null;
+      const pan = viewport.getPan();
+      const zoom = viewport.getZoom();
+      return { x: rect.left + pan.x + gx * cellSize * zoom, y: rect.top + pan.y + gy * cellSize * zoom };
+    };
+    return () => {
+      delete probe.__anvilGridToClient;
+    };
+  }, [cellSize]);
+  const stageSize = useCallback(
+    () => ({ width: stageRef.current?.clientWidth ?? 800, height: stageRef.current?.clientHeight ?? 600 }),
+    [],
   );
 
   // Condition-adjusted movement remaining for the active combatant — drives the
@@ -610,20 +432,24 @@ export function BattleStage({
   const handleTokenHover = useCallback(
     (entityId: string | null, screenX: number, screenY: number) => {
       if (entityId) {
-        const { x, y } = toLocal(screenX, screenY);
+        // Sits above the token, never over it.
+        const rect = tokenRect(entityId);
+        const { x, y } = rect ? { x: rect.x + rect.w / 2, y: rect.y } : toLocal(screenX, screenY);
         setHoverInfo({ entityId, x, y });
       } else {
         setHoverInfo(null);
       }
     },
-    [toLocal],
+    [toLocal, tokenRect],
   );
 
   const handleTokenRightClick = useCallback(
     (entityId: string | null, screenX: number, screenY: number) => {
       if (entityId) {
-        const { x, y } = toLocal(screenX, screenY);
-        setContextMenu({ entityId, x, y });
+        const local = toLocal(screenX, screenY);
+        const rect = tokenRect(entityId);
+        // Opens beside the token, never over it. The menu flips left when it would run off.
+        setContextMenu({ entityId, x: rect ? rect.x + rect.w + 8 : local.x, y: rect ? rect.y : local.y });
         setTerrainMenu(null);
         setHoverInfo(null); // hide tooltip when context menu opens
       } else {
@@ -631,7 +457,7 @@ export function BattleStage({
         setContextMenu(null);
       }
     },
-    [toLocal],
+    [toLocal, tokenRect],
   );
 
   const handleCloseContextMenu = useCallback(() => {
@@ -956,7 +782,7 @@ export function BattleStage({
   }, [isDirector, activeTool, cols, rows, cellSize, bgNaturalSize]);
 
   return (
-    <div ref={stageRef} className="relative h-full w-full">
+    <div ref={stageRef} className="relative h-full w-full overflow-hidden">
       <BattleCanvas
         cols={cols}
         rows={rows}
@@ -978,7 +804,9 @@ export function BattleStage({
         actedEntityIds={combat?.actedThisRound}
         activeEntityId={combat?.activeEntityId ?? null}
         builderMode={isDirector}
-        activeTool={isDirector ? activeTool : playerTool}
+        activeTool={paused ? 'pan' : isDirector ? activeTool : playerTool}
+        combat={combat}
+        ownEntityId={ownHeroEntityId}
         drawColor={drawColor}
         drawWidth={drawWidth}
         drawings={mergedDrawings}
@@ -1002,7 +830,6 @@ export function BattleStage({
         gridOffsetY={gridOffsetY}
         onTokenHover={handleTokenHover}
         onTokenRightClick={handleTokenRightClick}
-        onZoomChange={setZoom}
         onBackgroundLoaded={(info) =>
           setBgNaturalSize({
             width: info.naturalWidth,
@@ -1012,202 +839,126 @@ export function BattleStage({
         viewportRef={viewportRef}
       />
 
-      {combat && isInitiativePending(combat) && (
-        <div className="pointer-events-none absolute inset-x-4 top-20 z-30 flex justify-center">
-          <div className="pointer-events-auto max-w-sm rounded-lg border border-amber-500/40 bg-zinc-950/90 p-4 text-center shadow-2xl backdrop-blur">
-            <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-amber-500/15 text-amber-200">
-              <Dices className="size-5" />
-            </div>
-            <p className="mt-3 text-sm font-semibold text-zinc-100">
-              Players roll initiative
-            </p>
-            <p className="mt-1 text-xs text-zinc-400">
-              Roll 1d10. On 6 or higher, heroes act first.
-            </p>
-            {isDirector || !onRollInitiative ? (
-              <p className="mt-3 rounded border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs text-zinc-400">
-                Waiting for a player to roll.
-              </p>
-            ) : (
-              <button
-                type="button"
-                className="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-amber-500 px-4 text-sm font-semibold text-anvil-ink transition hover:bg-amber-400"
-                onClick={onRollInitiative}
-              >
-                Roll d10
-              </button>
-            )}
-          </div>
+      {combat && isInitiativePending(combat) && showDiceControls && (
+        <div className="sb-pop sb-screen-msg" data-map-panel>
+          <strong>{isDirector || !onRollInitiative ? 'Waiting for a player to roll' : 'Players roll initiative'}</strong>
+          <p className="sb-note">Roll 1d10. On 6 or higher, heroes act first.</p>
+          {!isDirector && onRollInitiative && (
+            <button
+              type="button"
+              className="sb-end my-1 w-full"
+              data-wait={paused || undefined}
+              disabled={paused}
+              onClick={onRollInitiative}
+            >
+              {paused ? 'Roll d10, when back' : 'Roll d10'}
+            </button>
+          )}
         </div>
       )}
 
       {/* On-canvas targeting banner (advisory) */}
       {targetingContext && (
-        <div className="pointer-events-none absolute inset-x-4 top-16 z-40 flex justify-center">
-          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-amber-500/40 bg-zinc-950/90 px-4 py-2 text-xs text-amber-100 shadow-xl backdrop-blur">
-            <span>
-              Click a target for{' '}
-              <span className="font-semibold text-amber-300">
-                {targetingContext.abilityName}
-              </span>
-            </span>
-            <span className="flex items-center gap-2 border-l border-zinc-700 pl-3 text-[10px] text-zinc-400">
-              <span className="flex items-center gap-1">
-                <span className="size-2 rounded-full bg-emerald-400" />
-                flank
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="size-2 rounded-full bg-sky-400" />
-                high ground
-              </span>
-            </span>
-            <label className="flex items-center gap-1 border-l border-zinc-700 pl-3 text-[10px] text-zinc-400">
-              Cover
-              <select
-                value={coverLevel}
-                onChange={(e) => setCoverLevel(e.target.value as AbilityLogic.CoverLevel)}
-                className="h-6 rounded border border-zinc-700 bg-zinc-950 px-1 text-[10px] text-zinc-100"
-              >
-                <option value="none">none</option>
-                <option value="half">half</option>
-                <option value="three-quarters">¾</option>
-                <option value="full">full</option>
-              </select>
-              {coverLevel !== 'none' && (
-                <span className="text-red-300">
-                  {coverLevel === 'full'
-                    ? 'no target'
-                    : `+${AbilityLogic.getCoverBanes(coverLevel)} bane${
-                        AbilityLogic.getCoverBanes(coverLevel) > 1 ? 's' : ''
-                      }`}
-                </span>
-              )}
-            </label>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
-              onClick={() => onTargetCancel?.()}
+        <div className="sb-pop sb-target-bar" data-map-panel>
+          <span>
+            Click a target for <b>{targetingContext.abilityName}</b>
+          </span>
+          <span className="flex items-center gap-1">
+            <i className="size-2.5 rounded-full bg-[var(--art-active-plate)]" aria-hidden="true" />
+            flank
+          </span>
+          <span className="flex items-center gap-1">
+            <i className="size-2.5 rotate-45 bg-[var(--art-ink)]" aria-hidden="true" />
+            high ground
+          </span>
+          <label className="flex items-center gap-1">
+            Cover
+            <select
+              value={coverLevel}
+              onChange={(e) => setCoverLevel(e.target.value as AbilityLogic.CoverLevel)}
+              className="h-6 bg-raised px-1 text-[13px] text-text shadow-[inset_0_0_0_1.5px_var(--color-line)]"
             >
-              <X className="size-3" />
-              Cancel <span className="text-zinc-500">Esc</span>
-            </button>
-          </div>
+              <option value="none">none</option>
+              <option value="half">half</option>
+              <option value="three-quarters">¾</option>
+              <option value="full">full</option>
+            </select>
+            {coverLevel !== 'none' && (
+              <b>
+                {coverLevel === 'full'
+                  ? 'no target'
+                  : `+${AbilityLogic.getCoverBanes(coverLevel)} bane${
+                      AbilityLogic.getCoverBanes(coverLevel) > 1 ? 's' : ''
+                    }`}
+              </b>
+            )}
+          </label>
+          <button type="button" className="sb-link inline-flex items-center gap-1" onClick={() => onTargetCancel?.()}>
+            <X className="size-3.5" aria-hidden="true" />
+            Cancel, Esc
+          </button>
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-x-4 top-3 z-30 flex justify-center">
-        {combat && (
-          <BattleTurnTracker
-            combat={combat}
-            entities={entities}
-            onRollInitiative={
-              isInitiativePending(combat) ? undefined : onRollInitiative
-            }
-            className="pointer-events-auto"
-          />
-        )}
-      </div>
+      {combat && <BattleTurnTracker combat={combat} entities={entities} />}
 
       {showDiceControls && (
-        // The Player's zoom panel docks on the right edge, so the Player's dice sit on the left.
-        <div
-          className={`pointer-events-none absolute bottom-4 z-30 ${isDirector ? 'right-4' : 'left-4'}`}
-        >
-          <DiceRollControls send={send} className="pointer-events-auto" />
-        </div>
-      )}
-
-      {/* Floating toolbar — director only */}
-      {isDirector && (
-        <BattleToolbar
-          activeTool={activeTool}
-          onToolChange={setActiveTool}
-          drawColor={drawColor}
-          onDrawColorChange={setDrawColor}
-          drawWidth={drawWidth}
-          onDrawWidthChange={setDrawWidth}
-          fogZoneCount={fogZones.length}
-          fogBrushMode={fogBrushMode}
-          onFogBrushModeChange={setFogBrushMode}
-          fogBrushSize={fogBrushSize}
-          onFogBrushSizeChange={setFogBrushSize}
-          onClearFog={handleClearFog}
-          orientation="vertical"
-          viewportControls={
-            <ViewportControls
-              zoom={zoom}
-              orientation="vertical"
-              className="flex flex-col items-center gap-1"
-              onZoomIn={() => viewportRef.current?.zoomIn()}
-              onZoomOut={() => viewportRef.current?.zoomOut()}
-              onZoomTo={(z) => viewportRef.current?.setZoom(z)}
-              onFitToMap={() => {
-                const fitW = bgNaturalSize?.width ?? cols * cellSize;
-                const fitH = bgNaturalSize?.height ?? rows * cellSize;
-                viewportRef.current?.fitToRect(fitW, fitH);
-              }}
-            />
-          }
+        <MapNav
+          viewportRef={viewportRef}
+          entities={entities}
+          fogZones={mergedFog}
+          isDirector={isDirector}
+          cols={cols}
+          rows={rows}
+          cellSize={cellSize}
+          worldWidth={worldWidth}
+          worldHeight={worldHeight}
+          backgroundUrl={backgroundUrl}
+          onShowAll={showAll}
         />
       )}
 
-      {!isDirector && (
-        <FloatingStagePanel
-          storageKey="anvil-session-stage-viewport-controls"
-          initialPlacement={{ edge: 'right', offset: 0.86 }}
-          stageRef={stageRef}
-          inset={16}
-          label="zoom controls"
-        >
-          <div className="flex flex-col items-center gap-1 rounded-lg bg-zinc-900/90 p-1.5 shadow-lg backdrop-blur-sm">
-            <div className="flex flex-col gap-0.5">
-              <button
-                type="button"
-                title="Select / interact"
-                aria-pressed={playerTool === 'select'}
-                onClick={() => setPlayerTool('select')}
-                className={`flex size-8 items-center justify-center rounded-md transition ${
-                  playerTool === 'select'
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-                }`}
-              >
-                <MousePointer2 className="size-4" />
-              </button>
-              <button
-                type="button"
-                title="Pan the map (drag)"
-                aria-pressed={playerTool === 'pan'}
-                onClick={() => setPlayerTool('pan')}
-                className={`flex size-8 items-center justify-center rounded-md transition ${
-                  playerTool === 'pan'
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-                }`}
-              >
-                <Hand className="size-4" />
-              </button>
-            </div>
-            <div className="h-px w-6 bg-zinc-800" />
-            <ViewportControls
-              zoom={zoom}
-              className="flex flex-col items-center gap-1"
-              onZoomIn={() => viewportRef.current?.zoomIn()}
-              onZoomOut={() => viewportRef.current?.zoomOut()}
-              onZoomTo={(z) => viewportRef.current?.setZoom(z)}
-              onFitToMap={() => {
-                const fitW = bgNaturalSize?.width ?? cols * cellSize;
-                const fitH = bgNaturalSize?.height ?? rows * cellSize;
-                viewportRef.current?.fitToRect(fitW, fitH);
-              }}
-            />
-          </div>
-        </FloatingStagePanel>
+      {isDirector && !paused && (
+        <ToolOptions
+          tool={activeTool}
+          drawColor={drawColor}
+          onDrawColor={setDrawColor}
+          drawWidth={drawWidth}
+          onDrawWidth={setDrawWidth}
+          fogZoneCount={fogZones.length}
+          fogBrushMode={fogBrushMode}
+          onFogBrushMode={setFogBrushMode}
+          fogBrushSize={fogBrushSize}
+          onFogBrushSize={setFogBrushSize}
+          onClearFog={handleClearFog}
+        />
       )}
 
-      {/* Dice roll overlay */}
+      {/* The bar under the screen: the tools, and the same dice in every mode. */}
+      {showDiceControls &&
+        barTarget &&
+        createPortal(
+          <div className="sb-bar-host">
+            <MapTools
+              isDirector={isDirector}
+              tool={isDirector ? activeTool : playerTool}
+              onTool={isDirector ? setActiveTool : setPlayerTool}
+            />
+            <DiceRollControls send={send} variant="bar" fold={isDirector && small} />
+          </div>,
+          barTarget,
+        )}
+
+      {/* Power rolls open beside the token */}
       {combatLog && entityNames && (
-        <DiceTray entries={combatLog} entityNames={entityNames} />
+        <DiceTray
+          entries={combatLog}
+          lastRoll={lastRoll}
+          rollAnchorId={rollAnchorId}
+          entityNames={entityNames}
+          anchorFor={tokenRect}
+          stageSize={stageSize}
+        />
       )}
 
       {/* Token hover tooltip */}
@@ -1216,6 +967,7 @@ export function BattleStage({
           entity={entityMap.get(hoverInfo.entityId)!}
           x={hoverInfo.x}
           y={hoverInfo.y}
+          isDirector={isDirector}
         />
       )}
 
@@ -1225,6 +977,9 @@ export function BattleStage({
           entity={entityMap.get(contextMenu.entityId)!}
           x={contextMenu.x}
           y={contextMenu.y}
+          tokenWidth={tokenRect(contextMenu.entityId)?.w ?? 0}
+          stageWidth={stageSize().width}
+          stageHeight={stageSize().height}
           isDirector={isDirector}
           ownHeroEntityId={ownHeroEntityId}
           send={send}
