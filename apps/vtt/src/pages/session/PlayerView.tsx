@@ -26,6 +26,7 @@ import {
 import {
   filterVisibleEntities,
   maskHiddenNames,
+  seenButNotVisible,
 } from "../../lib/fog-visibility.js";
 import { useSessionConnection } from "../../components/session/shell/connection-context.js";
 import { PlayerHeroCard } from "../../components/session/battle/PlayerHeroCard.js";
@@ -131,21 +132,18 @@ export function PlayerView({
     () => new Map(playerVisibleEntities.map((e) => [e.id, e.name])),
     [playerVisibleEntities],
   );
-  // The server leaves fogged creatures out of a Player's state and writes "Something" as it logs.
-  // A creature that walks into fog later is the gap: its older rows would still name it. Remember
-  // names seen; a creature still in the fight but no longer visible is hidden. One removed from the
-  // fight keeps its name, because that is history, not a secret.
-  const knownCreatures = useRef(new Map<string, EntityData>());
+  // The server leaves fogged creatures out of a Player's state, combat lists included, and writes
+  // "Something" as it logs. A creature that walks into fog later is the gap: its older rows would
+  // still name it. So remember every creature seen; one no longer visible reads "Something" until
+  // it is visible again, when its name comes back. A creature truly removed from the fight looks
+  // the same from here, so its old rows read "Something" too: the safe side.
+  const seenCreatures = useRef(new Map<string, EntityData>());
   for (const entity of playerVisibleEntities) {
-    if (entity.type !== "hero") knownCreatures.current.set(entity.id, entity);
+    if (entity.type !== "hero") seenCreatures.current.set(entity.id, entity);
   }
   const playerLog = useMemo(() => {
     const entries = sessionState.actionLog ?? [];
-    const visibleIds = new Set(playerVisibleEntities.map((e) => e.id));
-    const inFight = new Set(combat?.villainEntities ?? []);
-    const hidden = [...knownCreatures.current.values()].filter(
-      (e) => inFight.has(e.id) && !visibleIds.has(e.id),
-    );
+    const hidden = seenButNotVisible([...seenCreatures.current.values()], playerVisibleEntities);
     if (hidden.length === 0) return entries;
     const mask = (text: string) => maskHiddenNames(text, hidden, playerVisibleEntities);
     return entries.map((entry) => ({
@@ -154,7 +152,7 @@ export function PlayerView({
       ...(entry.detail ? { detail: mask(entry.detail) } : {}),
       ...(entry.actorName ? { actorName: mask(entry.actorName) } : {}),
     }));
-  }, [sessionState.actionLog, combat?.villainEntities, playerVisibleEntities]);
+  }, [sessionState.actionLog, playerVisibleEntities]);
 
   // Find this player's hero entity
   const me = participants.find((p) => p.userId === user?.id);

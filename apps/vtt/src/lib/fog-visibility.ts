@@ -61,6 +61,15 @@ export function hiddenEntities(entities: EntityData[], fogZones: FogZone[]): Ent
   return entities.filter((entity) => entity.type !== 'hero' && isInFog(entity.x, entity.y, fogZones));
 }
 
+/**
+ * Creatures this viewer has seen that are no longer visible. Worked out only from what the viewer
+ * has seen: the server redacts hidden ids from a Player's combat lists, so those can't tell.
+ */
+export function seenButNotVisible(seen: EntityData[], visible: EntityData[]): EntityData[] {
+  const visibleIds = new Set(visible.map((entity) => entity.id));
+  return seen.filter((entity) => !visibleIds.has(entity.id));
+}
+
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**

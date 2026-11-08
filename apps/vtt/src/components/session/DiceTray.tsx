@@ -96,6 +96,9 @@ export function DiceTray({ entries, lastRoll, rollAnchorId, entityNames, anchorF
       {tracked.map((item, index) => {
         const age = now - item.at;
         const settling = !reduced() && age < TUMBLE_MS;
+        // The roller may walk into fog while its card is up: the card stops naming it.
+        const hiddenNow = item.sourceId !== null && !entityNames.has(item.sourceId);
+        const roll = hiddenNow ? { ...item.card, title: 'Something rolls', damage: 0, effects: [] } : item.card;
         const anchor = item.sourceId ? anchorFor?.(item.sourceId) : null;
         // Beside the token, never over it. No token: the top-left of the map.
         let x = 12;
@@ -109,7 +112,7 @@ export function DiceTray({ entries, lastRoll, rollAnchorId, entityNames, anchorF
         return (
           <PowerRollDisplay
             key={item.key}
-            roll={item.card}
+            roll={roll}
             settling={settling}
             tumble={item.card.dice.map((_, i) => 1 + ((Math.floor(age / 70) + i * 3) % 10))}
             on={age > 16}
