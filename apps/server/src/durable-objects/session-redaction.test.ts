@@ -112,8 +112,12 @@ describe('redactCombatForPlayer', () => {
     expect(redactCombatForPlayer(visibleTurn, hidden).activeEntityId).toBe('seen');
   });
 
-  it('returns the original object when nothing is hidden', () => {
-    expect(redactCombatForPlayer(combat, new Set())).toBe(combat);
+  it('keeps the roster but removes creature actions when nothing is hidden', () => {
+    const redacted = redactCombatForPlayer(combat, new Set());
+    expect(redacted.heroEntities).toEqual(combat.heroEntities);
+    expect(redacted.villainEntities).toEqual(combat.villainEntities);
+    expect(redacted.activeEntityId).toBe(combat.activeEntityId);
+    expect(Object.keys(redacted.turnActions).every((id) => combat.heroEntities.includes(id))).toBe(true);
   });
 
   it('does not mutate the director copy', () => {

@@ -329,7 +329,13 @@ export function applyServerMessageToRuntime(
       return {
         ...current,
         moveNotice: { entityId: message.entityId, cost: message.cost, overBudget: message.overBudget },
-        pendingOA: message.oaTriggers.length > 0 ? message.oaTriggers : current.pendingOA,
+        // Keep prompts from earlier moves that the Director has not resolved yet.
+        pendingOA: [
+          ...current.pendingOA,
+          ...message.oaTriggers.filter(
+            (trigger) => !current.pendingOA.some((pending) => oaKey(pending) === oaKey(trigger)),
+          ),
+        ],
       };
 
     // No store change needed: forced_movement_resolved's position update arrives

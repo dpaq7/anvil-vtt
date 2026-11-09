@@ -161,8 +161,6 @@ export function hiddenEntityIds(entities: EntityData[], fogZones: FogZone[]): Se
  * redacted) entity list, so an id left behind here renders as a raw uuid.
  */
 export function redactCombatForPlayer(combat: CombatState, hidden: Set<string>): CombatState {
-  if (hidden.size === 0) return combat;
-
   const visible = (id: string): boolean => !hidden.has(String(id));
 
   const villainGroups = combat.villainGroups
@@ -170,8 +168,10 @@ export function redactCombatForPlayer(combat: CombatState, hidden: Set<string>):
     .filter((group) => group.entityIds.length > 0);
 
   const turnActions: CombatState['turnActions'] = {};
+  // Heroes only. No player screen reads a creature's actions, and its movement
+  // count would show how far it walked while hidden, even after it leaves fog.
   for (const [entityId, actions] of Object.entries(combat.turnActions)) {
-    if (visible(entityId)) turnActions[entityId] = actions;
+    if (visible(entityId) && combat.heroEntities.includes(entityId)) turnActions[entityId] = actions;
   }
 
   return {
@@ -274,12 +274,11 @@ export function redactStateForPlayer(state: SessionState): SessionState {
   );
 
   const hiddenNames = hiddenEntityNames(state.entities, hidden);
-  const actionLog = hidden.size === 0
-    ? state.actionLog
-    : (state.actionLog ?? []).flatMap((entry) => {
-        const redacted = redactActionLogEntryForPlayer(entry, hidden, hiddenNames);
-        return redacted ? [redacted] : [];
-      });
+  const actionLog = (state.actionLog ?? []).flatMap((entry) => {
+    if (entry.directorOnly) return [];
+    const redacted = redactActionLogEntryForPlayer(entry, hidden, hiddenNames);
+    return redacted ? [redacted] : [];
+  });
 
   return {
     ...state,

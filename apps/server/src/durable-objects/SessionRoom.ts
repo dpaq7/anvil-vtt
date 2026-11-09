@@ -493,9 +493,20 @@ function validateMovePath(value: unknown): ProtocolGridPoint[] | null {
   return path;
 }
 
-/** True if the path starts at the given square and every step goes to a touching square. */
-function isConnectedPathFrom(start: { x: unknown; y: unknown }, path: ProtocolGridPoint[]): boolean {
+/**
+ * True if the path starts at the given square, stays on whole squares inside the
+ * grid, and every step goes to a touching square.
+ */
+function isConnectedPathFrom(
+  start: ProtocolGridPoint,
+  path: ProtocolGridPoint[],
+  bounds: { cols: number; rows: number },
+): boolean {
   if (path[0]?.x !== start.x || path[0]?.y !== start.y) return false;
+  const onGrid = path.every((point) =>
+    Number.isInteger(point.x) && Number.isInteger(point.y) &&
+    point.x >= 0 && point.x < bounds.cols && point.y >= 0 && point.y < bounds.rows);
+  if (!onGrid) return false;
   return path.slice(1).every((point, index) => {
     const dx = Math.abs(point.x - path[index]!.x);
     const dy = Math.abs(point.y - path[index]!.y);
@@ -1758,12 +1769,7 @@ export class SessionRoom extends DurableObject<Env> {
    */
   private broadcastCombat(combat: CombatState | null): void {
     if (!combat) return;
-    const hidden = this.getHiddenEntityIds();
-    if (hidden.size === 0) {
-      this.broadcast({ type: 'combat_updated', combat });
-      return;
-    }
-    const playerCombat = redactCombatForPlayer(combat, hidden);
+    const playerCombat = redactCombatForPlayer(combat, this.getHiddenEntityIds());
     for (const { ws, meta } of this.getConnections()) {
       this.sendTo(ws, {
         type: 'combat_updated',
@@ -2941,7 +2947,9 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private appendActionLog(
-    entry: Omit<ActionLogEntry, 'id' | 'sceneType' | 'timestamp'> & {
+    entry: Omit<ActionLogEntry, 'id' | 'sceneType' | 'timestamp' | 'directorOnly'> & {
+      /** Keep from players for good, even if the actor is visible right now. */
+      directorOnly?: boolean;
       id?: string;
       sceneType?: SceneActionLogType;
       timestamp?: number;
@@ -2951,6 +2959,9 @@ export class SessionRoom extends DurableObject<Env> {
     const scene = this.activeSceneRef();
     const sceneType = entry.sceneType ?? this.asActionLogSceneType(scene?.type);
     if (!sceneType) return;
+
+    const hidden = this.getHiddenEntityIds();
+    const directorOnly = entry.directorOnly === true || (entry.actorId !== undefined && hidden.has(String(entry.actorId)));
 
     const loggedEntry: ActionLogEntry = {
       id: entry.id ?? this.createActionResultId('log'),
@@ -2964,6 +2975,7 @@ export class SessionRoom extends DurableObject<Env> {
       total: entry.total,
       tier: entry.tier,
       timestamp: entry.timestamp ?? Date.now(),
+      ...(directorOnly ? { directorOnly: true } : {}),
     };
 
     const existing = this.sessionState.actionLog ?? [];
@@ -2972,16 +2984,17 @@ export class SessionRoom extends DurableObject<Env> {
 
     // Directors get the entry verbatim. Players get it with hidden entities
     // masked, or not at all when a hidden entity authored it.
-    const hidden = this.getHiddenEntityIds();
-    if (hidden.size === 0) {
+    if (hidden.size === 0 && !directorOnly) {
       this.broadcast({ type: 'action_logged', entry: loggedEntry });
       return;
     }
-    const playerEntry = redactActionLogEntryForPlayer(
-      loggedEntry,
-      hidden,
-      hiddenEntityNames(this.sessionState.entities, hidden),
-    );
+    const playerEntry = directorOnly
+      ? null
+      : redactActionLogEntryForPlayer(
+          loggedEntry,
+          hidden,
+          hiddenEntityNames(this.sessionState.entities, hidden),
+        );
     this.sendToRole('director', { type: 'action_logged', entry: loggedEntry });
     if (playerEntry) this.sendToRole('player', { type: 'action_logged', entry: playerEntry });
     this.scheduleActiveSceneSnapshot();
@@ -3163,7 +3176,11 @@ export class SessionRoom extends DurableObject<Env> {
       return;
     }
     if (!path || path.length < 2) return;
-    if (!isConnectedPathFrom({ x: entity['x'], y: entity['y'] }, path)) {
+    // The clamp rounds a fractional or off-map token onto the grid. The client does the same.
+    const start = typeof entity['x'] === 'number' && typeof entity['y'] === 'number'
+      ? this.clampToActiveBattleGrid(entity['x'], entity['y'])
+      : null;
+    if (!start || !isConnectedPathFrom(start, path, this.getActiveGridBounds())) {
       this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Move must start at the token and go one square at a time' });
       return;
     }
@@ -3200,8 +3217,10 @@ export class SessionRoom extends DurableObject<Env> {
 
     const moverHidden = hiddenBeforeMove || isEntityHiddenFromPlayers(entity, fogZones);
     const hidden = this.getHiddenEntityIds();
-    // The log is shared with players, so it must not count attackers they cannot see.
-    const visibleTriggerCount = oa.triggers.filter((trigger) => !hidden.has(String(trigger.attackerId))).length;
+    // A log entry players can read must not count attackers they cannot see.
+    const loggedTriggerCount = moverHidden
+      ? oa.triggers.length
+      : oa.triggers.filter((trigger) => !hidden.has(String(trigger.attackerId))).length;
 
     if (isActiveTurn && combat) {
       turnState.moveRemaining = Math.max(0, turnState.moveRemaining - movePath.totalCost);
@@ -3211,9 +3230,9 @@ export class SessionRoom extends DurableObject<Env> {
 
     const detailParts = [`Moved ${movePath.totalCost} square${movePath.totalCost === 1 ? '' : 's'}`];
     if (movePath.overBudget) detailParts.push('(exceeded speed)');
-    if (visibleTriggerCount > 0) {
+    if (loggedTriggerCount > 0) {
       detailParts.push(
-        `— provoked ${visibleTriggerCount} opportunity attack${visibleTriggerCount === 1 ? '' : 's'}`,
+        `— provoked ${loggedTriggerCount} opportunity attack${loggedTriggerCount === 1 ? '' : 's'}`,
       );
     }
     this.appendActionLog({
@@ -3221,6 +3240,8 @@ export class SessionRoom extends DurableObject<Env> {
       actorName: entity.name,
       title: `${entity.name} ${mode === 'disengage' ? 'shifted' : 'moved'}`,
       detail: detailParts.join(' '),
+      // The square count includes fogged squares, so this stays hidden after a reveal too.
+      directorOnly: moverHidden,
     });
 
     const committed: Extract<ServerMessage, { type: 'move_committed' }> = {
@@ -3358,7 +3379,7 @@ export class SessionRoom extends DurableObject<Env> {
       case 'manual-heal':
       case 'apply-condition':
       case 'remove-condition': {
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Target entity not found' });
           return;
@@ -3499,7 +3520,7 @@ export class SessionRoom extends DurableObject<Env> {
       case 'knockback':
       case 'free-strike': {
         const source = this.getRequiredSource(ws, meta, action.sourceId);
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!source || !target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
           return;
@@ -3565,7 +3586,7 @@ export class SessionRoom extends DurableObject<Env> {
         // Charge: the move itself is a normal commit_move; this resolves the
         // main-action melee free strike it ends with, which gains an edge.
         const source = this.getRequiredSource(ws, meta, action.sourceId);
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!source || !target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
           return;
@@ -3607,7 +3628,7 @@ export class SessionRoom extends DurableObject<Env> {
 
       case 'ability': {
         const source = this.getRequiredSource(ws, meta, action.sourceId);
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!source || !target || !action.abilityId) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source, target, and ability are required' });
           return;
@@ -3682,6 +3703,19 @@ export class SessionRoom extends DurableObject<Env> {
   private getEntity(entityId: string | undefined): (SessionEntity & Record<string, unknown>) | null {
     if (!entityId || !this.sessionState) return null;
     return (this.sessionState.entities.find((entity) => entity.id === entityId) as (SessionEntity & Record<string, unknown>) | undefined) ?? null;
+  }
+
+  /**
+   * A player learns a hidden creature's id from entity_deleted. Treating that id
+   * as unknown stops range replies from revealing where the creature is.
+   */
+  private getTargetForActor(
+    meta: ConnectionMeta,
+    targetId: string | undefined,
+  ): (SessionEntity & Record<string, unknown>) | null {
+    const target = this.getEntity(targetId);
+    if (target && meta.role !== 'director' && isEntityHiddenFromPlayers(target, this.getActiveFogZones())) return null;
+    return target;
   }
 
   private getRequiredSource(
