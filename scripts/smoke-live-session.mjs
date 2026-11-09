@@ -760,6 +760,67 @@ async function smokeBattleTokenActions(directorSocket, playerSocket, combat, her
     directorSocket.waitFor(hasActionLog('battle', 'Heroic Resource'), 'director dice action log'),
     playerSocket.waitFor(hasActionLog('battle', 'Heroic Resource'), 'player dice action log'),
   ]);
+
+  await smokeBattleCommitMove(directorSocket, playerSocket, heroId, villainId);
+}
+
+async function smokeBattleCommitMove(directorSocket, playerSocket, heroId, villainId) {
+  const before = await requestFreshState(directorSocket, 'director state before commit_move');
+  assert(before.combat?.activeEntityId === heroId, 'hero is not the active combatant before commit_move');
+  const heroBefore = before.entities.find((entity) => entity.id === heroId);
+  const moveBefore = before.combat.turnActions[heroId]?.moveRemaining;
+  assert(typeof heroBefore?.x === 'number' && typeof heroBefore?.y === 'number', 'hero has no position before commit_move');
+  assert(typeof moveBefore === 'number' && moveBefore >= 2, `hero cannot move 2 squares: moveRemaining=${moveBefore}`);
+
+  // Two squares along the row, heading inward so the move cannot be clamped at the map edge.
+  const step = heroBefore.x >= 2 ? -1 : 1;
+  const path = [0, 1, 2].map((squares) => ({ x: heroBefore.x + squares * step, y: heroBefore.y }));
+  const destination = path[path.length - 1];
+  const moveRemaining = moveBefore - 2;
+
+  const playerRefusal = waitForNew(playerSocket, hasError('FORBIDDEN'), 'player refused moving a villain');
+  playerSocket.send({ type: 'commit_move', entityId: villainId, path, mode: 'advance' });
+  await playerRefusal;
+
+  const seenByDirector = new Set(directorSocket.messages);
+  playerSocket.send({ type: 'commit_move', entityId: heroId, path, mode: 'advance' });
+  const [committed] = await Promise.all([
+    directorSocket.waitFor(hasMoveCommitted(heroId), 'director move_committed'),
+    playerSocket.waitFor(hasMoveCommitted(heroId), 'player move_committed'),
+    directorSocket.waitFor(hasEntityMovedTo(heroId, destination), 'director hero moved'),
+    playerSocket.waitFor(hasEntityMovedTo(heroId, destination), 'player hero moved'),
+    directorSocket.waitFor(hasMoveRemaining(heroId, moveRemaining), 'director movement count dropped'),
+    playerSocket.waitFor(hasMoveRemaining(heroId, moveRemaining), 'player movement count dropped'),
+  ]);
+  assert(committed.cost === 2, `commit_move cost ${committed.cost}, expected 2`);
+  assert(directorSocket.messages.every((message) => seenByDirector.has(message) || message.type !== 'error'), 'director received an error during commit_move');
+
+  const after = await requestFreshState(directorSocket, 'director state after commit_move');
+  const heroAfter = after.entities.find((entity) => entity.id === heroId);
+  assert(heroAfter?.x === destination.x && heroAfter?.y === destination.y, 'hero position did not persist after commit_move');
+  assert(after.combat?.turnActions[heroId]?.moveRemaining === moveRemaining, 'movement count did not persist after commit_move');
+
+  // The hero started next to the villain, so walking away provokes an opportunity attack.
+  const trigger = committed.oaTriggers.find((item) => item.attackerId === villainId);
+  assert(trigger, 'walking away from the adjacent villain did not provoke an opportunity attack');
+
+  const playerOaRefusal = waitForNew(playerSocket, hasError('FORBIDDEN'), 'player refused resolving an opportunity attack');
+  playerSocket.send({ type: 'resolve_opportunity_attack', trigger, decision: 'take' });
+  await playerOaRefusal;
+
+  directorSocket.send({ type: 'resolve_opportunity_attack', trigger, decision: 'pass' });
+  await directorSocket.waitFor(hasActionLog('battle', 'Opportunity attack waived'), 'director opportunity attack log');
+}
+
+function waitForNew(socket, predicate, label) {
+  const seen = new Set(socket.messages);
+  return socket.waitFor((message) => !seen.has(message) && predicate(message), label);
+}
+
+async function requestFreshState(socket, label) {
+  const stateMessage = waitForNew(socket, (message) => message.type === 'state', label);
+  socket.send({ type: 'request_state' });
+  return (await stateMessage).state;
 }
 
 async function smokeBattleSnapshotRestore(directorSocket, playerSocket, storyScene, battleScene, villainId) {
@@ -905,6 +966,26 @@ function hasInitiativeRolled() {
 
 function hasEntityMoved(entityId) {
   return (message) => message.type === 'entity_moved' && message.entityId === entityId;
+}
+
+function hasEntityMovedTo(entityId, point) {
+  return (message) => message.type === 'entity_moved' &&
+    message.entityId === entityId &&
+    message.x === point.x &&
+    message.y === point.y;
+}
+
+function hasMoveCommitted(entityId) {
+  return (message) => message.type === 'move_committed' && message.entityId === entityId;
+}
+
+function hasMoveRemaining(entityId, moveRemaining) {
+  return (message) => message.type === 'combat_updated' &&
+    message.combat?.turnActions?.[entityId]?.moveRemaining === moveRemaining;
+}
+
+function hasError(code) {
+  return (message) => message.type === 'error' && message.code === code;
 }
 
 function hasActiveTurn(entityId) {

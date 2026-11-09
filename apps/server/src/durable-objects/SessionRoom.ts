@@ -174,6 +174,7 @@ const MAX_WS_MESSAGE_LENGTH: number = WS_LIMITS.messageBytes;
 const MAX_ENTITY_JSON_LENGTH: number = WS_LIMITS.entityJsonBytes;
 const MAX_PATCH_JSON_LENGTH: number = WS_LIMITS.patchJsonBytes;
 const MAX_SCENE_SHAPE_POINTS: number = WS_LIMITS.sceneShapePoints;
+const MAX_MOVE_PATH_POINTS: number = WS_LIMITS.movePathPoints;
 const MAX_STORY_TEXT_LENGTH: number = WS_LIMITS.storyTextLength;
 const MAX_APPROACH_TEXT_LENGTH: number = WS_LIMITS.approachTextLength;
 const MAX_ID_LENGTH: number = WS_LIMITS.idLength;
@@ -478,6 +479,43 @@ function validateCombatAction(value: unknown): CombatAction | null {
   return { type: value['type'] as 'CLAIM_TURN' | 'SELECT_TURN' | 'CATCH_BREATH' | 'DEFEND', entityId };
 }
 
+function validateMovePath(value: unknown): ProtocolGridPoint[] | null {
+  if (!Array.isArray(value) || value.length < 2 || value.length > MAX_MOVE_PATH_POINTS) return null;
+  const path: ProtocolGridPoint[] = [];
+  for (const point of value) {
+    if (!isRecord(point)) return null;
+    const x = boundedNumber(point['x'], -100_000, 100_000);
+    const y = boundedNumber(point['y'], -100_000, 100_000);
+    if (x === null || y === null) return null;
+    path.push({ x, y });
+  }
+  return path;
+}
+
+function validateOpportunityAttackTrigger(value: unknown): OpportunityAttackTrigger | null {
+  if (!isRecord(value)) return null;
+  const attackerId = safeString(value['attackerId']);
+  const attackerName = safeString(value['attackerName']);
+  const targetId = safeString(value['targetId']);
+  const targetName = safeString(value['targetName']);
+  const triggerGridX = boundedNumber(value['triggerGridX'], -100_000, 100_000);
+  const triggerGridY = boundedNumber(value['triggerGridY'], -100_000, 100_000);
+  const destinationGridX = boundedNumber(value['destinationGridX'], -100_000, 100_000);
+  const destinationGridY = boundedNumber(value['destinationGridY'], -100_000, 100_000);
+  if (!attackerId || !attackerName || !targetId || !targetName) return null;
+  if (triggerGridX === null || triggerGridY === null || destinationGridX === null || destinationGridY === null) return null;
+  return {
+    attackerId,
+    attackerName,
+    targetId,
+    targetName,
+    triggerGridX,
+    triggerGridY,
+    destinationGridX,
+    destinationGridY,
+  };
+}
+
 function validateTokenAction(value: unknown): TokenActionRequest | null {
   if (!isRecord(value)) return null;
   const kind = safeString(value['kind'], 40) as TokenActionRequest['kind'] | null;
@@ -486,6 +524,7 @@ function validateTokenAction(value: unknown): TokenActionRequest | null {
     'free-strike',
     'grab',
     'knockback',
+    'charge',
     'catch-breath',
     'defend',
     'stand-up',
@@ -617,7 +656,7 @@ function validateHeroTrackerOperation(value: unknown): HeroTrackerOperation | nu
   }
 }
 
-function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?: string } {
+export function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?: string } {
   if (!isRecord(raw)) return { error: 'Message must be an object' };
   const type = raw['type'];
 
@@ -662,6 +701,21 @@ function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?:
       const x = boundedNumber(raw['x'], -100_000, 100_000);
       const y = boundedNumber(raw['y'], -100_000, 100_000);
       return entityId && x !== null && y !== null ? { msg: { type, entityId, x, y } } : { error: 'Invalid token move' };
+    }
+    case 'commit_move': {
+      const entityId = safeString(raw['entityId']);
+      const path = validateMovePath(raw['path']);
+      const mode = raw['mode'];
+      return entityId && path && (mode === 'advance' || mode === 'disengage')
+        ? { msg: { type, entityId, path, mode } }
+        : { error: 'Invalid move' };
+    }
+    case 'resolve_opportunity_attack': {
+      const trigger = validateOpportunityAttackTrigger(raw['trigger']);
+      const decision = raw['decision'];
+      return trigger && (decision === 'take' || decision === 'pass')
+        ? { msg: { type, trigger, decision } }
+        : { error: 'Invalid opportunity attack' };
     }
     case 'combat_action': {
       const action = validateCombatAction(raw['action']);
@@ -1384,6 +1438,12 @@ export class SessionRoom extends DurableObject<Env> {
         break;
 
       case 'resolve_opportunity_attack':
+        // The handler trusts the trigger it is given, so a player could otherwise
+        // deal free-strike damage to anyone. Only the Director sees this prompt.
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
         await this.handleResolveOpportunityAttack(ws, meta, msg.trigger, msg.decision);
         break;
 
