@@ -328,6 +328,8 @@ export function TokenContextMenu({
   const flipLeft = x + TOP_W + (openPanel ? FLYOUT_W + 6 : 0) > stageWidth - 4;
   const clampedX = Math.max(4, flipLeft ? Math.min(x, stageWidth) - TOP_W - tokenWidth - 16 - (openPanel ? FLYOUT_W + 6 : 0) : x);
   const clampedY = Math.min(Math.max(4, y), Math.max(4, stageHeight - 180));
+  // The stage clips what overflows it, so both boxes scroll inside what is left of it.
+  const maxHeight = Math.max(120, stageHeight - clampedY - 8);
 
   const categoryRow = (id: 'actions' | 'status' | 'hp', label: string) => (
     <button
@@ -352,7 +354,7 @@ export function TokenContextMenu({
       onContextMenu={(e) => e.stopPropagation()}
     >
       {/* Top level, compact */}
-      <div className="sb-pop">
+      <div className="sb-pop" style={{ maxHeight }}>
         <div className="flex items-start gap-1">
           <strong className="min-w-0 flex-1">{cleanName(entity.name)}</strong>
           {isDirector && (
@@ -400,7 +402,7 @@ export function TokenContextMenu({
 
       {/* Flyout panel */}
       {openPanel && (
-        <div className="sb-pop sb-pop--fly">
+        <div className="sb-pop sb-pop--fly" style={{ maxHeight }}>
           {openPanel === 'actions' && (
             <div className="flex flex-col gap-2">
               {!canAct && <p className="sb-note">Reference only. You do not control this token.</p>}

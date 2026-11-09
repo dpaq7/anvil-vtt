@@ -118,7 +118,8 @@
 .sb-menu { position: absolute; z-index: 40; display: flex; align-items: flex-start; gap: 6px; }
 .sb-menu[data-flip] { flex-direction: row-reverse; }
 .sb-menu > .sb-pop { width: var(--pop); }
-.sb-menu > .sb-pop--fly { width: 244px; max-height: 60vh; overflow-y: auto; padding-bottom: 10px; }
+.sb-menu > .sb-pop--fly { width: 244px; overflow-y: auto; padding-bottom: 10px; }
+.sb-menu > .sb-pop { overflow-y: auto; }
 .sb-pop .sb-input, .sb-pop select { font-size: var(--type-min); }
 .sb-note { margin: 0; padding: 4px 0; color: var(--color-text-soft); }
 .sb-tip { position: absolute; z-index: 30; pointer-events: none; width: max-content; max-width: 240px; transform: translate(-50%, -100%); padding-bottom: 8px; }
@@ -141,7 +142,7 @@
 .sb-roll { padding-left: 8px; height: 100%; box-shadow: inset var(--shape-frame-quiet) 0 0 var(--color-line); }
 .sb-roll input { width: 38px; height: 24px; padding: 0 4px; font-weight: 700; font-size: var(--type-min); color: inherit; background: var(--color-raised); border: 0; box-shadow: inset 0 0 0 var(--shape-frame-quiet) var(--color-line); -moz-appearance: textfield; }
 .sb-roll input::-webkit-inner-spin-button { display: none; }
-.sb-roll__wait { display: flex; align-items: center; height: 28px; padding: 0 8px; font-weight: 700; white-space: nowrap; color: var(--color-text-soft); background: var(--color-well); border: var(--shape-frame-dashed) dashed var(--color-text-soft); box-sizing: border-box; }
+.sb-roll__wait { display: flex; align-items: center; min-height: 28px; padding: 0 8px; font-weight: 700; white-space: nowrap; color: var(--color-text-soft); background: var(--color-well); border: var(--shape-frame-dashed) dashed var(--color-text-soft); box-sizing: border-box; }
 @media (max-width: 1365px), (max-height: 800px) {
   [data-role="director"] .sb-tools button, [data-role="director"] .sb-roll button, [data-role="director"] .sb-roll label { padding: 0 6px; }
 }
@@ -228,3 +229,17 @@
 
 /* Drawn heads keep a keyline on dark panels; uploads have one already */
 [data-theme="dark"] .sb-row__f img, [data-theme="dark"] .sb-unit > img, [data-theme="dark"] .sb-now__f img { filter: drop-shadow(0 0 0.6px var(--art-keyline)) drop-shadow(0 0 0.6px var(--art-keyline)); }
+
+/* A log row with more to it opens in place */
+.sb-log__b { width: 100%; text-align: left; color: inherit; background: none; border: 0; cursor: pointer; }
+.sb-log__b:hover { background: var(--color-well); }
+.sb-log__more { display: flex; flex-direction: column; gap: 4px; padding: 2px 0 6px 8px; font-size: var(--type-min); color: var(--color-text-soft); box-shadow: inset 2px 0 0 var(--color-line-quiet); }
+.sb-log__more p { margin: 0; overflow-wrap: anywhere; }
+.sb-log__more b { color: var(--color-text); }
+/* A dying hero can still act */
+.sb-dying[data-active] { outline: var(--shape-frame) solid var(--color-active); outline-offset: -3px; }
+.sb-dying__note { font: 700 var(--type-min) / 1 var(--font-body); }
+@media (max-width: 1365px), (max-height: 800px) {
+  .sb-dying .sb-who[data-note] { flex-direction: column !important; align-items: flex-start; padding: 2px 6px !important; gap: 1px !important; }
+}
+.sb-unit small { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }

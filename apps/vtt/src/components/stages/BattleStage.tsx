@@ -26,6 +26,7 @@ import { MapNav } from '../session/battle/MapNav.js';
 import { SMALL_SESSION, useMediaQuery } from '../session/battle/hooks.js';
 import { useSessionConnection } from '../session/shell/connection-context.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
+import { isInOverlay, isKeyOwner } from '../../hooks/useKeyboardShortcuts.js';
 import { TokenTooltip } from '../session/TokenTooltip.js';
 import { TokenContextMenu } from '../session/TokenContextMenu.js';
 import { TerrainContextMenu } from '../session/TerrainContextMenu.js';
@@ -238,6 +239,7 @@ export function BattleStage({
   } | null>(null);
   const viewportRef = useRef<ViewportSystem | null>(null);
   const prevToolRef = useRef<BattleTool>('select');
+  const spacePanRef = useRef(false);
 
   // Container ref for converting viewport coords → container-relative coords.
   // Overlays are `position: absolute` inside this `relative` container, so their
@@ -710,12 +712,15 @@ export function BattleStage({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || isInOverlay(e.target)) return;
 
-      // Space hold for temporary pan
-      if (e.key === ' ' && !e.repeat) {
+      // Space hold for temporary pan. Space on a focused button presses that button.
+      if (e.key === ' ') {
+        if (isKeyOwner(e.target)) return;
         e.preventDefault();
+        if (e.repeat) return;
         prevToolRef.current = activeTool;
+        spacePanRef.current = true;
         setActiveTool('pan');
         return;
       }
@@ -768,7 +773,8 @@ export function BattleStage({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === ' ') {
+      if (e.key === ' ' && spacePanRef.current) {
+        spacePanRef.current = false;
         setActiveTool(prevToolRef.current);
       }
     };
@@ -997,6 +1003,8 @@ export function BattleStage({
             terrain={terrain.find((zone) => zone.id === terrainMenu.terrainId)!}
             x={terrainMenu.x}
             y={terrainMenu.y}
+            stageWidth={stageSize().width}
+            stageHeight={stageSize().height}
             onToggleHidden={handleToggleTerrainHidden}
             onDelete={handleTerrainRemove}
             onClose={handleCloseTerrainMenu}

@@ -8,6 +8,8 @@ interface TerrainContextMenuProps {
   terrain: TerrainZoneData;
   x: number;
   y: number;
+  stageWidth?: number;
+  stageHeight?: number;
   onToggleHidden: (terrain: TerrainZoneData) => void;
   onDelete: (terrainId: string) => void;
   onClose: () => void;
@@ -17,6 +19,8 @@ export function TerrainContextMenu({
   terrain,
   x,
   y,
+  stageWidth = window.innerWidth,
+  stageHeight = window.innerHeight,
   onToggleHidden,
   onDelete,
   onClose,
@@ -48,10 +52,11 @@ export function TerrainContextMenu({
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  const menuWidth = 220;
+  // x and y are relative to the stage, which clips what overflows it.
+  const menuWidth = stageWidth < 720 ? 148 : 178;
   const menuHeight = 150;
-  const clampedX = Math.min(Math.max(8, x), window.innerWidth - menuWidth - 8);
-  const clampedY = Math.min(Math.max(8, y), window.innerHeight - menuHeight - 8);
+  const clampedX = Math.min(Math.max(8, x), Math.max(8, stageWidth - menuWidth - 12));
+  const clampedY = Math.min(Math.max(8, y), Math.max(8, stageHeight - menuHeight - 12));
   const HiddenIcon = terrain.hidden ? Eye : EyeOff;
 
   return (

@@ -1,3 +1,4 @@
+import { useSessionConnection } from './shell/connection-context.js';
 import { useState, useMemo, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@anvil/ui';
 import { useAssetsStore } from '../../stores/assetsStore.js';
@@ -70,6 +71,7 @@ export function AssetPanel({
   onAddMonsterToScene,
   onAddTerrainToScene,
 }: AssetPanelProps) {
+  const { paused } = useSessionConnection();
   const tabs = SCENE_TABS[sceneType] ?? ['heroes', 'maps'];
 
   // Self-load monsters from compendium if not provided via props
@@ -177,7 +179,7 @@ export function AssetPanel({
           <BestiaryTable
             monsters={monsters}
             compact
-            onAddToScene={(monsterName, quantity) => {
+            onAddToScene={paused ? undefined : (monsterName, quantity) => {
               if (onAddMonsterToScene) {
                 onAddMonsterToScene(monsterName, quantity);
               } else {
@@ -198,6 +200,7 @@ export function AssetPanel({
             customTerrains={customTerrain}
             compact
             onSelectBuiltIn={(terrainId) => {
+              if (paused) return;
               const terrain = ALL_TERRAINS.find((item) => item.id === terrainId);
               if (terrain) {
                 onAddTerrainToScene?.({
@@ -210,6 +213,7 @@ export function AssetPanel({
               }
             }}
             onSelectCustom={(terrainId) => {
+              if (paused) return;
               const terrain = customTerrain.find((item) => item.id === terrainId);
               if (terrain) {
                 onAddTerrainToScene?.({
@@ -282,6 +286,7 @@ export function AssetPanel({
 
   return (
     <div className="flex flex-col overflow-hidden">
+      {paused && <p className="sb-roll__wait mb-2">Adding to the scene, when back</p>}
       <Tabs defaultValue={tabs[0]} className="flex flex-col overflow-hidden">
         <TabsList className="h-8 shrink-0">
           {tabs.map((tab) => (

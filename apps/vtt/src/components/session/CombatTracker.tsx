@@ -169,7 +169,7 @@ function UnitRow({
   const hidden = isDirector && ids.some((id) => hiddenIds?.has(id));
   const first = row.members[0];
   if (!first) return null;
-  const words = row.members.flatMap((m) => conditionLine(m));
+  const words = [...new Set(row.members.flatMap((m) => conditionLine(m)))];
   const folded = row.members.length > 1;
 
   return (
@@ -193,8 +193,8 @@ function UnitRow({
           </span>
           {isDirector ? (
             <b className={folded ? 'pr-5' : undefined}>{shown}/{max}</b>
-          ) : words.length === 1 ? (
-            <small className={folded ? 'pr-5' : undefined}>{words[0]}</small>
+          ) : words.length > 0 ? (
+            <small className={folded ? 'pr-5' : undefined} title={words.join(', ')}>{words.join(', ')}</small>
           ) : <i className={folded ? 'pr-5' : undefined} />}
         </button>
         {folded && (
@@ -253,7 +253,7 @@ function MemberRow({ member, combat, isDirector, hidden, selected, onClick, onDo
         {done && <Check size={13} strokeWidth={3.5} aria-label="Done" className="flex-none" />}
         {hidden && <EyeOff size={13} strokeWidth={2.6} aria-label="Hidden from players" className="flex-none" />}
       </span>
-      {isDirector ? <b>{cur}/{max}</b> : words.length === 1 ? <small>{words[0]}</small> : <i />}
+      {isDirector ? <b>{cur}/{max}</b> : words.length > 0 ? <small title={words.join(', ')}>{words.join(', ')}</small> : <i />}
     </button>
   );
 }

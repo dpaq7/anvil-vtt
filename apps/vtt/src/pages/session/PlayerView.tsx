@@ -341,6 +341,7 @@ export function PlayerView({
 
   const handleRollCharacteristic = useCallback(
     (label: string, modifier: number) => {
+      if (paused) return;
       if (!heroEntity) return;
       send({
         type: "draw_steel_roll",
@@ -353,10 +354,11 @@ export function PlayerView({
       });
       toast.info(`Rolling ${label}...`);
     },
-    [heroEntity, send],
+    [heroEntity, paused, send],
   );
 
   const handleRollResource = useCallback(() => {
+    if (paused) return;
     if (!heroEntity) return;
     send({
       type: "draw_steel_roll",
@@ -367,9 +369,10 @@ export function PlayerView({
       },
     });
     toast.info(`Rolling ${resourceName}...`);
-  }, [heroEntity, resourceName, send]);
+  }, [heroEntity, paused, resourceName, send]);
 
   const handleCatchBreath = useCallback(() => {
+    if (paused) return;
     if (!heroEntity) return;
     if (!combat || !isMyTurn) {
       toast.info("Catch Breath is available on your turn.");
@@ -384,9 +387,10 @@ export function PlayerView({
       },
     });
     toast.success("Caught breath! Recovering stamina...");
-  }, [combat, heroEntity, isMyTurn, send]);
+  }, [combat, heroEntity, isMyTurn, paused, send]);
 
   const handleDefend = useCallback(() => {
+    if (paused) return;
     if (!heroEntity) return;
     if (!combat || !isMyTurn) {
       toast.info("Defend is available on your turn.");
@@ -401,9 +405,10 @@ export function PlayerView({
       },
     });
     toast.info("Defending until your next turn.");
-  }, [combat, heroEntity, isMyTurn, send]);
+  }, [combat, heroEntity, isMyTurn, paused, send]);
 
   const handleStandUp = useCallback(() => {
+    if (paused) return;
     if (!heroEntity) return;
     if (!combat || !isMyTurn) {
       toast.info("Stand Up is available on your turn.");
@@ -418,9 +423,10 @@ export function PlayerView({
       },
     });
     toast.info("Standing up...");
-  }, [combat, heroEntity, isMyTurn, send]);
+  }, [combat, heroEntity, isMyTurn, paused, send]);
 
   const handleEscapeGrab = useCallback(() => {
+    if (paused) return;
     if (!heroEntity) return;
     if (!combat || !isMyTurn) {
       toast.info("Escape is available on your turn.");
@@ -435,14 +441,15 @@ export function PlayerView({
       },
     });
     toast.info("Escaping grab...");
-  }, [combat, heroEntity, isMyTurn, send]);
+  }, [combat, heroEntity, isMyTurn, paused, send]);
 
   const handleInventoryChange = useCallback(
     (inventory: CharacterInventoryItem[]) => {
+      if (paused) return;
       if (!heroEntity) return;
       send({ type: "update_inventory", heroId: heroEntity.id, inventory });
     },
-    [heroEntity, send],
+    [heroEntity, paused, send],
   );
 
   const handleRollInitiative = useCallback(() => {
@@ -453,34 +460,38 @@ export function PlayerView({
 
   const handleMontageRoll = useCallback(
     (skillId: string, characteristicId: string) => {
+      if (paused) return;
       send({ type: "montage_roll", skillId, characteristicId });
       toast.info("Rolling montage test...");
     },
-    [send],
+    [paused, send],
   );
 
   const handleNegotiationArgument = useCallback(
     (skillId: string, approachText: string) => {
+      if (paused) return;
       send({ type: "negotiation_argument", skillId, approachText });
       toast.info("Making your argument...");
     },
-    [send],
+    [paused, send],
   );
 
   const handleRespiteClaimActivity = useCallback(
     (activityId: string) => {
+      if (paused) return;
       send({ type: "respite_choose_activity", activityId });
       toast.info("Claiming activity...");
     },
-    [send],
+    [paused, send],
   );
 
   const handleRespiteCompleteActivity = useCallback(
     (activityId: string) => {
+      if (paused) return;
       send({ type: "respite_complete_activity", activityId });
       toast.success("Activity completed!");
     },
-    [send],
+    [paused, send],
   );
 
   const renderStage = () => {

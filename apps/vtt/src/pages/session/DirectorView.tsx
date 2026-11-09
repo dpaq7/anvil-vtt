@@ -377,6 +377,7 @@ export function DirectorView({
   const audioAssets = useAssetsStore((s) => s.audioAssets);
   const handleAudioChange = useCallback(
     (newAudioId: string | null) => {
+      if (paused) return;
       setActiveAudioId(newAudioId);
       if (newAudioId) {
         const asset = audioAssets.find((a) => a.id === newAudioId);
@@ -390,7 +391,7 @@ export function DirectorView({
         send({ type: "audio_stop" });
       }
     },
-    [audioAssets, send],
+    [audioAssets, paused, send],
   );
 
   const handleSelectEntity = useCallback((entityId: string | null) => {
@@ -547,6 +548,7 @@ export function DirectorView({
   // ── Add monster to scene via WebSocket ──
   const handleAddMonsterToScene = useCallback(
     (monsterName: string, quantity: number) => {
+      if (paused) return;
       const monster = monstersRef.current.find(
         (m) => m.name.toLowerCase() === monsterName.toLowerCase(),
       );
@@ -593,7 +595,7 @@ export function DirectorView({
         send({ type: "create_entity", entity });
       }
     },
-    [send, battleData, monsterPortraits],
+    [paused, send, battleData, monsterPortraits],
   );
 
   const handleAddTerrainToScene = useCallback(
@@ -604,7 +606,7 @@ export function DirectorView({
       gridWidth?: number;
       gridHeight?: number;
     }) => {
-      if (!battleData) return;
+      if (!battleData || paused) return;
       const w = Math.max(1, terrain.gridWidth ?? 1);
       const h = Math.max(1, terrain.gridHeight ?? 1);
       const x = Math.max(0, Math.floor((battleData.cols - w) / 2));
@@ -622,7 +624,7 @@ export function DirectorView({
         },
       });
     },
-    [battleData, send],
+    [battleData, paused, send],
   );
 
   const renderStage = () => {
@@ -996,6 +998,7 @@ export function DirectorView({
               value="audio"
               className={`${RAIL_TAB_CONTENT_CLASS} overflow-y-auto p-3`}
             >
+              {paused && <p className="sb-roll__wait mb-2">Audio, when back</p>}
               <SceneAudioPanel
                 campaignId={sessionState.campaignId}
                 audioId={activeAudioId}

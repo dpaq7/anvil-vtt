@@ -32,20 +32,23 @@ export function HeroRow({ hero, active, done, own = false, selected, onClick, on
   const state = staminaState(hero, 'hero');
   const name = cleanName(hero.name);
 
+  const note = active ? (own ? 'Your turn' : 'Acting now') : done ? 'Done' : null;
   if (state === 'dying') {
     return (
-      <button type="button" className="sb-dying" data-sel={selected || undefined} onClick={onClick} onDoubleClick={onDoubleClick}>
+      <button type="button" className="sb-dying" data-active={active || undefined} data-sel={selected || undefined} onClick={onClick} onDoubleClick={onDoubleClick}>
         <span className="sb-dying__f"><TokenFace entity={hero} size={38} out /></span>
-        <span className="sb-who">
+        <span className="sb-who" data-note={note ? true : undefined}>
           <strong><span>{name}</span></strong>
-          <span className="sb-dying__w">Dying</span>
+          <span>
+            <span className="sb-dying__w">Dying</span>
+            {note && <span className="sb-dying__note">, {note.toLowerCase()}</span>}
+          </span>
         </span>
         <b className="sb-dying__n">{shown}/{max}</b>
       </button>
     );
   }
 
-  const note = active ? (own ? 'Your turn' : 'Acting now') : done ? 'Done' : null;
   const sub = [note, ...conditionLine(hero)].filter(Boolean).join(', ') || (own ? `${heroClassName(hero)}, you` : heroClassName(hero));
   return (
     <button

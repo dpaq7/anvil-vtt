@@ -307,7 +307,8 @@ export class ViewportSystem {
     const rect = this.canvas.getBoundingClientRect();
     const scaleX = rect.width / worldWidth;
     const scaleY = rect.height / worldHeight;
-    const zoom = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, Math.min(scaleX, scaleY) * 0.95));
+    // "Show all" must show all: a big map on a small screen may fit only below the wheel's floor.
+    const zoom = Math.min(this.config.maxZoom, Math.min(scaleX, scaleY) * 0.95);
     this.zoom = zoom;
     this.panX = (rect.width - worldWidth * zoom) / 2;
     this.panY = (rect.height - worldHeight * zoom) / 2;

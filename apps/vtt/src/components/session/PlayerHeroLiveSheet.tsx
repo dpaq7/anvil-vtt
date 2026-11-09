@@ -109,6 +109,7 @@ export function PlayerHeroCommandBar({
   onRollResource,
   onOpenSheet,
 }: PlayerHeroCommandBarProps) {
+  const { paused } = useSessionConnection();
   const name = getString(hero, 'name') ?? 'Hero';
   const className = resolveClassName(hero);
   const level = getNumber(hero, 'level', 1);
@@ -148,6 +149,7 @@ export function PlayerHeroCommandBar({
         value={`${currentStamina}/${maxStamina}`}
         accent="text-rose-300"
         onClick={useCatchBreath}
+        disabled={combatActive && paused}
         title={combatActive ? 'Catch Breath' : 'Open sheet'}
       />
       <CommandTile
@@ -156,6 +158,7 @@ export function PlayerHeroCommandBar({
         value={`${recoveriesCurrent}/${recoveriesMax}`}
         accent="text-emerald-300"
         onClick={useCatchBreath}
+        disabled={combatActive && paused}
         title={combatActive ? 'Catch Breath' : 'Open sheet'}
       />
       <CommandTile
@@ -164,8 +167,8 @@ export function PlayerHeroCommandBar({
         value={String(heroicResource)}
         accent="text-amber-300"
         onClick={onRollResource}
-        disabled={!hero}
-        title={`Roll ${resourceName}`}
+        disabled={!hero || paused}
+        title={paused ? `Roll ${resourceName}, when back` : `Roll ${resourceName}`}
       />
       <CommandTile
         Icon={Trophy}
@@ -192,7 +195,7 @@ export function PlayerHeroCommandBar({
               key={key}
               type="button"
               className="flex h-7 min-w-12 items-center justify-center gap-1 rounded px-1.5 text-[13px] text-zinc-400 transition hover:bg-zinc-800 hover:text-cyan-100 disabled:opacity-50"
-              disabled={!hero}
+              disabled={!hero || paused}
               onClick={() => onRollCharacteristic(label, value)}
               title={`Roll ${label}`}
             >
@@ -292,21 +295,21 @@ export function PlayerHeroSheetPanel({
             <MetricButton
               label="Stamina"
               value={`${currentStamina}/${maxStamina}`}
-              sublabel="catch breath"
+              sublabel={paused ? 'when back' : 'catch breath'}
               onClick={onCatchBreath}
               disabled={paused || !combatActive}
             />
             <MetricButton
               label="Recoveries"
               value={`${recoveriesCurrent}/${recoveriesMax}`}
-              sublabel={recoveryValue === null ? 'recovery' : `${recoveryValue} each`}
+              sublabel={paused ? 'when back' : recoveryValue === null ? 'recovery' : `${recoveryValue} each`}
               onClick={onCatchBreath}
               disabled={paused || !combatActive}
             />
             <MetricButton
               label={resourceName}
               value={String(heroicResource)}
-              sublabel="roll"
+              sublabel={paused ? 'when back' : 'roll'}
               onClick={onRollResource}
               disabled={paused}
             />
@@ -362,7 +365,7 @@ export function PlayerHeroSheetPanel({
           </RailSection>
         )}
 
-        <RailSection title="Characteristics" Icon={Activity}>
+        <RailSection title={paused ? 'Characteristics, when back' : 'Characteristics'} Icon={Activity}>
           <div className="grid grid-cols-5 gap-1.5">
             {CHARACTERISTICS.map(({ key, short, label, Icon }) => {
               const value = getNumber(hero, key, 0);
@@ -371,8 +374,9 @@ export function PlayerHeroSheetPanel({
                   key={key}
                   type="button"
                   className="rounded border border-zinc-800 bg-zinc-950/50 p-2 text-center transition hover:border-cyan-800 hover:bg-cyan-950/20"
+                  disabled={paused}
                   onClick={() => onRollCharacteristic(label, value)}
-                  title={`Roll ${label}`}
+                  title={paused ? `Roll ${label}, when back` : `Roll ${label}`}
                 >
                   <Icon className="mx-auto mb-1 size-3.5 text-cyan-400" />
                   <div className="text-[13px] font-semibold uppercase text-zinc-500">{short}</div>
@@ -523,10 +527,10 @@ export function PlayerHeroSheetPanel({
           )}
         </RailSection>
 
-        <RailSection title="Inventory" Icon={Package}>
+        <RailSection title={paused ? 'Inventory, changes when back' : 'Inventory'} Icon={Package}>
           <CharacterInventoryPanel
             inventory={inventory}
-            onInventoryChange={onInventoryChange}
+            onInventoryChange={paused ? undefined : onInventoryChange}
             compact
           />
         </RailSection>

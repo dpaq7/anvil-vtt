@@ -1,6 +1,6 @@
-import { Button } from '@anvil/ui';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { ClientMessage } from '../../types/protocol.js';
+import { useSessionConnection } from './shell/connection-context.js';
 
 interface OpportunityAttackPromptProps {
   send: (message: ClientMessage) => void;
@@ -8,42 +8,38 @@ interface OpportunityAttackPromptProps {
 
 /**
  * Floating prompt shown when a committed move provoked opportunity attacks.
- * Resolves them one at a time — "Free Strike" makes the melee free strike on the
+ * Resolves them one at a time: "Free Strike" makes the melee free strike on the
  * server; "Waive" logs that it was passed. Advisory: closing without acting is
- * fine (the move already happened).
+ * fine (the move already happened). During a drop it stays open and waits, because
+ * sending then dismissing would lose the attack for good.
  */
 export function OpportunityAttackPrompt({ send }: OpportunityAttackPromptProps) {
   const pendingOA = useSessionStore((s) => s.pendingOA);
   const dismissOA = useSessionStore((s) => s.dismissOA);
+  const { paused } = useSessionConnection();
 
   if (pendingOA.length === 0) return null;
   const trigger = pendingOA[0]!;
 
   const resolve = (decision: 'take' | 'pass') => {
+    if (paused) return;
     send({ type: 'resolve_opportunity_attack', trigger, decision });
     dismissOA(trigger);
   };
 
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-4 z-30 w-72 -translate-x-1/2 rounded-lg border border-red-500/40 bg-zinc-900/95 p-3 shadow-xl">
-      <p className="text-xs font-semibold text-red-300">Opportunity Attack</p>
-      <p className="mt-1 text-sm text-zinc-200">
-        <span className="font-bold">{trigger.attackerName}</span> can strike{' '}
-        <span className="font-bold">{trigger.targetName}</span> as they leave.
+    <div className="sb-pop sb-screen-msg" data-map-panel>
+      <strong>Opportunity attack</strong>
+      <p className="sb-note">
+        <b>{trigger.attackerName}</b> can strike <b>{trigger.targetName}</b> as they leave.
       </p>
-      <div className="mt-3 flex gap-2">
-        <Button size="sm" className="flex-1" onClick={() => resolve('take')}>
-          Free Strike
-        </Button>
-        <Button size="sm" variant="ghost" className="flex-1" onClick={() => resolve('pass')}>
-          Waive
-        </Button>
+      <div className="my-1 flex items-center gap-3">
+        <button type="button" className="sb-end flex-1" data-wait={paused || undefined} disabled={paused} onClick={() => resolve('take')}>
+          {paused ? 'Free Strike, when back' : 'Free Strike'}
+        </button>
+        <button type="button" className="sb-link" disabled={paused} onClick={() => resolve('pass')}>Waive</button>
       </div>
-      {pendingOA.length > 1 && (
-        <p className="mt-2 text-center text-[11px] text-zinc-500">
-          +{pendingOA.length - 1} more to resolve
-        </p>
-      )}
+      {pendingOA.length > 1 && <p className="sb-note">{pendingOA.length - 1} more to resolve</p>}
     </div>
   );
 }
