@@ -64,6 +64,7 @@ import {
   redactNegotiationLive,
   redactCombatForPlayer,
   redactActionLogEntryForPlayer,
+  redactMoveCommittedForPlayer,
   tokenActionTouchesHidden,
   hiddenEntityIds,
   hiddenEntityNames,
@@ -490,6 +491,16 @@ function validateMovePath(value: unknown): ProtocolGridPoint[] | null {
     path.push({ x, y });
   }
   return path;
+}
+
+/** True if the path starts at the given square and every step goes to a touching square. */
+function isConnectedPathFrom(start: { x: unknown; y: unknown }, path: ProtocolGridPoint[]): boolean {
+  if (path[0]?.x !== start.x || path[0]?.y !== start.y) return false;
+  return path.slice(1).every((point, index) => {
+    const dx = Math.abs(point.x - path[index]!.x);
+    const dy = Math.abs(point.y - path[index]!.y);
+    return Math.max(dx, dy) === 1;
+  });
 }
 
 function validateOpportunityAttackTrigger(value: unknown): OpportunityAttackTrigger | null {
@@ -3152,6 +3163,10 @@ export class SessionRoom extends DurableObject<Env> {
       return;
     }
     if (!path || path.length < 2) return;
+    if (!isConnectedPathFrom({ x: entity['x'], y: entity['y'] }, path)) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Move must start at the token and go one square at a time' });
+      return;
+    }
 
     const baseSpeed = typeof entity['speed'] === 'number' ? entity['speed'] : 5;
     const conditions = this.getEntityConditions(entity);
@@ -3177,8 +3192,16 @@ export class SessionRoom extends DurableObject<Env> {
       this.buildThreatSources(entityId),
     );
 
+    const fogZones = this.getActiveFogZones();
+    const hiddenBeforeMove = isEntityHiddenFromPlayers(entity, fogZones);
+
     const destination = path[path.length - 1]!;
     this.moveEntityTo(entity, destination.x, destination.y);
+
+    const moverHidden = hiddenBeforeMove || isEntityHiddenFromPlayers(entity, fogZones);
+    const hidden = this.getHiddenEntityIds();
+    // The log is shared with players, so it must not count attackers they cannot see.
+    const visibleTriggerCount = oa.triggers.filter((trigger) => !hidden.has(String(trigger.attackerId))).length;
 
     if (isActiveTurn && combat) {
       turnState.moveRemaining = Math.max(0, turnState.moveRemaining - movePath.totalCost);
@@ -3188,9 +3211,9 @@ export class SessionRoom extends DurableObject<Env> {
 
     const detailParts = [`Moved ${movePath.totalCost} square${movePath.totalCost === 1 ? '' : 's'}`];
     if (movePath.overBudget) detailParts.push('(exceeded speed)');
-    if (oa.triggersOA) {
+    if (visibleTriggerCount > 0) {
       detailParts.push(
-        `— provoked ${oa.triggers.length} opportunity attack${oa.triggers.length === 1 ? '' : 's'}`,
+        `— provoked ${visibleTriggerCount} opportunity attack${visibleTriggerCount === 1 ? '' : 's'}`,
       );
     }
     this.appendActionLog({
@@ -3200,14 +3223,17 @@ export class SessionRoom extends DurableObject<Env> {
       detail: detailParts.join(' '),
     });
 
-    this.broadcast({
+    const committed: Extract<ServerMessage, { type: 'move_committed' }> = {
       type: 'move_committed',
       entityId,
       path,
       cost: movePath.totalCost,
       overBudget: movePath.overBudget,
       oaTriggers: oa.triggers,
-    });
+    };
+    this.sendToRole('director', committed);
+    const playerMove = redactMoveCommittedForPlayer(committed, moverHidden, fogZones);
+    if (playerMove) this.sendToRole('player', playerMove);
   }
 
   /**

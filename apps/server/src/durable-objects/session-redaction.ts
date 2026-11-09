@@ -9,6 +9,7 @@
  * strip that data for player recipients; directors still receive everything.
  */
 import type {
+  ServerMessage,
   SessionState,
   SceneRef,
   EntityData,
@@ -114,6 +115,27 @@ export function redactSceneDataNegotiation(data: Record<string, unknown>): Recor
   redactKey(next, 'pitfalls');
 
   return changed ? next : data;
+}
+
+/**
+ * What a player receives for a committed move, or null for nothing.
+ *
+ * A creature hidden before or after the move sends nothing; players follow it
+ * through entity_created and entity_deleted. Otherwise fogged cells are dropped
+ * from the path. Opportunity attacks are always removed: only the Director can
+ * resolve them, and a trigger reveals a hidden attacker's name, id and location.
+ */
+export function redactMoveCommittedForPlayer(
+  move: Extract<ServerMessage, { type: 'move_committed' }>,
+  moverHiddenBeforeOrAfter: boolean,
+  fogZones: FogZone[],
+): Extract<ServerMessage, { type: 'move_committed' }> | null {
+  if (moverHiddenBeforeOrAfter) return null;
+  return {
+    ...move,
+    path: move.path.filter((point) => !isInFog(point.x, point.y, fogZones)),
+    oaTriggers: [],
+  };
 }
 
 /**
