@@ -433,6 +433,8 @@ export interface ActionLogEntry {
   total?: number;
   tier?: 1 | 2 | 3;
   timestamp: number;
+  /** Written while the actor was hidden. Never sent to players, even after a reveal. */
+  directorOnly?: boolean;
 }
 
 // ── Ability Resolution ──

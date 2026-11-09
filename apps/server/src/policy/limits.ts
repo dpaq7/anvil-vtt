@@ -44,6 +44,7 @@ export const WS_LIMITS = {
   entityJsonBytes: 24 * 1024,
   patchJsonBytes: 24 * 1024,
   sceneShapePoints: 2048,
+  movePathPoints: 512,
   storyTextLength: 20_000,
   approachTextLength: 2_000,
   idLength: 220,
