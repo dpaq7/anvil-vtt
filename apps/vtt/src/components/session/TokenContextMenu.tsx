@@ -356,23 +356,7 @@ export function TokenContextMenu({
       {/* Top level, compact */}
       <div className="sb-pop" style={{ maxHeight }}>
         <div className="flex items-start gap-1">
-          <strong className="min-w-0 flex-1">{cleanName(entity.name)}</strong>
-          {isDirector && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0"
-              title="Pull everyone's view here"
-              aria-label="Pull everyone's view here"
-              disabled={paused}
-              onClick={() => {
-                send({ type: 'director_focus', entityId: entity.id });
-                onClose();
-              }}
-            >
-              <Crosshair className="size-3.5" />
-            </Button>
-          )}
+          <strong className="min-w-0 flex-1 [overflow-wrap:break-word]">{cleanName(entity.name)}</strong>
           <Button variant="ghost" size="icon" className="size-6 shrink-0" aria-label="Close menu" onClick={onClose}>
             <X className="size-3.5" />
           </Button>
@@ -397,6 +381,21 @@ export function TokenContextMenu({
           {hasActions && categoryRow('actions', 'Actions')}
           {categoryRow('status', 'Status')}
           {isDirector && categoryRow('hp', 'Adjust HP')}
+          {isDirector && (
+            <button
+              type="button"
+              className="sb-pop__row"
+              title="Pull everyone's view here"
+              disabled={paused}
+              onClick={() => {
+                send({ type: 'director_focus', entityId: entity.id });
+                onClose();
+              }}
+            >
+              <span>Pull view here</span>
+              <Crosshair size={15} strokeWidth={2.6} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
 
