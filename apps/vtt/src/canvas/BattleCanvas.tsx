@@ -909,6 +909,13 @@ export function BattleCanvas({
     }
   }, [builderMode, isDirector, pixiReady]);
 
+  // A Player drags only their own hero, and only while it is that hero's turn.
+  useEffect(() => {
+    layersRef.current?.interaction.setOwnDragEntity(
+      !isDirector && ownEntityId && activeEntityId === ownEntityId ? ownEntityId : null,
+    );
+  }, [isDirector, ownEntityId, activeEntityId, pixiReady]);
+
   // Sync active tool to InteractionManager
   useEffect(() => {
     layersRef.current?.interaction.setActiveTool(activeTool);

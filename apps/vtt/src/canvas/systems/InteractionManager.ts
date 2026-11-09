@@ -82,6 +82,8 @@ export class InteractionManager {
   private dragging = false;
   private dragEntityId: string | null = null;
   private isDirector: boolean;
+  /** A Player may drag this one token: their own hero, on their own turn. */
+  private ownDragEntityId: string | null = null;
   private _activeTool: ActiveTool = 'select';
   private activePointerId: number | null = null;
 
@@ -236,6 +238,10 @@ export class InteractionManager {
   }
 
   /** Update cell size (e.g. when background image changes aspect ratio). */
+  setOwnDragEntity(entityId: string | null): void {
+    this.ownDragEntityId = entityId;
+  }
+
   setCellSize(size: number): void {
     this.cellSize = size;
   }
@@ -573,7 +579,7 @@ export class InteractionManager {
         this.selectedIds.add(entityId);
         this.callbacks.onTokenSelect(entityId);
 
-        if (this.isDirector) {
+        if (this.isDirector || entityId === this.ownDragEntityId) {
           this.dragging = true;
           this.dragEntityId = entityId;
           this.dragOriginGrid = { gridX, gridY };

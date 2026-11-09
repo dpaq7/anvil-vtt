@@ -1,3 +1,4 @@
+import { cleanName } from '../../lib/faces.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import type { ClientMessage } from '../../types/protocol.js';
 import { useSessionConnection } from './shell/connection-context.js';
@@ -31,7 +32,7 @@ export function OpportunityAttackPrompt({ send }: OpportunityAttackPromptProps) 
     <div className="sb-pop sb-screen-msg" data-map-panel>
       <strong>Opportunity attack</strong>
       <p className="sb-note">
-        <b>{trigger.attackerName}</b> can strike <b>{trigger.targetName}</b> as they leave.
+        <b>{cleanName(trigger.attackerName)}</b> can strike <b>{cleanName(trigger.targetName)}</b> as they leave.
       </p>
       <div className="my-1 flex items-center gap-3">
         <button type="button" className="sb-end flex-1" data-wait={paused || undefined} disabled={paused} onClick={() => resolve('take')}>
