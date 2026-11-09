@@ -64,6 +64,7 @@ import {
   redactNegotiationLive,
   redactCombatForPlayer,
   redactActionLogEntryForPlayer,
+  redactMoveCommittedForPlayer,
   tokenActionTouchesHidden,
   hiddenEntityIds,
   hiddenEntityNames,
@@ -174,6 +175,7 @@ const MAX_WS_MESSAGE_LENGTH: number = WS_LIMITS.messageBytes;
 const MAX_ENTITY_JSON_LENGTH: number = WS_LIMITS.entityJsonBytes;
 const MAX_PATCH_JSON_LENGTH: number = WS_LIMITS.patchJsonBytes;
 const MAX_SCENE_SHAPE_POINTS: number = WS_LIMITS.sceneShapePoints;
+const MAX_MOVE_PATH_POINTS: number = WS_LIMITS.movePathPoints;
 const MAX_STORY_TEXT_LENGTH: number = WS_LIMITS.storyTextLength;
 const MAX_APPROACH_TEXT_LENGTH: number = WS_LIMITS.approachTextLength;
 const MAX_ID_LENGTH: number = WS_LIMITS.idLength;
@@ -478,6 +480,64 @@ function validateCombatAction(value: unknown): CombatAction | null {
   return { type: value['type'] as 'CLAIM_TURN' | 'SELECT_TURN' | 'CATCH_BREATH' | 'DEFEND', entityId };
 }
 
+function validateMovePath(value: unknown): ProtocolGridPoint[] | null {
+  if (!Array.isArray(value) || value.length < 2 || value.length > MAX_MOVE_PATH_POINTS) return null;
+  const path: ProtocolGridPoint[] = [];
+  for (const point of value) {
+    if (!isRecord(point)) return null;
+    const x = boundedNumber(point['x'], -100_000, 100_000);
+    const y = boundedNumber(point['y'], -100_000, 100_000);
+    if (x === null || y === null) return null;
+    path.push({ x, y });
+  }
+  return path;
+}
+
+/**
+ * True if the path starts at the given square, stays on whole squares inside the
+ * grid, and every step goes to a touching square.
+ */
+function isConnectedPathFrom(
+  start: ProtocolGridPoint,
+  path: ProtocolGridPoint[],
+  bounds: { cols: number; rows: number },
+): boolean {
+  if (path[0]?.x !== start.x || path[0]?.y !== start.y) return false;
+  const onGrid = path.every((point) =>
+    Number.isInteger(point.x) && Number.isInteger(point.y) &&
+    point.x >= 0 && point.x < bounds.cols && point.y >= 0 && point.y < bounds.rows);
+  if (!onGrid) return false;
+  return path.slice(1).every((point, index) => {
+    const dx = Math.abs(point.x - path[index]!.x);
+    const dy = Math.abs(point.y - path[index]!.y);
+    return Math.max(dx, dy) === 1;
+  });
+}
+
+function validateOpportunityAttackTrigger(value: unknown): OpportunityAttackTrigger | null {
+  if (!isRecord(value)) return null;
+  const attackerId = safeString(value['attackerId']);
+  const attackerName = safeString(value['attackerName']);
+  const targetId = safeString(value['targetId']);
+  const targetName = safeString(value['targetName']);
+  const triggerGridX = boundedNumber(value['triggerGridX'], -100_000, 100_000);
+  const triggerGridY = boundedNumber(value['triggerGridY'], -100_000, 100_000);
+  const destinationGridX = boundedNumber(value['destinationGridX'], -100_000, 100_000);
+  const destinationGridY = boundedNumber(value['destinationGridY'], -100_000, 100_000);
+  if (!attackerId || !attackerName || !targetId || !targetName) return null;
+  if (triggerGridX === null || triggerGridY === null || destinationGridX === null || destinationGridY === null) return null;
+  return {
+    attackerId,
+    attackerName,
+    targetId,
+    targetName,
+    triggerGridX,
+    triggerGridY,
+    destinationGridX,
+    destinationGridY,
+  };
+}
+
 function validateTokenAction(value: unknown): TokenActionRequest | null {
   if (!isRecord(value)) return null;
   const kind = safeString(value['kind'], 40) as TokenActionRequest['kind'] | null;
@@ -486,6 +546,7 @@ function validateTokenAction(value: unknown): TokenActionRequest | null {
     'free-strike',
     'grab',
     'knockback',
+    'charge',
     'catch-breath',
     'defend',
     'stand-up',
@@ -617,7 +678,7 @@ function validateHeroTrackerOperation(value: unknown): HeroTrackerOperation | nu
   }
 }
 
-function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?: string } {
+export function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?: string } {
   if (!isRecord(raw)) return { error: 'Message must be an object' };
   const type = raw['type'];
 
@@ -662,6 +723,21 @@ function parseClientMessagePayload(raw: unknown): { msg?: ClientMessage; error?:
       const x = boundedNumber(raw['x'], -100_000, 100_000);
       const y = boundedNumber(raw['y'], -100_000, 100_000);
       return entityId && x !== null && y !== null ? { msg: { type, entityId, x, y } } : { error: 'Invalid token move' };
+    }
+    case 'commit_move': {
+      const entityId = safeString(raw['entityId']);
+      const path = validateMovePath(raw['path']);
+      const mode = raw['mode'];
+      return entityId && path && (mode === 'advance' || mode === 'disengage')
+        ? { msg: { type, entityId, path, mode } }
+        : { error: 'Invalid move' };
+    }
+    case 'resolve_opportunity_attack': {
+      const trigger = validateOpportunityAttackTrigger(raw['trigger']);
+      const decision = raw['decision'];
+      return trigger && (decision === 'take' || decision === 'pass')
+        ? { msg: { type, trigger, decision } }
+        : { error: 'Invalid opportunity attack' };
     }
     case 'combat_action': {
       const action = validateCombatAction(raw['action']);
@@ -1384,6 +1460,12 @@ export class SessionRoom extends DurableObject<Env> {
         break;
 
       case 'resolve_opportunity_attack':
+        // The handler trusts the trigger it is given, so a player could otherwise
+        // deal free-strike damage to anyone. Only the Director sees this prompt.
+        if (meta.role !== 'director') {
+          this.sendTo(ws, { type: 'error', code: 'FORBIDDEN', message: 'Director only' });
+          return;
+        }
         await this.handleResolveOpportunityAttack(ws, meta, msg.trigger, msg.decision);
         break;
 
@@ -1687,12 +1769,7 @@ export class SessionRoom extends DurableObject<Env> {
    */
   private broadcastCombat(combat: CombatState | null): void {
     if (!combat) return;
-    const hidden = this.getHiddenEntityIds();
-    if (hidden.size === 0) {
-      this.broadcastCombat(combat);
-      return;
-    }
-    const playerCombat = redactCombatForPlayer(combat, hidden);
+    const playerCombat = redactCombatForPlayer(combat, this.getHiddenEntityIds());
     for (const { ws, meta } of this.getConnections()) {
       this.sendTo(ws, {
         type: 'combat_updated',
@@ -2870,7 +2947,9 @@ export class SessionRoom extends DurableObject<Env> {
   }
 
   private appendActionLog(
-    entry: Omit<ActionLogEntry, 'id' | 'sceneType' | 'timestamp'> & {
+    entry: Omit<ActionLogEntry, 'id' | 'sceneType' | 'timestamp' | 'directorOnly'> & {
+      /** Keep from players for good, even if the actor is visible right now. */
+      directorOnly?: boolean;
       id?: string;
       sceneType?: SceneActionLogType;
       timestamp?: number;
@@ -2880,6 +2959,9 @@ export class SessionRoom extends DurableObject<Env> {
     const scene = this.activeSceneRef();
     const sceneType = entry.sceneType ?? this.asActionLogSceneType(scene?.type);
     if (!sceneType) return;
+
+    const hidden = this.getHiddenEntityIds();
+    const directorOnly = entry.directorOnly === true || (entry.actorId !== undefined && hidden.has(String(entry.actorId)));
 
     const loggedEntry: ActionLogEntry = {
       id: entry.id ?? this.createActionResultId('log'),
@@ -2893,6 +2975,7 @@ export class SessionRoom extends DurableObject<Env> {
       total: entry.total,
       tier: entry.tier,
       timestamp: entry.timestamp ?? Date.now(),
+      ...(directorOnly ? { directorOnly: true } : {}),
     };
 
     const existing = this.sessionState.actionLog ?? [];
@@ -2901,16 +2984,17 @@ export class SessionRoom extends DurableObject<Env> {
 
     // Directors get the entry verbatim. Players get it with hidden entities
     // masked, or not at all when a hidden entity authored it.
-    const hidden = this.getHiddenEntityIds();
-    if (hidden.size === 0) {
+    if (hidden.size === 0 && !directorOnly) {
       this.broadcast({ type: 'action_logged', entry: loggedEntry });
       return;
     }
-    const playerEntry = redactActionLogEntryForPlayer(
-      loggedEntry,
-      hidden,
-      hiddenEntityNames(this.sessionState.entities, hidden),
-    );
+    const playerEntry = directorOnly
+      ? null
+      : redactActionLogEntryForPlayer(
+          loggedEntry,
+          hidden,
+          hiddenEntityNames(this.sessionState.entities, hidden),
+        );
     this.sendToRole('director', { type: 'action_logged', entry: loggedEntry });
     if (playerEntry) this.sendToRole('player', { type: 'action_logged', entry: playerEntry });
     this.scheduleActiveSceneSnapshot();
@@ -3092,6 +3176,14 @@ export class SessionRoom extends DurableObject<Env> {
       return;
     }
     if (!path || path.length < 2) return;
+    // The clamp rounds a fractional or off-map token onto the grid. The client does the same.
+    const start = typeof entity['x'] === 'number' && typeof entity['y'] === 'number'
+      ? this.clampToActiveBattleGrid(entity['x'], entity['y'])
+      : null;
+    if (!start || !isConnectedPathFrom(start, path, this.getActiveGridBounds())) {
+      this.sendTo(ws, { type: 'error', code: 'INVALID_ACTION', message: 'Move must start at the token and go one square at a time' });
+      return;
+    }
 
     const baseSpeed = typeof entity['speed'] === 'number' ? entity['speed'] : 5;
     const conditions = this.getEntityConditions(entity);
@@ -3117,8 +3209,18 @@ export class SessionRoom extends DurableObject<Env> {
       this.buildThreatSources(entityId),
     );
 
+    const fogZones = this.getActiveFogZones();
+    const hiddenBeforeMove = isEntityHiddenFromPlayers(entity, fogZones);
+
     const destination = path[path.length - 1]!;
     this.moveEntityTo(entity, destination.x, destination.y);
+
+    const moverHidden = hiddenBeforeMove || isEntityHiddenFromPlayers(entity, fogZones);
+    const hidden = this.getHiddenEntityIds();
+    // A log entry players can read must not count attackers they cannot see.
+    const loggedTriggerCount = moverHidden
+      ? oa.triggers.length
+      : oa.triggers.filter((trigger) => !hidden.has(String(trigger.attackerId))).length;
 
     if (isActiveTurn && combat) {
       turnState.moveRemaining = Math.max(0, turnState.moveRemaining - movePath.totalCost);
@@ -3128,9 +3230,9 @@ export class SessionRoom extends DurableObject<Env> {
 
     const detailParts = [`Moved ${movePath.totalCost} square${movePath.totalCost === 1 ? '' : 's'}`];
     if (movePath.overBudget) detailParts.push('(exceeded speed)');
-    if (oa.triggersOA) {
+    if (loggedTriggerCount > 0) {
       detailParts.push(
-        `— provoked ${oa.triggers.length} opportunity attack${oa.triggers.length === 1 ? '' : 's'}`,
+        `— provoked ${loggedTriggerCount} opportunity attack${loggedTriggerCount === 1 ? '' : 's'}`,
       );
     }
     this.appendActionLog({
@@ -3138,16 +3240,21 @@ export class SessionRoom extends DurableObject<Env> {
       actorName: entity.name,
       title: `${entity.name} ${mode === 'disengage' ? 'shifted' : 'moved'}`,
       detail: detailParts.join(' '),
+      // The square count includes fogged squares, so this stays hidden after a reveal too.
+      directorOnly: moverHidden,
     });
 
-    this.broadcast({
+    const committed: Extract<ServerMessage, { type: 'move_committed' }> = {
       type: 'move_committed',
       entityId,
       path,
       cost: movePath.totalCost,
       overBudget: movePath.overBudget,
       oaTriggers: oa.triggers,
-    });
+    };
+    this.sendToRole('director', committed);
+    const playerMove = redactMoveCommittedForPlayer(committed, moverHidden, fogZones);
+    if (playerMove) this.sendToRole('player', playerMove);
   }
 
   /**
@@ -3272,7 +3379,7 @@ export class SessionRoom extends DurableObject<Env> {
       case 'manual-heal':
       case 'apply-condition':
       case 'remove-condition': {
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Target entity not found' });
           return;
@@ -3413,7 +3520,7 @@ export class SessionRoom extends DurableObject<Env> {
       case 'knockback':
       case 'free-strike': {
         const source = this.getRequiredSource(ws, meta, action.sourceId);
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!source || !target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
           return;
@@ -3479,7 +3586,7 @@ export class SessionRoom extends DurableObject<Env> {
         // Charge: the move itself is a normal commit_move; this resolves the
         // main-action melee free strike it ends with, which gains an edge.
         const source = this.getRequiredSource(ws, meta, action.sourceId);
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!source || !target) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source or target entity not found' });
           return;
@@ -3521,7 +3628,7 @@ export class SessionRoom extends DurableObject<Env> {
 
       case 'ability': {
         const source = this.getRequiredSource(ws, meta, action.sourceId);
-        const target = this.getEntity(action.targetId);
+        const target = this.getTargetForActor(meta, action.targetId);
         if (!source || !target || !action.abilityId) {
           this.sendTo(ws, { type: 'error', code: 'INVALID_TARGET', message: 'Source, target, and ability are required' });
           return;
@@ -3596,6 +3703,19 @@ export class SessionRoom extends DurableObject<Env> {
   private getEntity(entityId: string | undefined): (SessionEntity & Record<string, unknown>) | null {
     if (!entityId || !this.sessionState) return null;
     return (this.sessionState.entities.find((entity) => entity.id === entityId) as (SessionEntity & Record<string, unknown>) | undefined) ?? null;
+  }
+
+  /**
+   * A player learns a hidden creature's id from entity_deleted. Treating that id
+   * as unknown stops range replies from revealing where the creature is.
+   */
+  private getTargetForActor(
+    meta: ConnectionMeta,
+    targetId: string | undefined,
+  ): (SessionEntity & Record<string, unknown>) | null {
+    const target = this.getEntity(targetId);
+    if (target && meta.role !== 'director' && isEntityHiddenFromPlayers(target, this.getActiveFogZones())) return null;
+    return target;
   }
 
   private getRequiredSource(

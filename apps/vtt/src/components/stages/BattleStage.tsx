@@ -622,8 +622,10 @@ export function BattleStage({
       // server records movement cost and opportunity attacks (advisory). Outside
       // combat (builder placement, off-turn repositioning) use a plain move.
       const isActiveCombatant = combat?.activeEntityId === entityId;
-      const fromX = typeof entity.x === 'number' ? entity.x : null;
-      const fromY = typeof entity.y === 'number' ? entity.y : null;
+      // Start on a whole grid square, as the server does. A fractional start would
+      // make expandGridPath overshoot and oscillate until its guard stops it.
+      const fromX = typeof entity.x === 'number' ? Math.max(0, Math.min(cols - 1, Math.round(entity.x))) : null;
+      const fromY = typeof entity.y === 'number' ? Math.max(0, Math.min(rows - 1, Math.round(entity.y))) : null;
       if (isActiveCombatant && fromX !== null && fromY !== null && (fromX !== x || fromY !== y)) {
         send({
           type: 'commit_move',
@@ -635,7 +637,7 @@ export function BattleStage({
         send({ type: 'move_token', entityId, x, y });
       }
     },
-    [entityMap, combat, onSelectEntities, onSelectEntity, send],
+    [entityMap, combat, cols, rows, onSelectEntities, onSelectEntity, send],
   );
 
   const handleSelectEntity = useCallback(

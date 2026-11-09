@@ -9,6 +9,7 @@
  * strip that data for player recipients; directors still receive everything.
  */
 import type {
+  ServerMessage,
   SessionState,
   SceneRef,
   EntityData,
@@ -117,6 +118,27 @@ export function redactSceneDataNegotiation(data: Record<string, unknown>): Recor
 }
 
 /**
+ * What a player receives for a committed move, or null for nothing.
+ *
+ * A creature hidden before or after the move sends nothing; players follow it
+ * through entity_created and entity_deleted. Otherwise fogged cells are dropped
+ * from the path. Opportunity attacks are always removed: only the Director can
+ * resolve them, and a trigger reveals a hidden attacker's name, id and location.
+ */
+export function redactMoveCommittedForPlayer(
+  move: Extract<ServerMessage, { type: 'move_committed' }>,
+  moverHiddenBeforeOrAfter: boolean,
+  fogZones: FogZone[],
+): Extract<ServerMessage, { type: 'move_committed' }> | null {
+  if (moverHiddenBeforeOrAfter) return null;
+  return {
+    ...move,
+    path: move.path.filter((point) => !isInFog(point.x, point.y, fogZones)),
+    oaTriggers: [],
+  };
+}
+
+/**
  * Build the set of entity ids that players must not learn about.
  * Heroes are never hidden; a non-hero token standing in fog is.
  */
@@ -139,8 +161,6 @@ export function hiddenEntityIds(entities: EntityData[], fogZones: FogZone[]): Se
  * redacted) entity list, so an id left behind here renders as a raw uuid.
  */
 export function redactCombatForPlayer(combat: CombatState, hidden: Set<string>): CombatState {
-  if (hidden.size === 0) return combat;
-
   const visible = (id: string): boolean => !hidden.has(String(id));
 
   const villainGroups = combat.villainGroups
@@ -148,8 +168,10 @@ export function redactCombatForPlayer(combat: CombatState, hidden: Set<string>):
     .filter((group) => group.entityIds.length > 0);
 
   const turnActions: CombatState['turnActions'] = {};
+  // Heroes only. No player screen reads a creature's actions, and its movement
+  // count would show how far it walked while hidden, even after it leaves fog.
   for (const [entityId, actions] of Object.entries(combat.turnActions)) {
-    if (visible(entityId)) turnActions[entityId] = actions;
+    if (visible(entityId) && combat.heroEntities.includes(entityId)) turnActions[entityId] = actions;
   }
 
   return {
@@ -252,12 +274,11 @@ export function redactStateForPlayer(state: SessionState): SessionState {
   );
 
   const hiddenNames = hiddenEntityNames(state.entities, hidden);
-  const actionLog = hidden.size === 0
-    ? state.actionLog
-    : (state.actionLog ?? []).flatMap((entry) => {
-        const redacted = redactActionLogEntryForPlayer(entry, hidden, hiddenNames);
-        return redacted ? [redacted] : [];
-      });
+  const actionLog = (state.actionLog ?? []).flatMap((entry) => {
+    if (entry.directorOnly) return [];
+    const redacted = redactActionLogEntryForPlayer(entry, hidden, hiddenNames);
+    return redacted ? [redacted] : [];
+  });
 
   return {
     ...state,
