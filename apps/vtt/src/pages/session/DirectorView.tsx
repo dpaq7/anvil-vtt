@@ -502,7 +502,11 @@ export function DirectorView({
 
   useEffect(() => {
     if (!rightRailTabs.some((tab) => tab.value === rightRailTab)) {
-      setRightRailTab(rightRailTabs[0]?.value ?? "audio");
+      setRightRailTab(
+        rightRailTabs.find((tab) => tab.value === "mode" || tab.value === "combat")?.value ??
+          rightRailTabs[0]?.value ??
+          "audio",
+      );
     }
   }, [rightRailTab, rightRailTabs]);
 

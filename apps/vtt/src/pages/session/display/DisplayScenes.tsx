@@ -109,10 +109,11 @@ export function DisplayMode({ mode, scene, state }: { mode: Exclude<NonBattleMod
   const visible = filterVisibleEntities(state.entities, []);
   const heroes = visible.filter((e) => e.type === 'hero');
   const lines = modeLines(mode, heroes, state);
+  const tested = heroes.filter((hero) => lines.subFor(hero) !== 'Not tested yet').length;
   const top = (() => {
     if (mode === 'montage') {
       const outcome = state.montage?.outcome;
-      return outcome && outcome !== 'pending' ? { b: 'Montage over', s: OUTCOME_LABEL[outcome] ?? '' } : { b: lines.note.replace(/^./, (c) => c.toUpperCase()), s: `${state.montage?.successes ?? 0} successes` };
+      return outcome && outcome !== 'pending' ? { b: 'Montage over', s: OUTCOME_LABEL[outcome] ?? '' } : { b: `Tested ${tested} of ${heroes.length}`, s: `${state.montage?.successes ?? 0} successes` };
     }
     if (mode === 'negotiation') {
       const live = state.negotiation;
