@@ -600,6 +600,8 @@ Rail controls, Dan's ruling at Wave 2: rails are fixed widths and drag-to-resize
 
 Approved at Wave 3: "End combat…" asks for confirmation, and a Player can drag their own hero on their own turn (off-turn stays refused).
 
+Approved at Wave 4: "End negotiation…" and Montage "Reset…" ask for confirmation. Players see Montage outcome texts and the ended Negotiation outcome, as before.
+
 ## 10. Surface to demo map
 
 Each real file in Phase 3 (plan Tasks 12 to 17) and the demo it must match. "Rule" means the file has no drawn demo; build it from the named section.

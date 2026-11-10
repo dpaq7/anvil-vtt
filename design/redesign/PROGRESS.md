@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-07-demo-led-redesign.md`. Work happens in the worktree
 
 ## Current state
 
-- Tasks 1 to 14 done; Waves 1 to 3 signed off. Next: Task 15, Wave 4 (other modes, phone, Display). Follow-up after the redesign: server PR to strip Director-only creature fields for Players (Dan's ruling at Wave 3).
+- Tasks 1 to 15 done; Waves 1 to 4 signed off. Next: Task 16, Wave 5 (rest of the app). Follow-up after the redesign: server PR so Players receive no Director-only creature fields, scene notes, outcome texts or secret types.
 - Task 10 built: the app pages and the public site, 12 stills, waiting for Gate 5 (`?gate=5`). Report: `.superpowers/sdd/2026-11-07-demo-led-redesign/task-10-report.md`.
 - `redesign/demo-led` is pushed to `origin` as a backup. Push after each task.
 - The live session no longer matches `battle-dense.json` exactly: capturing the Player's turn moved it on. Scene switches restored the extra heroes from the snapshot on return to Battle.

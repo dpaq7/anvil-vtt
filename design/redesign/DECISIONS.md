@@ -76,3 +76,14 @@ Rulings:
 - The server sends Players every visible creature's full data, including stamina and abilities. Screens hide it, but browser tools can read it. This predates the redesign. Dan chose a separate fix PR after the redesign, so it is listed as a follow-up.
 
 Dan was asked to watch movement and roll animations on a real GPU, because they could not be confirmed under test.
+
+## 2026-11-10: Wave 4 sign-off (other modes, phone, Display)
+
+Dan signed off Wave 4 (commits 98d4407..e71e37e).
+
+Rulings:
+- "End negotiation…" and Montage "Reset…" keep their confirmations.
+- Players keep seeing Montage outcome texts during the montage, and the Negotiation outcome text once it ends, as before.
+- Respite "Add activity" is not built: the protocol has no message for it.
+- The Display layouts for Montage, Negotiation and Respite follow DESIGN.md's derived rules.
+- Follow-up after the redesign, the same server fix as Wave 3's: Players receive scene notes, outcome texts and the types of unrevealed secrets in their data. No screen shows them.
