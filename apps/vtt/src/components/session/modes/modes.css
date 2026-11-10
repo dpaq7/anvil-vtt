@@ -11,7 +11,7 @@
 
 /* Screen: the scene art under everything, dimmed with the theme */
 .md-screen { --md-text: 1; position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--art-ink); color: var(--color-text); }
-.md-screen[data-mode="respite"] { background: #2c3b2a; }
+.md-screen[data-mode="respite"] { background: var(--art-ink); }
 .md-art { position: absolute; inset: 0; background-size: cover; background-position: center; filter: brightness(var(--map-dim)); }
 .md-plate { box-sizing: border-box; color: var(--color-text); background: var(--color-surface); border: var(--shape-frame) solid var(--color-line); }
 .md-plate__h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -124,6 +124,10 @@
 .md-tk__none { font: 400 var(--type-min) / 1.2 var(--font-body) !important; color: var(--color-text-soft); }
 
 /* Rails */
+.md-markrow { display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: center; }
+.md-markrow + .md-markrow { box-shadow: inset 0 1px 0 var(--color-line-quiet); }
+.md-mark { display: grid; place-items: center; height: 100%; cursor: pointer; }
+.md-mark input { width: 18px; height: 18px; accent-color: var(--color-text); cursor: pointer; }
 .md-only { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; font: 700 var(--type-min) / 1 var(--font-body); font-style: normal; color: var(--art-on-hero-plate); background: var(--art-ink); box-shadow: 0 0 0 1.5px var(--color-line); white-space: nowrap; }
 .md-party { flex: 0 1 auto; min-height: var(--row); overflow-y: auto; }
 .md-lower { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }

@@ -100,7 +100,7 @@ export function PlayerView({
 
   // Sync server audio commands to local HTML5 Audio playback
   // The Player's own volume (Story's Sound section) changes this browser's audio only.
-  const [playerVolume] = usePlayerVolume();
+  const [playerVolume, setPlayerVolume] = usePlayerVolume();
   const audioPlayback = useAudioSync(sessionState.audio, playerVolume);
   // Respite's All / Open / Done filter: this device's view only.
   const [respiteFilter, setRespiteFilter] = useState<RespiteFilter>("all");
@@ -843,6 +843,22 @@ export function PlayerView({
                     {sessionState.audio.assetName}
                   </span>
                 ))}
+              {/* The Player's own volume in every mode: this browser only, nothing is sent. */}
+              {sessionState.audio?.playing && sessionState.audio.assetName && sceneType !== "story" && (
+                <label className="flex items-center gap-1.5">
+                  Your volume
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={Math.round(playerVolume * 100)}
+                    onChange={(e) => setPlayerVolume(Number(e.target.value) / 100)}
+                    aria-label="Your volume"
+                    className="w-20 accent-[var(--color-on-canvas)]"
+                  />
+                </label>
+              )}
               <SessionThemeToggle variant="status" />
               <button
                 type="button"

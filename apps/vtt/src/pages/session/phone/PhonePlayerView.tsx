@@ -212,11 +212,10 @@ export function PhonePlayerView({
         <PhoneDock
           label="Make argument"
           waiting={waiting}
-          disabled={!canMutate || !argSkill}
+          disabled={!canMutate || !argSkill || !argText.trim()}
           onClick={() => {
             send({ type: 'negotiation_argument', skillId: argSkill, approachText: argText });
             setArgText('');
-            toast.info('Making your argument...');
           }}
         />
       );
@@ -298,10 +297,12 @@ export function PhonePlayerView({
             )}
             {battle && <PhoneTraits hero={hero} disabled={!canMutate} onRoll={handleRollCharacteristic} />}
             {battle && <PhoneParty heroes={party} combat={combat} />}
-            {battle && heroAbilities.length > 0 && (
+            {heroAbilities.length > 0 ? (
               <div className="ph-sec ph-legacy">
                 <AbilityPanel abilities={heroAbilities} usedActionTypes={usedActionTypes} onUseAbility={handleUseAbility} />
               </div>
+            ) : (
+              <p className="ph-sec ph-text">No abilities available.</p>
             )}
           </>
         )}

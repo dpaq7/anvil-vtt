@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Check, EyeOff, Minus, Plus } from 'lucide-react';
 import { HeroRow, Meter } from '../../../components/session/battle/HeroRow.js';
 import { TokenFace } from '../../../components/session/battle/TokenFace.js';
@@ -80,7 +81,12 @@ export function PhoneDirectorBattle({
   hiddenIds,
   canMutate,
   onMalice,
+  top,
+  children,
 }: {
+  /** Above the list: the drop strip. Below it: the scene list, so a scene change stays in reach. */
+  top?: ReactNode;
+  children?: ReactNode;
   combat: CombatState;
   entities: EntityData[];
   hiddenIds: Set<string>;
@@ -95,6 +101,7 @@ export function PhoneDirectorBattle({
   const heroesActed = combat.heroEntities.filter((id) => combat.actedThisRound.includes(id)).length;
   return (
     <div className="ph-body ph-body--list">
+      {top}
       <div className="ph-track">
         <span><b>Round {combat.round}</b></span>
         <span data-on={combat.activeSide === 'heroes' || undefined}><b>Heroes</b> {heroesActed}/{combat.heroEntities.length}</span>
@@ -128,6 +135,7 @@ export function PhoneDirectorBattle({
           </div>
         );
       })}
+      {children}
     </div>
   );
 }

@@ -22,6 +22,8 @@ export interface ModeScreenProps {
   directorName?: string | null;
   rounds?: boolean[];
   filter?: RespiteFilter;
+  /** Montage, Director: heroes ticked as tested by hand (counts in the corner tracker). */
+  montageMarks?: string[];
   /** The Display: no corner tracker and no actions (it draws its own rail). */
   bare?: boolean;
 }
@@ -30,7 +32,7 @@ export interface ModeScreenProps {
  * A non-Battle mode's screen for any viewer. A Player or the Display gets the Player's form: the
  * same data, with every secret drawn as ink and no Director tool. Sends wait during a drop.
  */
-export function ModeScreen({ mode, scene, state, isDirector, heroes, send, currentUserId, directorName, rounds, filter, bare = false }: ModeScreenProps) {
+export function ModeScreen({ mode, scene, state, isDirector, heroes, send, currentUserId, directorName, rounds, filter, montageMarks, bare = false }: ModeScreenProps) {
   const { paused } = useSessionConnection();
   const act = (msg: ClientMessage) => {
     if (!paused) send(msg);
@@ -53,7 +55,7 @@ export function ModeScreen({ mode, scene, state, isDirector, heroes, send, curre
       case 'montage': {
         const montage = parseMontageData(data);
         const live = state.montage;
-        const lines = modeLines('montage', heroes, state);
+        const lines = modeLines('montage', heroes, state, isDirector && montageMarks ? new Set(montageMarks) : undefined);
         const tested = heroes.filter((hero) => lines.subFor(hero) !== 'Not tested yet').length;
         return (
           <MontageStage

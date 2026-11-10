@@ -84,11 +84,14 @@ export function ModeHeroList({
   note,
   subFor,
   ownHeroId,
+  marks,
 }: {
   heroes: EntityData[];
   note: string;
   subFor: (hero: EntityData) => string;
   ownHeroId?: string | null;
+  /** The Director's own "tested" ticks in Montage, kept on this device like the old Tracking list. */
+  marks?: { checked: ReadonlySet<string>; onToggle: (heroId: string) => void };
 }) {
   return (
     <>
@@ -101,7 +104,16 @@ export function ModeHeroList({
         {heroes.map((hero) => {
           const own = hero.id === ownHeroId;
           const sub = subFor(hero);
-          return <HeroRow key={hero.id} hero={hero} active={false} done={false} own={own} sub={own ? `${sub}, you` : sub} />;
+          const row = <HeroRow key={hero.id} hero={hero} active={false} done={false} own={own} sub={own ? `${sub}, you` : sub} />;
+          if (!marks) return row;
+          return (
+            <div key={hero.id} className="md-markrow">
+              {row}
+              <label className="md-mark" title="Mark as tested">
+                <input type="checkbox" checked={marks.checked.has(hero.id)} onChange={() => marks.onToggle(hero.id)} aria-label={`Mark ${cleanName(hero.name)} as tested`} />
+              </label>
+            </div>
+          );
         })}
       </div>
     </>

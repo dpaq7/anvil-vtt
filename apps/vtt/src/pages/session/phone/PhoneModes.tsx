@@ -79,8 +79,9 @@ export function PhoneArgument({ patience, maxPatience, skillId, text, onSkill, o
       </label>
       <label className="md-say">
         <MessageSquareQuote size={16} strokeWidth={2.6} aria-hidden="true" />
-        <textarea aria-label="What you say" rows={2} placeholder="What you say (optional)" value={text} onChange={(e) => onText(e.target.value)} />
+        <textarea aria-label="What you say" aria-describedby="ph-say-hint" rows={2} placeholder="What you say" value={text} onChange={(e) => onText(e.target.value)} />
       </label>
+      {(!skillId || !text.trim()) && <small id="ph-say-hint" className="text-[13px] text-text-soft">Pick a skill and say what you argue.</small>}
     </section>
   );
 }

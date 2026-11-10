@@ -8,14 +8,17 @@ import { useSessionConnection } from '../shell/connection-context.js';
 import { Head, OnlyYou } from './parts.js';
 
 /** People in a scene, beside the party. A hidden one is hatched for the Director and absent for anyone else. */
-export function SceneNpcs({ npcs, hiddenIds }: { npcs: EntityData[]; hiddenIds?: Set<string> }) {
+export function SceneNpcs({ npcs, hiddenIds, isDirector }: { npcs: EntityData[]; hiddenIds?: Set<string>; isDirector: boolean }) {
   return (
     <>
       <Head title="In this scene" note={`${npcs.length} ${npcs.length === 1 ? 'person' : 'people'}`} />
       {npcs.length === 0 && <p className="sb-note md-pad">Nobody else is here.</p>}
       {npcs.map((npc) => {
         const hidden = hiddenIds?.has(npc.id) ?? false;
-        const note = typeof npc['monsterName'] === 'string' && npc['monsterName'] !== npc.name ? (npc['monsterName'] as string) : npc.type === 'npc' ? 'NPC' : 'Creature';
+        const kind = npc.type === 'npc' ? 'NPC' : 'Creature';
+        // The stat block's name is the Director's: a renamed NPC must not show what it really is.
+        const statBlock = isDirector && typeof npc['monsterName'] === 'string' && npc['monsterName'] !== npc.name ? (npc['monsterName'] as string) : null;
+        const note = statBlock ?? kind;
         return (
           <div key={npc.id} className="md-npc" data-hidden={hidden || undefined}>
             <TokenFace entity={npc} size={32} />

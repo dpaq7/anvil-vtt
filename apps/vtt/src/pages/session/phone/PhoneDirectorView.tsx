@@ -169,26 +169,32 @@ export function PhoneDirectorView({ state, send, canMutate, waiting }: { state: 
     return null;
   })();
 
+  const sceneNav = (
+    <nav className="ph-sec ph-nav" aria-label="Scenes">
+      <div className="ph-h"><b>Scenes</b><span>Tap to switch</span></div>
+      {state.scenes.map((item) => (
+        <button key={item.id} type="button" data-mode={sceneTypeOf(item)} aria-current={item.id === state.activeSceneId ? 'step' : undefined} disabled={!canMutate || item.id === state.activeSceneId} onClick={() => act({ type: 'switch_scene', sceneId: item.id })}>
+          <i className="sb-board" data-mode={sceneTypeOf(item)} style={{ border: 0, flex: 'none' }}><ModeIcon type={sceneTypeOf(item)} size={16} /></i>
+          <span>{item.name}</span>
+        </button>
+      ))}
+    </nav>
+  );
+
   return (
     <PhoneApp role="director" scene={scene}>
       <PhoneTop scene={scene} />
       {tab === 'live' && mode === 'battle' && combat ? (
-        <PhoneDirectorBattle combat={combat} entities={state.entities} hiddenIds={hiddenIds} canMutate={canMutate} onMalice={(delta) => act({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })} />
+        <PhoneDirectorBattle combat={combat} entities={state.entities} hiddenIds={hiddenIds} canMutate={canMutate} onMalice={(delta) => act({ type: 'combat_action', action: { type: 'ADJUST_MALICE', delta } })} top={waiting ? <PhoneDropStrip /> : null}>
+          {sceneNav}
+        </PhoneDirectorBattle>
       ) : (
         <div className="ph-body">
           {waiting && <PhoneDropStrip />}
           {tab === 'live' && (
             <>
               {live}
-              <nav className="ph-sec ph-nav" aria-label="Scenes">
-                <div className="ph-h"><b>Scenes</b><span>Tap to switch</span></div>
-                {state.scenes.map((item) => (
-                  <button key={item.id} type="button" data-mode={sceneTypeOf(item)} aria-current={item.id === state.activeSceneId ? 'step' : undefined} disabled={!canMutate || item.id === state.activeSceneId} onClick={() => act({ type: 'switch_scene', sceneId: item.id })}>
-                    <i className="sb-board" data-mode={sceneTypeOf(item)} style={{ border: 0, flex: 'none' }}><ModeIcon type={sceneTypeOf(item)} size={16} /></i>
-                    <span>{item.name}</span>
-                  </button>
-                ))}
-              </nav>
+              {sceneNav}
             </>
           )}
           {tab === 'initiative' && (

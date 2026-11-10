@@ -26,7 +26,11 @@ export interface ModeLines {
   subFor: (hero: EntityData) => string;
 }
 
-export function modeLines(mode: NonBattleMode, heroes: EntityData[], state: SessionState): ModeLines {
+/**
+ * `marked`: heroes the Director ticked as tested by hand (a test rolled at the table and recorded
+ * with the steppers). Client-side only, on the Director's view, as the old Tracking list was.
+ */
+export function modeLines(mode: NonBattleMode, heroes: EntityData[], state: SessionState, marked?: ReadonlySet<string>): ModeLines {
   const { participants } = state;
   const userOf = (hero: EntityData) => playerOf(hero, participants);
   switch (mode) {
@@ -44,12 +48,13 @@ export function modeLines(mode: NonBattleMode, heroes: EntityData[], state: Sess
         const user = userOf(hero);
         return [...log].reverse().find((entry) => entry.playerId === user || entry.playerName === hero.name);
       };
-      const tested = heroes.filter((hero) => lastFor(hero)).length;
+      const tested = heroes.filter((hero) => lastFor(hero) || marked?.has(hero.id)).length;
       return {
         note: `${tested} of ${heroes.length} tested`,
         subFor: (hero) => {
           const entry = lastFor(hero);
-          return entry ? `${skillName(entry.skillId)} ${entry.roll}, ${entry.outcome}` : 'Not tested yet';
+          if (entry) return `${skillName(entry.skillId)} ${entry.roll}, ${entry.outcome}`;
+          return marked?.has(hero.id) ? 'Marked tested' : 'Not tested yet';
         },
       };
     }

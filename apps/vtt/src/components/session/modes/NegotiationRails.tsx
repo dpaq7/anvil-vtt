@@ -133,13 +133,16 @@ export function MakeArgument({ patience, active, availableSkillIds, onArgue }: {
       </label>
       <label className="md-say">
         <MessageSquareQuote size={16} strokeWidth={2.6} aria-hidden="true" />
-        <textarea aria-label="What you say" rows={2} placeholder="What you say (optional)" value={text} onChange={(e) => setText(e.target.value)} />
+        <textarea aria-label="What you say" aria-describedby="md-say-hint" rows={2} placeholder="What you say" value={text} onChange={(e) => setText(e.target.value)} />
       </label>
+      {active && (!skillId || !text.trim()) && (
+        <small id="md-say-hint" className="text-[13px] text-text-soft">Pick a skill and say what you argue.</small>
+      )}
       <button
         type="button"
         className="md-go"
         data-wait={paused || undefined}
-        disabled={paused || !active || !skillId}
+        disabled={paused || !active || !skillId || !text.trim()}
         onClick={() => {
           onArgue(skillId, text);
           setText('');

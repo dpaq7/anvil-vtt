@@ -24,20 +24,24 @@ export interface ModeRailProps {
   rounds?: boolean[];
   onToggleRound?: (index: number) => void;
   availableSkillIds?: string[];
+  /** Montage, Director: heroes ticked as tested by hand, and the toggle. */
+  montageMarks?: string[];
+  onToggleMark?: (heroId: string) => void;
 }
 
 const notesOf = (data: Record<string, unknown>) => (typeof data['notes'] === 'string' ? (data['notes'] as string) : '');
 
 /** The left rail below the tabs: the party with the mode's line, then the mode's lower sections (section 6). */
-export function ModeLeft({ mode, scene, state, isDirector, heroes, npcs, hiddenIds, ownHeroId }: ModeRailProps) {
+export function ModeLeft({ mode, scene, state, isDirector, heroes, npcs, hiddenIds, ownHeroId, montageMarks, onToggleMark }: ModeRailProps) {
   const data = scene.data ?? {};
-  const lines = modeLines(mode, heroes, state);
+  const marked = isDirector && mode === 'montage' && montageMarks ? new Set(montageMarks) : undefined;
+  const lines = modeLines(mode, heroes, state, marked);
   const lower = (() => {
     switch (mode) {
       case 'story':
         return (
           <>
-            <SceneNpcs npcs={npcs} hiddenIds={isDirector ? hiddenIds : undefined} />
+            <SceneNpcs npcs={npcs} hiddenIds={isDirector ? hiddenIds : undefined} isDirector={isDirector} />
             {isDirector ? <DirectorNotes notes={notesOf(data)} /> : <PlayerSound audio={state.audio} />}
           </>
         );
@@ -60,7 +64,7 @@ export function ModeLeft({ mode, scene, state, isDirector, heroes, npcs, hiddenI
   })();
   return (
     <div className="sb-tracker">
-      <ModeHeroList heroes={heroes} note={lines.note} subFor={lines.subFor} ownHeroId={ownHeroId} />
+      <ModeHeroList heroes={heroes} note={lines.note} subFor={lines.subFor} ownHeroId={ownHeroId} marks={marked && onToggleMark ? { checked: marked, onToggle: onToggleMark } : undefined} />
       <div className="md-lower">{lower}</div>
     </div>
   );

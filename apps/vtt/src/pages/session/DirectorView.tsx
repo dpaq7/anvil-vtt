@@ -169,6 +169,10 @@ export function DirectorView({
     broadcastFocus && (!focusEntityRequest || broadcastFocus.nonce >= focusEntityRequest.nonce)
       ? broadcastFocus
       : focusEntityRequest;
+  // Heroes the Director ticks as tested by hand, per scene: client state, as the old Tracking list was.
+  const [montageTrackingByScene, setMontageTrackingByScene] = useState<
+    Record<string, string[]>
+  >({});
   const [montageRoundsByScene, setMontageRoundsByScene] = useState<
     Record<string, boolean[]>
   >({});
@@ -266,6 +270,9 @@ export function DirectorView({
       return entry.sceneType === sceneType;
     }).length;
   }, [activeSceneId, sceneType, sessionState.actionLog]);
+  const activeMontageTracking = activeSceneId
+    ? (montageTrackingByScene[activeSceneId] ?? [])
+    : [];
   const activeMontageRounds = activeSceneId
     ? (montageRoundsByScene[activeSceneId] ?? [])
     : [];
@@ -514,6 +521,19 @@ export function DirectorView({
     setFocusEntityRequest({ entityId, nonce: Date.now() });
   }, []);
 
+  const handleToggleMontageMark = useCallback(
+    (heroId: string) => {
+      if (!activeSceneId) return;
+      setMontageTrackingByScene((prev) => {
+        const current = new Set(prev[activeSceneId] ?? []);
+        if (current.has(heroId)) current.delete(heroId);
+        else current.add(heroId);
+        return { ...prev, [activeSceneId]: [...current] };
+      });
+    },
+    [activeSceneId],
+  );
+
   const handleToggleMontageRound = useCallback(
     (roundIndex: number) => {
       if (!activeSceneId) return;
@@ -642,6 +662,7 @@ export function DirectorView({
           heroes={modeHeroes}
           send={send}
           rounds={activeMontageRounds}
+          montageMarks={activeMontageTracking}
           filter={respiteFilter}
         />
       );
@@ -830,6 +851,8 @@ export function DirectorView({
                   npcs={modeNpcs}
                   hiddenIds={hiddenIds}
                   send={send}
+                  montageMarks={activeMontageTracking}
+                  onToggleMark={handleToggleMontageMark}
                 />
               </TabsContent>
             )}
