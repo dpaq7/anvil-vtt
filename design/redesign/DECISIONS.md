@@ -65,3 +65,14 @@ Dan signed off Wave 2 (commits be7ca1e..c50d4e9).
 Rail controls: rails stay at fixed widths and drag-to-resize stays removed, but Dan chose to bring back a collapse button on each rail in live sessions, so the map can be widened without Fullscreen. Wave 3 builds it.
 
 Dan was asked to watch one scene change into Battle on a real GPU, because the title card's timing could not be confirmed under test.
+
+## 2026-11-08: Wave 3 sign-off (Battle)
+
+Dan signed off Wave 3 (commits ac0eec4..1fc4461, with the `commit_move` fix from PR #74 merged in).
+
+Rulings:
+- "End combat…" keeps its confirmation.
+- A Player can drag their own hero on their own turn. Off-turn drags stay refused. The server applies movement cost and opportunity attacks.
+- The server sends Players every visible creature's full data, including stamina and abilities. Screens hide it, but browser tools can read it. This predates the redesign. Dan chose a separate fix PR after the redesign, so it is listed as a follow-up.
+
+Dan was asked to watch movement and roll animations on a real GPU, because they could not be confirmed under test.
