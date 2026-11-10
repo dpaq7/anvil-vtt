@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { Minimize2 } from "lucide-react";
@@ -20,8 +19,6 @@ import type { SceneType } from "@anvil/ui";
 import type {
   SessionState,
   AbilityResult,
-  MontageLiveState,
-  NegotiationLiveState,
 } from "../../types/protocol.js";
 import type { ClientMessage } from "../../types/protocol.js";
 import type { ConnectionStatus } from "../../hooks/useSessionSocket.js";
@@ -36,16 +33,7 @@ import {
   useAssetsStore,
   getMonsterPortraitUrl,
 } from "../../stores/assetsStore.js";
-import {
-  parseMontageData,
-  parseNegotiationData,
-  parseRespiteData,
-  parseBattleData,
-} from "../../lib/scene-data.js";
-import type {
-  MontageStageData,
-  NegotiationStageData,
-} from "../../lib/scene-data.js";
+import { parseBattleData } from "../../lib/scene-data.js";
 import { DirectorFilmStrip } from "../../components/session/DirectorFilmStrip.js";
 import { ParticipantStatusBar } from "../../components/session/ParticipantStatusBar.js";
 import { PlayerCharactersPanel } from "../../components/session/PlayerCharactersPanel.js";
@@ -63,18 +51,18 @@ import { SessionThemeToggle } from "../../components/session/SessionThemeToggle.
 import { SessionShell } from "../../components/session/shell/SessionShell.js";
 import { useSessionConnection } from "../../components/session/shell/connection-context.js";
 import { EndSessionButton } from "../../components/session/EndSessionDialog.js";
-import { StoryStage } from "../../components/stages/StoryStage.js";
-import { MontageStage } from "../../components/stages/MontageStage.js";
-import { NegotiationStage } from "../../components/stages/NegotiationStage.js";
-import { RespiteStage } from "../../components/stages/RespiteStage.js";
+import { ModeScreen } from "../../components/session/modes/ModeScreen.js";
+import { ModeLeft, ModeTools } from "../../components/session/modes/ModeRails.js";
+import { ModeBar } from "../../components/session/modes/ModeBar.js";
+import { respiteTickets, type RespiteFilter } from "../../components/stages/mode-helpers.js";
+import { parseRespiteData } from "../../lib/scene-data.js";
+import type { NonBattleMode } from "../../components/session/modes/mode-lines.js";
 import { BattleStage } from "../../components/stages/BattleStage.js";
 import { OpportunityAttackPrompt } from "../../components/session/OpportunityAttackPrompt.js";
 import { useTargetingResolution } from "../../hooks/useTargetingResolution.js";
 import type { PendingTargetedAction } from "../../lib/targeting.js";
 import { useSessionStore } from "../../stores/sessionStore.js";
 import { toast } from "sonner";
-import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
-import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
 import { buildVillainCombatGroups } from "../../lib/combat-groups.js";
 import { CANVAS_THEME, GRID_DEFAULT_ALPHA } from "../../canvas/theme.js";
 
@@ -103,8 +91,18 @@ function clampGridOffset(value: number, cellSize: number): number {
   return Math.max(-cellSize, Math.min(cellSize, Math.round(value)));
 }
 
-type LeftRailTab = "combat" | "heroes" | "creatures" | "tracking" | "log";
-type RightRailTab = "audio" | "combat" | "grid" | "assets";
+type LeftRailTab = "mode" | "combat" | "heroes" | "creatures" | "log";
+type RightRailTab = "audio" | "mode" | "combat" | "grid" | "assets";
+
+/** Each mode's tool tab in the right rail (DESIGN.md section 6). */
+const MODE_TOOL_TAB: Record<NonBattleMode, string> = {
+  story: "Read-aloud",
+  montage: "Tests",
+  negotiation: "Target",
+  respite: "Activities",
+};
+const isModeScene = (type: SceneType | null): type is NonBattleMode =>
+  type === "story" || type === "montage" || type === "negotiation" || type === "respite";
 
 // Rail tabs take the shell's look (session-shell.css, `.sb-rail [role=tab]`).
 const RAIL_TABS_LIST_CLASS = "";
@@ -155,8 +153,10 @@ export function DirectorView({
   const [showHelp, setShowHelp] = useState(false);
   const [leftRailTab, setLeftRailTab] = useState<LeftRailTab>("combat");
   const [rightRailTab, setRightRailTab] = useState<RightRailTab>(
-    sceneType === "battle" ? "combat" : "assets",
+    sceneType === "battle" ? "combat" : sceneType ? "mode" : "audio",
   );
+  // Respite's All / Open / Done filter: this device's view only.
+  const [respiteFilter, setRespiteFilter] = useState<RespiteFilter>("all");
   const [focusMode, setFocusMode] = useState(false);
   const [focusEntityRequest, setFocusEntityRequest] = useState<{
     entityId: string;
@@ -171,9 +171,6 @@ export function DirectorView({
       : focusEntityRequest;
   const [montageRoundsByScene, setMontageRoundsByScene] = useState<
     Record<string, boolean[]>
-  >({});
-  const [montageTrackingByScene, setMontageTrackingByScene] = useState<
-    Record<string, string[]>
   >({});
   const [activeAudioId, setActiveAudioId] = useState<string | null>(
     (sceneData["audioMusic"] as string) ?? null,
@@ -200,10 +197,6 @@ export function DirectorView({
   );
 
   const battleData = sceneType === "battle" ? parseBattleData(sceneData) : null;
-  const montageData =
-    sceneType === "montage" ? parseMontageData(sceneData) : null;
-  const negotiationData =
-    sceneType === "negotiation" ? parseNegotiationData(sceneData) : null;
   const currentGridOpacity =
     gridOpacityOverride ?? battleData?.gridOpacity ?? GRID_DEFAULT_ALPHA;
   const currentGridColor =
@@ -233,6 +226,27 @@ export function DirectorView({
     () => entities.filter((e) => e.type === "hero").length,
     [entities],
   );
+  // Outside Battle nothing is under fog, so the Director's list and the hidden marks come from the
+  // same helper as Battle's (empty unless a fog zone covers someone).
+  const modeHeroes = useMemo(
+    () => entities.filter((e) => e.type === "hero"),
+    [entities],
+  );
+  const modeNpcs = useMemo(
+    () => entities.filter((e) => e.type === "npc" || e.type === "monster"),
+    [entities],
+  );
+  const respiteCounts = useMemo(() => {
+    const tickets = respiteTickets(
+      sessionState.respite?.activities,
+      parseRespiteData(sceneData).activities,
+    );
+    return {
+      all: tickets.length,
+      open: tickets.filter((a) => !a.completed && !a.claimedBy).length,
+      done: tickets.filter((a) => a.completed).length,
+    };
+  }, [sceneData, sessionState.respite?.activities]);
   const joinedPlayerCharacterCount = useMemo(
     () => getJoinedPlayerCharacters(participants, entities).length,
     [entities, participants],
@@ -252,21 +266,6 @@ export function DirectorView({
       return entry.sceneType === sceneType;
     }).length;
   }, [activeSceneId, sceneType, sessionState.actionLog]);
-  const montageActors = useMemo(() => {
-    const players = participants
-      .filter((participant) => participant.role === "player")
-      .map((participant) => ({
-        id: participant.heroId ?? participant.userId,
-        name: participant.username,
-      }));
-    if (players.length > 0) return players;
-    return entities
-      .filter((entity) => entity.type === "hero")
-      .map((entity) => ({ id: entity.id, name: entity.name }));
-  }, [entities, participants]);
-  const activeMontageTracking = activeSceneId
-    ? (montageTrackingByScene[activeSceneId] ?? [])
-    : [];
   const activeMontageRounds = activeSceneId
     ? (montageRoundsByScene[activeSceneId] ?? [])
     : [];
@@ -277,32 +276,26 @@ export function DirectorView({
       [];
     if (sceneType === "battle" && combat)
       tabs.push({ value: "combat", label: "Combat" });
+    // Each other mode leads with its own tab: the party and the mode's sections (section 6).
+    if (isModeScene(sceneType))
+      tabs.push({
+        value: "mode",
+        label: sceneType.charAt(0).toUpperCase() + sceneType.slice(1),
+      });
     tabs.push({
       value: "heroes",
       label: "Heroes",
       count: joinedPlayerCharacterCount,
     });
-    if (sceneType === "negotiation") {
-      tabs.push({ value: "creatures", label: "Target" });
-    } else if (sceneType === "montage") {
-      tabs.push({ value: "creatures", label: "Results" });
-      tabs.push({
-        value: "tracking",
-        label: "Tracking",
-        count: activeMontageTracking.length,
-      });
-    } else {
-      tabs.push({
-        value: "creatures",
-        label: "Creatures",
-        count: creatureCount,
-      });
-    }
+    tabs.push({
+      value: "creatures",
+      label: isModeScene(sceneType) ? "NPCs" : "Creatures",
+      count: creatureCount,
+    });
     tabs.push({ value: "log", label: "Log", count: actionLogCount });
     return tabs;
   }, [
     actionLogCount,
-    activeMontageTracking.length,
     combat,
     creatureCount,
     joinedPlayerCharacterCount,
@@ -318,6 +311,8 @@ export function DirectorView({
       tabs.push({ value: "combat", label: combat ? "Damage" : "Combat" });
       tabs.push({ value: "grid", label: "Grid" });
     }
+    if (isModeScene(sceneType))
+      tabs.push({ value: "mode", label: MODE_TOOL_TAB[sceneType] });
     if (sceneType) tabs.push({ value: "assets", label: "Assets" });
     return tabs;
   }, [combat, sceneType]);
@@ -489,6 +484,16 @@ export function DirectorView({
     setGridOffsetYOverride(null);
   }, [activeSceneId, handleSelectEntity]);
 
+  // A new mode opens on its own tabs, as the demos show it.
+  useEffect(() => {
+    if (isModeScene(sceneType)) {
+      setLeftRailTab("mode");
+      setRightRailTab("mode");
+    } else if (sceneType === "battle") {
+      setRightRailTab("combat");
+    }
+  }, [sceneType]);
+
   useEffect(() => {
     if (!leftRailTabs.some((tab) => tab.value === leftRailTab)) {
       setLeftRailTab(leftRailTabs[0]?.value ?? "creatures");
@@ -512,19 +517,6 @@ export function DirectorView({
         const next = [...(prev[activeSceneId] ?? [])];
         next[roundIndex] = !next[roundIndex];
         return { ...prev, [activeSceneId]: next };
-      });
-    },
-    [activeSceneId],
-  );
-
-  const handleToggleMontageActor = useCallback(
-    (actorId: string) => {
-      if (!activeSceneId) return;
-      setMontageTrackingByScene((prev) => {
-        const current = new Set(prev[activeSceneId] ?? []);
-        if (current.has(actorId)) current.delete(actorId);
-        else current.add(actorId);
-        return { ...prev, [activeSceneId]: [...current] };
       });
     },
     [activeSceneId],
@@ -636,122 +628,22 @@ export function DirectorView({
       );
     }
 
-    const renderWithBackground = (children: ReactNode) => (
-      <SceneBackdrop
-        backgroundUrl={getSceneBackgroundUrl(
-          sceneData,
-          sceneType,
-          activeScene.order_index,
-        )}
-      >
-        {children}
-      </SceneBackdrop>
-    );
+    if (isModeScene(sceneType)) {
+      return (
+        <ModeScreen
+          mode={sceneType}
+          scene={activeScene}
+          state={sessionState}
+          isDirector
+          heroes={modeHeroes}
+          send={send}
+          rounds={activeMontageRounds}
+          filter={respiteFilter}
+        />
+      );
+    }
 
     switch (sceneType) {
-      case "story":
-        return renderWithBackground(
-          <StoryStage
-            readAloudText={(sceneData["readAloud"] as string) ?? ""}
-            directorNotes={(sceneData["notes"] as string) ?? ""}
-            isDirector
-            onUpdateReadAloud={(readAloudText) =>
-              send({ type: "story_update", readAloudText })
-            }
-          />,
-        );
-      case "montage": {
-        const montage = montageData ?? parseMontageData(sceneData);
-        const liveMontage = sessionState.montage;
-        return renderWithBackground(
-          <MontageStage
-            goal={montage.goal}
-            roundLimit={montage.roundLimit}
-            heroCount={montage.heroCount}
-            currentSuccesses={liveMontage?.successes ?? 0}
-            successLimit={liveMontage?.successLimit ?? montage.successLimit}
-            currentFailures={liveMontage?.failures ?? 0}
-            failureLimit={liveMontage?.failureLimit ?? montage.failureLimit}
-            outcome={liveMontage?.outcome ?? "pending"}
-            totalSuccess={montage.totalSuccess}
-            partialSuccess={montage.partialSuccess}
-            totalFailure={montage.totalFailure}
-            challenges={montage.challenges}
-            isDirector
-            testLog={liveMontage?.testLog}
-            roundsCompleted={activeMontageRounds}
-            onAdjustSuccesses={(delta) =>
-              send({ type: "montage_adjust_successes", delta })
-            }
-            onAdjustFailures={(delta) =>
-              send({ type: "montage_adjust_failures", delta })
-            }
-            onResetMontage={() => send({ type: "montage_reset" })}
-            onToggleRound={handleToggleMontageRound}
-          />,
-        );
-      }
-      case "negotiation": {
-        const neg = negotiationData ?? parseNegotiationData(sceneData);
-        const liveNeg = sessionState.negotiation;
-        return renderWithBackground(
-          <NegotiationStage
-            npcName={neg.npcName}
-            npcPortrait={neg.npcPortrait}
-            npcAttitude={neg.npcAttitude}
-            interest={liveNeg?.interest ?? neg.interest}
-            patience={liveNeg?.patience ?? neg.patience}
-            maxPatience={liveNeg?.maxPatience ?? neg.maxPatience}
-            phase={liveNeg?.phase ?? neg.phase}
-            motivations={liveNeg?.motivations ?? neg.motivations}
-            pitfalls={liveNeg?.pitfalls ?? neg.pitfalls}
-            outcomes={neg.outcomes}
-            isDirector
-            argumentLog={liveNeg?.argumentLog}
-            onInterestChange={(delta) =>
-              send({ type: "negotiation_adjust_interest", delta })
-            }
-            onPatienceChange={(delta) =>
-              send({ type: "negotiation_adjust_patience", delta })
-            }
-            onRevealMotivation={(id) =>
-              send({ type: "negotiation_reveal_motivation", id })
-            }
-            onRevealPitfall={(id) =>
-              send({ type: "negotiation_reveal_pitfall", id })
-            }
-            onEndNegotiation={() =>
-              send({
-                type: "negotiation_end",
-                phase:
-                  (liveNeg?.interest ?? neg.interest) >= 3
-                    ? "success"
-                    : "failure",
-              })
-            }
-          />,
-        );
-      }
-      case "respite": {
-        const respite = parseRespiteData(sceneData);
-        const liveRespite = sessionState.respite;
-        return renderWithBackground(
-          <RespiteStage
-            location={respite.location}
-            activities={respite.activities}
-            liveActivities={liveRespite?.activities}
-            projects={respite.projects}
-            completed={
-              liveRespite?.activities.every((activity) => activity.completed) ??
-              false
-            }
-            isDirector
-            onCompleteActivity={(activityId) =>
-              send({ type: "respite_complete_activity", activityId })
-            }
-          />,
-        );
-      }
       case "battle": {
         const battle = battleData!;
         return (
@@ -923,6 +815,21 @@ export function DirectorView({
               </TabsContent>
             )}
 
+            {isModeScene(sceneType) && activeScene && (
+              <TabsContent value="mode" className={RAIL_TAB_CONTENT_CLASS}>
+                <ModeLeft
+                  mode={sceneType}
+                  scene={activeScene}
+                  state={sessionState}
+                  isDirector
+                  heroes={modeHeroes}
+                  npcs={modeNpcs}
+                  hiddenIds={hiddenIds}
+                  send={send}
+                />
+              </TabsContent>
+            )}
+
             <TabsContent value="heroes" className={RAIL_TAB_CONTENT_CLASS}>
               <PlayerCharactersPanel
                 participants={participants}
@@ -931,36 +838,14 @@ export function DirectorView({
             </TabsContent>
 
             <TabsContent value="creatures" className={RAIL_TAB_CONTENT_CLASS}>
-              {sceneType === "negotiation" && negotiationData ? (
-                <NegotiationTargetPanel
-                  data={negotiationData}
-                  live={sessionState.negotiation}
-                />
-              ) : sceneType === "montage" && montageData ? (
-                <MontageResultsPanel
-                  data={montageData}
-                  live={sessionState.montage}
-                />
-              ) : (
-                <CreatureTracker
-                  entities={entities}
-                  combat={combat}
-                  selectedEntityIds={selectedEntityIds}
-                  onSelectEntities={handleSelectEntities}
-                  send={send}
-                />
-              )}
+              <CreatureTracker
+                entities={entities}
+                combat={combat}
+                selectedEntityIds={selectedEntityIds}
+                onSelectEntities={handleSelectEntities}
+                send={send}
+              />
             </TabsContent>
-
-            {sceneType === "montage" && (
-              <TabsContent value="tracking" className={RAIL_TAB_CONTENT_CLASS}>
-                <MontageTrackingPanel
-                  actors={montageActors}
-                  checkedIds={activeMontageTracking}
-                  onToggle={handleToggleMontageActor}
-                />
-              </TabsContent>
-            )}
 
             <TabsContent value="log" className={RAIL_TAB_CONTENT_CLASS}>
               <ActionLogPanel
@@ -1020,6 +905,29 @@ export function DirectorView({
                   onAddMonsterToScene={handleAddMonsterToScene}
                   onAddTerrainToScene={handleAddTerrainToScene}
                 />
+              </TabsContent>
+            )}
+
+            {isModeScene(sceneType) && activeScene && (
+              <TabsContent value="mode" className={RAIL_TAB_CONTENT_CLASS}>
+                <div className="sb-rail-body h-full">
+                  <ModeTools
+                    mode={sceneType}
+                    scene={activeScene}
+                    state={sessionState}
+                    isDirector
+                    heroes={modeHeroes}
+                    npcs={modeNpcs}
+                    send={send}
+                    rounds={activeMontageRounds}
+                    onToggleRound={handleToggleMontageRound}
+                  />
+                  <RailLog
+                    entries={sessionState.actionLog ?? []}
+                    sceneType={sceneType}
+                    activeSceneId={activeSceneId}
+                  />
+                </div>
               </TabsContent>
             )}
 
@@ -1267,6 +1175,14 @@ export function DirectorView({
       bar={
         sceneType === "battle" ? (
           <div ref={setBarTarget} className="flex h-full min-w-0 flex-1 items-center" />
+        ) : isModeScene(sceneType) ? (
+          <ModeBar
+            mode={sceneType}
+            send={send}
+            filter={respiteFilter}
+            counts={respiteCounts}
+            onFilter={setRespiteFilter}
+          />
         ) : undefined
       }
       screen={renderStage()}
@@ -1381,264 +1297,5 @@ function DirectorStatusActions({
         </button>
       )}
     </>
-  );
-}
-
-function NegotiationTargetPanel({
-  data,
-  live,
-}: {
-  data: NegotiationStageData;
-  live: NegotiationLiveState | null;
-}) {
-  const interest = live?.interest ?? data.interest;
-  const patience = live?.patience ?? data.patience;
-  const maxPatience = live?.maxPatience ?? data.maxPatience;
-  const phase = live?.phase ?? data.phase;
-  const motivations = live?.motivations ?? data.motivations;
-  const pitfalls = live?.pitfalls ?? data.pitfalls;
-  const currentOutcome = data.outcomes[interest] ?? "";
-
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto p-3">
-      <section className="rounded border border-zinc-800 bg-zinc-900/60 p-3">
-        <div className="flex items-start gap-3">
-          {data.npcPortrait ? (
-            <img
-              src={data.npcPortrait}
-              alt=""
-              className="size-14 rounded object-cover"
-            />
-          ) : (
-            <div className="flex size-14 items-center justify-center rounded bg-purple-500/20 text-lg font-semibold text-purple-200">
-              {data.npcName.slice(0, 1)}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-zinc-100">
-              {data.npcName}
-            </p>
-            <p className="mt-1 text-xs capitalize text-zinc-400">
-              {data.npcAttitude}
-            </p>
-            <span className="mt-2 inline-flex rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-              {phase}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetricCard label="Interest" value={`${interest} / 5`} tone="purple" />
-        <MetricCard
-          label="Patience"
-          value={`${patience} / ${maxPatience}`}
-          tone="amber"
-        />
-      </div>
-
-      {currentOutcome && (
-        <section className="mt-3 rounded border border-zinc-800 bg-zinc-900/60 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Current outcome
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-zinc-300">
-            {currentOutcome}
-          </p>
-        </section>
-      )}
-
-      <SecretList title="Motivations" items={motivations} tone="purple" />
-      <SecretList title="Pitfalls" items={pitfalls} tone="red" />
-    </div>
-  );
-}
-
-function MontageResultsPanel({
-  data,
-  live,
-}: {
-  data: MontageStageData;
-  live: MontageLiveState | null;
-}) {
-  const successes = live?.successes ?? 0;
-  const failures = live?.failures ?? 0;
-  const successLimit = live?.successLimit ?? data.successLimit;
-  const failureLimit = live?.failureLimit ?? data.failureLimit;
-  const outcome = live?.outcome ?? "pending";
-
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto p-3">
-      <section className="rounded border border-zinc-800 bg-zinc-900/60 p-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          Montage goal
-        </p>
-        <p className="mt-1 text-sm font-semibold leading-snug text-zinc-100">
-          {data.goal || "No goal set"}
-        </p>
-        <span className="mt-3 inline-flex rounded bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-          {outcome.replace(/_/g, " ")}
-        </span>
-      </section>
-
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetricCard
-          label="Successes"
-          value={`${successes} / ${successLimit}`}
-          tone="emerald"
-        />
-        <MetricCard
-          label="Failures"
-          value={`${failures} / ${failureLimit}`}
-          tone="red"
-        />
-      </div>
-
-      <OutcomeCard
-        title="Total Success"
-        text={data.totalSuccess}
-        className="border-emerald-500/30"
-      />
-      <OutcomeCard
-        title="Partial Success"
-        text={data.partialSuccess}
-        className="border-amber-500/30"
-      />
-      <OutcomeCard
-        title="Total Failure"
-        text={data.totalFailure}
-        className="border-red-500/30"
-      />
-    </div>
-  );
-}
-
-function MontageTrackingPanel({
-  actors,
-  checkedIds,
-  onToggle,
-}: {
-  actors: Array<{ id: string; name: string }>;
-  checkedIds: string[];
-  onToggle: (actorId: string) => void;
-}) {
-  const checkedSet = new Set(checkedIds);
-
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto p-3">
-      <section className="rounded border border-zinc-800 bg-zinc-900/60">
-        <div className="border-b border-zinc-800 px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Tracking
-          </p>
-        </div>
-        <div className="flex flex-col p-2">
-          {actors.length === 0 ? (
-            <p className="px-2 py-4 text-xs text-zinc-600">
-              No players or heroes found.
-            </p>
-          ) : (
-            actors.map((actor) => (
-              <label
-                key={actor.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800/70"
-              >
-                <input
-                  type="checkbox"
-                  checked={checkedSet.has(actor.id)}
-                  onChange={() => onToggle(actor.id)}
-                  className="size-4 rounded border-zinc-700 accent-amber-500"
-                />
-                <span className="min-w-0 flex-1 truncate">{actor.name}</span>
-              </label>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "amber" | "emerald" | "purple" | "red";
-}) {
-  const toneClass = {
-    amber: "text-amber-300",
-    emerald: "text-emerald-300",
-    purple: "text-purple-300",
-    red: "text-red-300",
-  }[tone];
-
-  return (
-    <div className="rounded border border-zinc-800 bg-zinc-900/60 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-        {label}
-      </p>
-      <p className={`mt-1 text-lg font-semibold ${toneClass}`}>{value}</p>
-    </div>
-  );
-}
-
-function SecretList({
-  title,
-  items,
-  tone,
-}: {
-  title: string;
-  items: Array<{
-    id: string;
-    type: string;
-    description: string;
-    revealed: boolean;
-  }>;
-  tone: "purple" | "red";
-}) {
-  const titleClass = tone === "purple" ? "text-purple-300" : "text-red-300";
-
-  return (
-    <section className="mt-3 rounded border border-zinc-800 bg-zinc-900/60 p-3">
-      <p className={`text-sm font-semibold ${titleClass}`}>{title}</p>
-      <div className="mt-2 flex flex-col gap-1.5">
-        {items.length === 0 ? (
-          <p className="text-xs text-zinc-600">None set.</p>
-        ) : (
-          items.map((item) => (
-            <div key={item.id} className="rounded bg-zinc-950/50 px-2 py-1.5">
-              <p className="text-[10px] uppercase tracking-wide text-zinc-500">
-                {item.type}
-              </p>
-              <p className="mt-0.5 text-xs leading-relaxed text-zinc-300">
-                {item.revealed ? item.description : "Hidden"}
-              </p>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
-  );
-}
-
-function OutcomeCard({
-  title,
-  text,
-  className,
-}: {
-  title: string;
-  text: string;
-  className: string;
-}) {
-  return (
-    <section className={`mt-3 rounded border bg-zinc-900/60 p-3 ${className}`}>
-      <p className="text-sm font-semibold text-zinc-100">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-zinc-300">
-        {text || "No outcome set."}
-      </p>
-    </section>
   );
 }

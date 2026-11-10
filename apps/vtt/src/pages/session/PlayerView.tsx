@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { toast } from "sonner";
 import { Minimize2, Volume2, VolumeX } from "lucide-react";
@@ -17,12 +16,7 @@ import type {
   AbilityResult,
 } from "../../types/protocol.js";
 import type { ConnectionStatus } from "../../hooks/useSessionSocket.js";
-import {
-  parseMontageData,
-  parseNegotiationData,
-  parseRespiteData,
-  parseBattleData,
-} from "../../lib/scene-data.js";
+import { parseBattleData, parseRespiteData } from "../../lib/scene-data.js";
 import {
   filterVisibleEntities,
   maskHiddenNames,
@@ -56,13 +50,17 @@ import { canClaimTurn } from "../../lib/turn.js";
 import { PlayerCharactersPanel } from "../../components/session/PlayerCharactersPanel.js";
 import { useNavigate } from "react-router-dom";
 import type { CharacterInventoryItem } from "../../lib/inventory.js";
-import { StoryStage } from "../../components/stages/StoryStage.js";
-import { MontageStage } from "../../components/stages/MontageStage.js";
-import { NegotiationStage } from "../../components/stages/NegotiationStage.js";
-import { RespiteStage } from "../../components/stages/RespiteStage.js";
 import { BattleStage } from "../../components/stages/BattleStage.js";
-import { SceneBackdrop } from "../../components/stages/SceneBackdrop.js";
-import { getSceneBackgroundUrl } from "../../lib/scene-backgrounds.js";
+import { respiteTickets, type RespiteFilter } from "../../components/stages/mode-helpers.js";
+import { ModeScreen } from "../../components/session/modes/ModeScreen.js";
+import { ModeLeft, ModeTools } from "../../components/session/modes/ModeRails.js";
+import { ModeBar } from "../../components/session/modes/ModeBar.js";
+import { ModeHeroCard } from "../../components/session/modes/parts.js";
+import { modeBand, type NonBattleMode } from "../../components/session/modes/mode-lines.js";
+import { usePlayerVolume } from "../../lib/mode-prefs.js";
+
+const isModeScene = (type: SceneType | null): type is NonBattleMode =>
+  type === "story" || type === "montage" || type === "negotiation" || type === "respite";
 
 interface PlayerViewProps {
   sessionState: SessionState;
@@ -101,7 +99,11 @@ export function PlayerView({
   } | null>(null);
 
   // Sync server audio commands to local HTML5 Audio playback
-  const audioPlayback = useAudioSync(sessionState.audio);
+  // The Player's own volume (Story's Sound section) changes this browser's audio only.
+  const [playerVolume] = usePlayerVolume();
+  const audioPlayback = useAudioSync(sessionState.audio, playerVolume);
+  // Respite's All / Open / Done filter: this device's view only.
+  const [respiteFilter, setRespiteFilter] = useState<RespiteFilter>("all");
 
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
@@ -456,43 +458,24 @@ export function PlayerView({
     send({ type: "combat_action", action: { type: "ROLL_INITIATIVE" } });
   }, [send]);
 
-  // ── Non-battle scene handlers ──
-
-  const handleMontageRoll = useCallback(
-    (skillId: string, characteristicId: string) => {
-      if (paused) return;
-      send({ type: "montage_roll", skillId, characteristicId });
-      toast.info("Rolling montage test...");
-    },
-    [paused, send],
+  const modeHeroes = useMemo(
+    () => playerVisibleEntities.filter((e) => e.type === "hero"),
+    [playerVisibleEntities],
   );
-
-  const handleNegotiationArgument = useCallback(
-    (skillId: string, approachText: string) => {
-      if (paused) return;
-      send({ type: "negotiation_argument", skillId, approachText });
-      toast.info("Making your argument...");
-    },
-    [paused, send],
+  const modeNpcs = useMemo(
+    () => playerVisibleEntities.filter((e) => e.type === "npc" || e.type === "monster"),
+    [playerVisibleEntities],
   );
-
-  const handleRespiteClaimActivity = useCallback(
-    (activityId: string) => {
-      if (paused) return;
-      send({ type: "respite_choose_activity", activityId });
-      toast.info("Claiming activity...");
-    },
-    [paused, send],
-  );
-
-  const handleRespiteCompleteActivity = useCallback(
-    (activityId: string) => {
-      if (paused) return;
-      send({ type: "respite_complete_activity", activityId });
-      toast.success("Activity completed!");
-    },
-    [paused, send],
-  );
+  const respiteCounts = useMemo(() => {
+    const tickets = respiteTickets(sessionState.respite?.activities, parseRespiteData(sceneData).activities);
+    return {
+      all: tickets.length,
+      open: tickets.filter((a) => !a.completed && !a.claimedBy).length,
+      done: tickets.filter((a) => a.completed).length,
+    };
+  }, [sceneData, sessionState.respite?.activities]);
+  const directorName =
+    participants.find((p) => p.role === "director")?.username ?? null;
 
   const renderStage = () => {
     if (!activeScene) {
@@ -503,92 +486,23 @@ export function PlayerView({
       );
     }
 
-    const renderWithBackground = (children: ReactNode) => (
-      <SceneBackdrop
-        backgroundUrl={getSceneBackgroundUrl(
-          sceneData,
-          sceneType,
-          activeScene.order_index,
-        )}
-      >
-        {children}
-      </SceneBackdrop>
-    );
+    if (isModeScene(sceneType)) {
+      return (
+        <ModeScreen
+          mode={sceneType}
+          scene={activeScene}
+          state={sessionState}
+          isDirector={false}
+          heroes={modeHeroes}
+          send={send}
+          currentUserId={user?.id}
+          directorName={directorName}
+          filter={respiteFilter}
+        />
+      );
+    }
 
     switch (sceneType) {
-      case "story":
-        return renderWithBackground(
-          <StoryStage
-            readAloudText={(sceneData["readAloud"] as string) ?? ""}
-            isDirector={false}
-          />,
-        );
-      case "montage": {
-        const montage = parseMontageData(sceneData);
-        // Use live state from server if available
-        const liveMontage = sessionState.montage;
-        return renderWithBackground(
-          <MontageStage
-            goal={montage.goal}
-            roundLimit={montage.roundLimit}
-            heroCount={montage.heroCount}
-            currentSuccesses={liveMontage?.successes ?? 0}
-            successLimit={liveMontage?.successLimit ?? montage.successLimit}
-            currentFailures={liveMontage?.failures ?? 0}
-            failureLimit={liveMontage?.failureLimit ?? montage.failureLimit}
-            outcome={liveMontage?.outcome ?? "pending"}
-            totalSuccess={montage.totalSuccess}
-            partialSuccess={montage.partialSuccess}
-            totalFailure={montage.totalFailure}
-            challenges={montage.challenges}
-            isDirector={false}
-            testLog={liveMontage?.testLog}
-            onMontageRoll={handleMontageRoll}
-          />,
-        );
-      }
-      case "negotiation": {
-        const neg = parseNegotiationData(sceneData);
-        // Use live state from server if available
-        const liveNeg = sessionState.negotiation;
-        return renderWithBackground(
-          <NegotiationStage
-            npcName={neg.npcName}
-            npcPortrait={neg.npcPortrait}
-            npcAttitude={neg.npcAttitude}
-            interest={liveNeg?.interest ?? neg.interest}
-            patience={liveNeg?.patience ?? neg.patience}
-            maxPatience={liveNeg?.maxPatience ?? neg.maxPatience}
-            phase={liveNeg?.phase ?? neg.phase}
-            motivations={liveNeg?.motivations ?? neg.motivations}
-            pitfalls={liveNeg?.pitfalls ?? neg.pitfalls}
-            outcomes={neg.outcomes}
-            isDirector={false}
-            argumentLog={liveNeg?.argumentLog}
-            onMakeArgument={handleNegotiationArgument}
-          />,
-        );
-      }
-      case "respite": {
-        const respite = parseRespiteData(sceneData);
-        const liveRespite = sessionState.respite;
-        return renderWithBackground(
-          <RespiteStage
-            location={respite.location}
-            activities={respite.activities}
-            liveActivities={liveRespite?.activities}
-            projects={respite.projects}
-            completed={
-              liveRespite?.activities.every((activity) => activity.completed) ??
-              false
-            }
-            isDirector={false}
-            currentUserId={user?.id}
-            onClaimActivity={handleRespiteClaimActivity}
-            onCompleteActivity={handleRespiteCompleteActivity}
-          />,
-        );
-      }
       case "battle": {
         const battle = parseBattleData(sceneData);
         // Client-side fog of war: hide monsters inside fog zones
@@ -644,8 +558,6 @@ export function PlayerView({
     }
   };
 
-  const directorName =
-    participants.find((p) => p.role === "director")?.username ?? null;
   const mayTakeTurn = canClaimTurn(combat, heroEntityId);
 
   return (
@@ -674,6 +586,11 @@ export function PlayerView({
           <>
             <FilmStrip scenes={scenes} activeSceneId={activeSceneId} />
             <PlayerTopBand
+              band={
+                isModeScene(sceneType)
+                  ? modeBand(sceneType, activeScene?.name ?? "", sceneData, sessionState, directorName)
+                  : null
+              }
               mode={sceneType}
               sceneName={activeScene?.name ?? ""}
               combat={combat}
@@ -691,7 +608,19 @@ export function PlayerView({
         )
       }
       left={
-        focusMode ? undefined : combat ? (
+        focusMode ? undefined : isModeScene(sceneType) && activeScene ? (
+          <ModeLeft
+            mode={sceneType}
+            scene={activeScene}
+            state={sessionState}
+            isDirector={false}
+            heroes={modeHeroes}
+            npcs={modeNpcs}
+            ownHeroId={heroEntityId}
+            currentUserId={user?.id}
+            send={send}
+          />
+        ) : combat ? (
           <CombatTracker
             combat={combat}
             entities={playerVisibleEntities}
@@ -720,6 +649,20 @@ export function PlayerView({
       right={
         focusMode ? undefined : (
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          {isModeScene(sceneType) && activeScene && (
+            <ModeTools
+              mode={sceneType}
+              scene={activeScene}
+              state={sessionState}
+              isDirector={false}
+              heroes={modeHeroes}
+              npcs={modeNpcs}
+              ownHeroId={heroEntityId}
+              currentUserId={user?.id}
+              send={send}
+            />
+          )}
+          {isModeScene(sceneType) && heroEntity && <ModeHeroCard hero={heroEntity} />}
           {sceneType === "battle" && heroEntity && (
             <PlayerHeroCard
               hero={heroEntity}
@@ -820,7 +763,7 @@ export function PlayerView({
             )}
 
             <TabsContent value="log" className={RAIL_TAB_CONTENT_CLASS}>
-              {sceneType === "battle" ? (
+              {sceneType === "battle" || isModeScene(sceneType) ? (
                 <div className="sb-rail-body h-full">
                   <RailLog
                     entries={playerLog}
@@ -846,7 +789,15 @@ export function PlayerView({
       bar={
         sceneType === "battle" ? (
           <div ref={setBarTarget} className="flex h-full min-w-0 flex-1 items-center" />
-        ) : focusMode ? undefined : (
+        ) : focusMode ? undefined : isModeScene(sceneType) ? (
+          <ModeBar
+            mode={sceneType}
+            send={send}
+            filter={respiteFilter}
+            counts={respiteCounts}
+            onFilter={setRespiteFilter}
+          />
+        ) : (
           <PlayerHeroCommandBar
             hero={heroEntity ?? null}
             combatActive={Boolean(combat)}

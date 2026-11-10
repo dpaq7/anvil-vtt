@@ -161,6 +161,8 @@ interface BattleStageProps {
   send: (msg: ClientMessage) => void;
   /** False on the read-only Display: no tools, dice, zoom or mini-map. */
   showDiceControls?: boolean;
+  /** The Display: opens on the action like a laptop, but draws no corner tracker (its rail has the counts). */
+  display?: boolean;
   /** The token a roll from the bar opens beside. */
   rollAnchorId?: string | null;
   /** The bar under the screen. Tools and dice render into it. */
@@ -201,6 +203,7 @@ export function BattleStage({
   onRollInitiative,
   send,
   showDiceControls = true,
+  display = false,
   rollAnchorId = null,
   barTarget = null,
   sceneKey = null,
@@ -284,7 +287,7 @@ export function BattleStage({
     if (openedSceneRef.current === sceneKey) return;
     const timer = setInterval(() => {
       const viewport = viewportRef.current;
-      if (!viewport || !showDiceControls) return;
+      if (!viewport || (!showDiceControls && !display)) return;
       const { width, height } = viewport.getViewSize();
       if (width < 50 || height < 50 || openedSceneRef.current === sceneKey) return;
       openedSceneRef.current = sceneKey;
@@ -308,7 +311,7 @@ export function BattleStage({
       viewport.setPan(fit(pan.x, width, worldWidth), fit(pan.y, height, worldHeight));
     }, 120);
     return () => clearInterval(timer);
-  }, [sceneKey, showDiceControls, entityMap, entities, combat?.activeEntityId, ownHeroEntityId, isDirector, cellSize, worldWidth, worldHeight]);
+  }, [sceneKey, showDiceControls, display, entityMap, entities, combat?.activeEntityId, ownHeroEntityId, isDirector, cellSize, worldWidth, worldHeight]);
 
   const showAll = useCallback(() => {
     viewportRef.current?.fitToRect(worldWidth, worldHeight);
@@ -908,7 +911,7 @@ export function BattleStage({
         </div>
       )}
 
-      {combat && <BattleTurnTracker combat={combat} entities={entities} />}
+      {combat && !display && <BattleTurnTracker combat={combat} entities={entities} />}
 
       {showDiceControls && (
         <MapNav

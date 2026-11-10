@@ -20,12 +20,14 @@ interface HeroRowProps {
   done: boolean;
   own?: boolean;
   selected?: boolean;
+  /** The mode's own line under the name (DESIGN.md section 6). Battle leaves it to the turn state. */
+  sub?: string;
   onClick?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
 }
 
 /** A hero in the rail: the dying row shouts; every other state keeps the row's shape. */
-export function HeroRow({ hero, active, done, own = false, selected, onClick, onDoubleClick }: HeroRowProps) {
+export function HeroRow({ hero, active, done, own = false, selected, sub: modeSub, onClick, onDoubleClick }: HeroRowProps) {
   const { cur, max } = staminaOf(hero);
   const shown = useRollingNumber(cur);
   const hit = useHitFlash(cur);
@@ -49,7 +51,7 @@ export function HeroRow({ hero, active, done, own = false, selected, onClick, on
     );
   }
 
-  const sub = [note, ...conditionLine(hero)].filter(Boolean).join(', ') || (own ? `${heroClassName(hero)}, you` : heroClassName(hero));
+  const sub = modeSub ?? ([note, ...conditionLine(hero)].filter(Boolean).join(', ') || (own ? `${heroClassName(hero)}, you` : heroClassName(hero)));
   return (
     <button
       type="button"

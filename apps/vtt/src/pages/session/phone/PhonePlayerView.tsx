@@ -15,9 +15,18 @@ import type {
   SessionState,
 } from '../../../types/protocol.js';
 import type { AbilityInfo } from '../../../components/session/AbilityCard.js';
-import { MetricPanel, PhoneButton, PhoneTabBar } from './phone-shared.js';
+import { PhoneTrackers } from './PhoneTrackers.js';
 import { num, str } from './phone-utils.js';
 import { PhoneNotes } from './PhoneNotes.js';
+import { PhoneApp, PhoneDock, PhoneDropStrip, PhoneTabBar, PhoneTop } from './PhoneFrame.js';
+import { PhoneMe, PhoneParty, PhoneTraits } from './PhoneBattle.js';
+import { PhoneArgument, PhoneInterest, PhoneNpc, PhoneWhatYouKnow } from './PhoneModes.js';
+import { TokenFace } from '../../../components/session/battle/TokenFace.js';
+import { canClaimTurn } from '../../../lib/turn.js';
+import { firstName } from '../../../lib/faces.js';
+import { filterVisibleEntities } from '../../../lib/fog-visibility.js';
+import { parseBattleData, parseNegotiationData } from '../../../lib/scene-data.js';
+import { modeBand, type NonBattleMode } from '../../../components/session/modes/mode-lines.js';
 
 type PlayerTab = 'sheet' | 'actions' | 'trackers' | 'notes';
 
@@ -33,13 +42,25 @@ export function PhonePlayerView({
   hero,
   send,
   canMutate,
+  waiting,
 }: {
   state: SessionState;
   hero: EntityData | null;
   send: (msg: ClientMessage) => void;
   canMutate: boolean;
+  /** A drop: the sheet stays readable, actions wait. */
+  waiting: boolean;
 }) {
-  const [tab, setTab] = useState<PlayerTab>('sheet');
+  const [tab, setTab] = useState<PlayerTab>('actions');
+  const [argSkill, setArgSkill] = useState('');
+  const [argText, setArgText] = useState('');
+  const scene = state.scenes.find((s) => s.id === state.activeSceneId) ?? null;
+  const mode = scene?.type ?? null;
+  // A Player's phone draws through the same fog helper as the laptop: hidden creatures are absent.
+  const visible = useMemo(
+    () => filterVisibleEntities(state.entities, mode === 'battle' && scene ? parseBattleData(scene.data ?? {}).fogZones : []),
+    [mode, scene, state.entities],
+  );
   const [pendingAbility, setPendingAbility] = useState<AbilityInfo | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
 
@@ -58,13 +79,14 @@ export function PhonePlayerView({
   const resourceName = str(hero, 'heroicResourceName', 'Resource');
 
   const enemies = useMemo(
-    () => state.entities.filter((entity) => entity.type === 'monster' || entity.type === 'npc'),
-    [state.entities],
+    () => visible.filter((entity) => entity.type === 'monster' || entity.type === 'npc'),
+    [visible],
   );
+  const party = useMemo(() => visible.filter((entity) => entity.type === 'hero'), [visible]);
 
   const targeting = useTargetingResolution({
     sourceEntity: hero ?? null,
-    entities: state.entities,
+    entities: visible,
     distance: pendingAbility?.distance,
   });
 
@@ -169,30 +191,121 @@ export function PhonePlayerView({
     setSelectedTargetId(null);
   }, []);
 
-  const currentStamina = num(hero, 'currentStamina', 0);
-  const maxStamina = num(hero, 'maxStamina', 0);
-  const recoveriesCurrent = num(hero, 'recoveriesCurrent', 0);
-  const recoveriesMax = num(hero, 'recoveriesMax', 0);
-  const victories = num(hero, 'victories', 0);
 
-  if (!hero) {
-    return <div className="p-6 text-center text-sm text-zinc-500">No hero is assigned to this session.</div>;
-  }
+  const battle = mode === 'battle';
+  const mayTake = battle ? canClaimTurn(combat, heroEntityId) : false;
+  const turnBand = battle && combat && hero && (mayTake || isMyTurn);
+  const negotiation = mode === 'negotiation' && scene ? parseNegotiationData(scene.data ?? {}) : null;
+  const liveNeg = state.negotiation;
+  const negActive = negotiation ? (liveNeg?.phase ?? negotiation.phase) === 'active' : false;
+  const directorName = state.participants.find((p) => p.role === 'director')?.username ?? null;
+  const band = scene && mode !== 'battle' ? modeBand(mode as NonBattleMode, scene.name, scene.data ?? {}, state, directorName) : null;
+  const last = combat?.actedThisRound.length ? state.entities.find((e) => e.id === combat.actedThisRound[combat.actedThisRound.length - 1] && e.type === 'hero') : undefined;
+
+  const dock = (() => {
+    if (tab !== 'actions' || !hero) return null;
+    if (battle && mayTake && heroEntityId) {
+      return <PhoneDock take label="Take my turn" waiting={waiting} disabled={!canMutate} onClick={() => send({ type: 'combat_action', action: { type: 'CLAIM_TURN', entityId: heroEntityId } })} />;
+    }
+    if (negotiation && negActive) {
+      return (
+        <PhoneDock
+          label="Make argument"
+          waiting={waiting}
+          disabled={!canMutate || !argSkill}
+          onClick={() => {
+            send({ type: 'negotiation_argument', skillId: argSkill, approachText: argText });
+            setArgText('');
+            toast.info('Making your argument...');
+          }}
+        />
+      );
+    }
+    return null;
+  })();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-zinc-800 p-4">
-        <p className="text-xs uppercase tracking-wide text-zinc-500">Player Companion</p>
-        <h1 className="mt-1 truncate text-xl font-semibold text-zinc-50">{hero.name}</h1>
-        {combat && (
-          <p className="mt-1 text-xs text-zinc-500">
-            Round {combat.round}
-            {isMyTurn ? ' — your turn' : combat.activeSide ? ` — ${combat.activeSide} acting` : ''}
-          </p>
+    <PhoneApp role="player" scene={scene}>
+      <PhoneTop scene={scene} right={battle && combat ? <span className="ph-round">Round {combat.round}</span> : undefined} />
+      {turnBand ? (
+        <section className="ph-turn" aria-live="polite">
+          <i><TokenFace entity={hero} size={40} /></i>
+          <div>
+            <strong>Your turn, {firstName(hero.name)}</strong>
+            <small>{isMyTurn ? 'You are acting now' : last ? `${firstName(last.name)} has finished` : `Round ${combat.round}`}</small>
+          </div>
+        </section>
+      ) : band ? (
+        <section className="md-band ph-band" data-mode={mode ?? undefined}>
+          <strong>{band.goal}</strong>
+          <small>{band.line}</small>
+        </section>
+      ) : null}
+      <div className="ph-body">
+        {waiting && <PhoneDropStrip />}
+        {!hero && <p className="ph-sec ph-text">No hero is assigned to this session.</p>}
+        {hero && tab === 'actions' && (
+          <>
+            {negotiation ? (
+              <>
+                <PhoneNpc name={negotiation.npcName} attitude={negotiation.npcAttitude} portrait={negotiation.npcPortrait} />
+                <PhoneInterest interest={liveNeg?.interest ?? negotiation.interest} />
+                <PhoneWhatYouKnow neg={negotiation} live={liveNeg} />
+                {negActive && (
+                  <PhoneArgument
+                    patience={liveNeg?.patience ?? negotiation.patience}
+                    maxPatience={liveNeg?.maxPatience ?? negotiation.maxPatience}
+                    skillId={argSkill}
+                    text={argText}
+                    onSkill={setArgSkill}
+                    onText={setArgText}
+                  />
+                )}
+              </>
+            ) : (
+              <PhoneMe hero={hero} />
+            )}
+            {battle && combat && (
+              <section className="ph-sec ph-acts">
+                <div className="ph-h"><b>This turn</b><span>{isMyTurn ? 'You are acting' : 'Ready when you take it'}</span></div>
+                <TurnActionBar
+                  turnActions={turnActions}
+                  isMyTurn={isMyTurn}
+                  baseSpeed={heroSpeed}
+                  heroicResource={heroicResource}
+                  resourceName={resourceName}
+                  conditions={heroConditions}
+                  onCatchBreath={() => sendSelfAction('catch-breath', 'Catch Breath')}
+                  onDefend={() => sendSelfAction('defend', 'Defend')}
+                  onEndTurn={() => canMutate && send({ type: 'combat_action', action: { type: 'END_TURN' } })}
+                />
+              </section>
+            )}
+            {pendingAbility && (
+              <div className="ph-sec">
+                <TargetSelector
+                  entities={enemies}
+                  selectedTargetId={selectedTargetId}
+                  onSelect={setSelectedTargetId}
+                  onConfirm={handleConfirmTarget}
+                  onCancel={handleCancelTarget}
+                  abilityName={pendingAbility.name}
+                  inRangeById={targeting.inRangeById}
+                  flankingByTargetId={targeting.flankingByTargetId}
+                  highGroundByTargetId={targeting.highGroundByTargetId}
+                />
+              </div>
+            )}
+            {battle && <PhoneTraits hero={hero} disabled={!canMutate} onRoll={handleRollCharacteristic} />}
+            {battle && <PhoneParty heroes={party} combat={combat} />}
+            {battle && heroAbilities.length > 0 && (
+              <div className="ph-sec ph-legacy">
+                <AbilityPanel abilities={heroAbilities} usedActionTypes={usedActionTypes} onUseAbility={handleUseAbility} />
+              </div>
+            )}
+          </>
         )}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'sheet' && (
+        {hero && tab === 'sheet' && (
           <PlayerHeroSheetPanel
             hero={hero}
             combatActive={Boolean(combat)}
@@ -208,102 +321,13 @@ export function PhonePlayerView({
             onInventoryChange={handleInventoryChange}
           />
         )}
-        {tab === 'actions' && (
-          <div className="flex flex-col gap-3 p-3">
-            {combat && (
-              <TurnActionBar
-                turnActions={turnActions}
-                isMyTurn={isMyTurn}
-                baseSpeed={heroSpeed}
-                heroicResource={heroicResource}
-                resourceName={resourceName}
-                conditions={heroConditions}
-                onCatchBreath={() => sendSelfAction('catch-breath', 'Catch Breath')}
-                onDefend={() => sendSelfAction('defend', 'Defend')}
-                onEndTurn={() => send({ type: 'combat_action', action: { type: 'END_TURN' } })}
-              />
-            )}
-            {pendingAbility && (
-              <TargetSelector
-                entities={enemies}
-                selectedTargetId={selectedTargetId}
-                onSelect={setSelectedTargetId}
-                onConfirm={handleConfirmTarget}
-                onCancel={handleCancelTarget}
-                abilityName={pendingAbility.name}
-                inRangeById={targeting.inRangeById}
-                flankingByTargetId={targeting.flankingByTargetId}
-                highGroundByTargetId={targeting.highGroundByTargetId}
-              />
-            )}
-            {heroAbilities.length > 0 ? (
-              <AbilityPanel
-                abilities={heroAbilities}
-                usedActionTypes={usedActionTypes}
-                onUseAbility={handleUseAbility}
-              />
-            ) : (
-              <p className="py-8 text-center text-sm text-zinc-500">No abilities available.</p>
-            )}
-          </div>
-        )}
-        {tab === 'trackers' && (
-          <div className="flex flex-col divide-y divide-zinc-800">
-            <MetricPanel label="Stamina" value={currentStamina} max={maxStamina}>
-              <div className="grid grid-cols-4 gap-2">
-                {[-5, -1, 1, 5].map((delta) => (
-                  <PhoneButton
-                    key={delta}
-                    disabled={!canMutate}
-                    onClick={() => sendTracker({ kind: 'adjust_stamina', delta })}
-                  >
-                    {delta > 0 ? `+${delta}` : delta}
-                  </PhoneButton>
-                ))}
-              </div>
-            </MetricPanel>
-            <MetricPanel label={resourceName} value={heroicResource}>
-              <div className="grid grid-cols-2 gap-2">
-                <PhoneButton disabled={!canMutate} onClick={() => sendTracker({ kind: 'adjust_heroic_resource', delta: -1 })}>
-                  -1
-                </PhoneButton>
-                <PhoneButton disabled={!canMutate} onClick={() => sendTracker({ kind: 'adjust_heroic_resource', delta: 1 })}>
-                  +1
-                </PhoneButton>
-              </div>
-            </MetricPanel>
-            <MetricPanel label="Recoveries" value={recoveriesCurrent} max={recoveriesMax}>
-              <div className="grid grid-cols-2 gap-2">
-                <PhoneButton disabled={!canMutate} onClick={() => sendTracker({ kind: 'adjust_recoveries', delta: -1 })}>
-                  Spend
-                </PhoneButton>
-                <PhoneButton disabled={!canMutate} onClick={() => sendTracker({ kind: 'adjust_recoveries', delta: 1 })}>
-                  Restore
-                </PhoneButton>
-              </div>
-              <PhoneButton
-                disabled={!canMutate}
-                onClick={() => sendSelfAction('catch-breath', 'Catch Breath')}
-                className="w-full"
-              >
-                Catch Breath
-              </PhoneButton>
-            </MetricPanel>
-            <MetricPanel label="Victories" value={victories}>
-              <div className="grid grid-cols-2 gap-2">
-                <PhoneButton disabled={!canMutate} onClick={() => sendTracker({ kind: 'adjust_victories', delta: -1 })}>
-                  -1
-                </PhoneButton>
-                <PhoneButton disabled={!canMutate} onClick={() => sendTracker({ kind: 'adjust_victories', delta: 1 })}>
-                  +1
-                </PhoneButton>
-              </div>
-            </MetricPanel>
-          </div>
+        {hero && tab === 'trackers' && (
+          <PhoneTrackers hero={hero} canMutate={canMutate} resourceName={resourceName} onTracker={sendTracker} onCatchBreath={() => sendSelfAction('catch-breath', 'Catch Breath')} />
         )}
         {tab === 'notes' && <PhoneNotes campaignId={state.campaignId} disabled={!canMutate} />}
       </div>
+      {dock}
       <PhoneTabBar tabs={PLAYER_TABS} active={tab} onSelect={setTab} />
-    </div>
+    </PhoneApp>
   );
 }

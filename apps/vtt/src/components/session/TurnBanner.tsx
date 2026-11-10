@@ -20,10 +20,12 @@ interface PlayerTopBandProps {
   entities: EntityData[];
   directorName: string | null;
   onTakeTurn: (heroEntityId: string) => void;
+  /** Another mode's own goal and line (`modeBand`), in place of the defaults below. */
+  band?: { goal: string; line: string } | null;
 }
 
 
-export function PlayerTopBand({ mode, sceneName, combat, hero, entities, directorName, onTakeTurn }: PlayerTopBandProps) {
+export function PlayerTopBand({ mode, sceneName, combat, hero, entities, directorName, onTakeTurn, band }: PlayerTopBandProps) {
   const { paused } = useSessionConnection();
   const heroId = hero?.id ?? null;
   const battle = mode === 'battle' && combat;
@@ -59,8 +61,8 @@ export function PlayerTopBand({ mode, sceneName, combat, hero, entities, directo
 
   return (
     <div className="md-band" data-mode={mode ?? undefined} role="status">
-      <strong>{mode ? (mode === 'battle' ? 'Battle' : sceneName) : 'Waiting for the Director'}</strong>
-      <small>{bandLine(mode, combat, entities, directorName)}</small>
+      <strong>{band?.goal ?? (mode ? (mode === 'battle' ? 'Battle' : sceneName) : 'Waiting for the Director')}</strong>
+      <small>{band?.line ?? bandLine(mode, combat, entities, directorName)}</small>
     </div>
   );
 }

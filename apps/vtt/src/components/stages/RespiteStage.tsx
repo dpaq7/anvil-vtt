@@ -1,256 +1,127 @@
-import { useCallback } from 'react';
-import { CheckCircle2, Hand, Coffee } from 'lucide-react';
-import { Button, Card, CardHeader, CardTitle, CardContent } from '@anvil/ui';
-import type { RespiteActivityState } from '../../types/protocol.js';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface RespiteActivity {
-  heroName: string;
-  activityType: string;
-  completed: boolean;
-}
+import { Check, Clock } from 'lucide-react';
+import type { EntityData, RespiteActivityState } from '../../types/protocol.js';
+import { cleanName } from '../../lib/faces.js';
+import { Side } from '../session/modes/parts.js';
+import { TokenFace } from '../session/battle/TokenFace.js';
+import { useSessionConnection } from '../session/shell/connection-context.js';
+import { activityState, kindIcon, respiteTickets, type PreparedActivity, type RespiteFilter } from './mode-helpers.js';
 
 interface RespiteStageProps {
   location: string;
-  /** Legacy activities (from scene data) */
-  activities: RespiteActivity[];
-  /** Live activities from server */
+  /** Activities from scene data, used before the table hydrates live ones (and in the Builder). */
+  activities: PreparedActivity[];
   liveActivities?: RespiteActivityState[];
   projects: { id: string; name: string; currentPoints: number; goalPoints: number }[];
   completed: boolean;
   isDirector: boolean;
-  /** Current player's user ID (for claim highlighting) */
   currentUserId?: string;
-  /** Player callback to claim an activity */
   onClaimActivity?: (activityId: string) => void;
-  /** Player callback to complete a claimed activity */
   onCompleteActivity?: (activityId: string) => void;
+  filter?: RespiteFilter;
+  /** The hero a claiming player plays, for the face on the ticket. */
+  heroFor?: (userId: string) => EntityData | undefined;
+  bare?: boolean;
 }
 
-const ACTIVITY_LABELS: Record<string, string> = {
-  recover: 'Recover',
-  craft: 'Craft',
-  research: 'Research',
-  socialize: 'Socialize',
-  change_kit: 'Change Kit',
-  project: 'Project',
-  custom: 'Custom',
-};
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-interface LiveActivityCardProps {
-  activity: RespiteActivityState;
+function Ticket({ a, isDirector, mine, hero, onClaim, onComplete }: {
+  a: RespiteActivityState;
   isDirector: boolean;
-  currentUserId?: string;
+  mine: boolean;
+  hero?: EntityData;
   onClaim?: () => void;
   onComplete?: () => void;
-}
-
-function LiveActivityCard({
-  activity,
-  isDirector,
-  currentUserId,
-  onClaim,
-  onComplete,
-}: LiveActivityCardProps) {
-  const isMine = activity.claimedBy === currentUserId;
-  const isClaimed = activity.claimedBy !== null;
-
+}) {
+  const { paused } = useSessionConnection();
+  const Icon = kindIcon(a.name);
+  const state = activityState(a);
+  const action = isDirector
+    ? state === 'working' && onComplete ? { label: 'Complete', run: onComplete } : null
+    : mine && state === 'working' && onComplete ? { label: 'Complete', run: onComplete }
+      : state === 'open' && onClaim ? { label: 'Claim', run: onClaim } : null;
+  const who = a.claimedByName ?? (hero ? cleanName(hero.name) : null);
   return (
-    <div
-      className={`flex items-center justify-between rounded border px-4 py-3 ${
-        activity.completed
-          ? 'border-emerald-500/30 bg-emerald-500/10'
-          : isMine
-            ? 'border-cyan-500/30 bg-cyan-500/10'
-            : isClaimed
-              ? 'border-zinc-600 bg-zinc-800/50'
-              : 'border-zinc-700 bg-zinc-800'
-      }`}
-    >
-      <div className="flex-1">
-        <p className="text-sm font-medium text-zinc-200">{activity.name}</p>
-        {activity.description && (
-          <p className="mt-0.5 text-xs text-zinc-500">{activity.description}</p>
-        )}
-        {isClaimed && !activity.completed && (
-          <p className="mt-0.5 text-xs text-cyan-400">
-            Claimed by {isMine ? 'you' : activity.claimedByName ?? 'someone'}
-          </p>
+    <section className="md-tk" data-state={state} data-mine={mine || undefined}>
+      <div className="md-tk__h">
+        <Icon size={16} strokeWidth={2.6} aria-hidden="true" />
+        <b>{a.name}</b>
+        {action ? (
+          <button type="button" className="md-tk__do" data-primary={mine || undefined} data-wait={paused || undefined} disabled={paused} onClick={action.run}>
+            {paused ? `${action.label}, when back` : action.label}
+          </button>
+        ) : (
+          <em>
+            {state === 'done' ? <><Check size={13} strokeWidth={3.5} aria-hidden="true" />Done</> : state === 'working' ? <><Clock size={13} strokeWidth={2.8} aria-hidden="true" />Working</> : 'Open'}
+          </em>
         )}
       </div>
-
-      <div className="flex items-center gap-2">
-        {activity.completed ? (
-          <CheckCircle2 className="size-5 text-emerald-400" />
-        ) : isDirector && onComplete ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 text-xs text-emerald-400"
-            onClick={onComplete}
-          >
-            <CheckCircle2 className="size-3" />
-            Complete
-          </Button>
-        ) : !isDirector && !isClaimed && onClaim ? (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={onClaim}>
-            <Hand className="size-3" />
-            Claim
-          </Button>
-        ) : !isDirector && isMine && onComplete ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 text-xs text-emerald-400"
-            onClick={onComplete}
-          >
-            <CheckCircle2 className="size-3" />
-            Complete
-          </Button>
-        ) : null}
+      {a.description && <p>{a.description}</p>}
+      <div className="md-tk__who">
+        {who ? (
+          <>
+            {hero && <TokenFace entity={hero} size={28} />}
+            <span>{who}{mine && <small>you</small>}</span>
+          </>
+        ) : (
+          <span className="md-tk__none">Nobody yet</span>
+        )}
       </div>
-    </div>
+    </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
+/** Respite's screen: the camp band with its place plate, and a ticket per activity. */
 export function RespiteStage({
   location,
   activities,
   liveActivities,
-  projects,
   completed,
   isDirector,
   currentUserId,
   onClaimActivity,
   onCompleteActivity,
+  filter = 'all',
+  heroFor,
+  bare = false,
 }: RespiteStageProps) {
-  const completedCount = liveActivities
-    ? liveActivities.filter((a) => a.completed).length
-    : activities.filter((a) => a.completed).length;
-
-  const totalCount = liveActivities ? liveActivities.length : activities.length;
-
-  const handleClaim = useCallback(
-    (activityId: string) => {
-      onClaimActivity?.(activityId);
-    },
-    [onClaimActivity],
-  );
-
-  const handleComplete = useCallback(
-    (activityId: string) => {
-      onCompleteActivity?.(activityId);
-    },
-    [onCompleteActivity],
-  );
+  const tickets = respiteTickets(liveActivities, activities);
+  const live = Boolean(liveActivities && liveActivities.length > 0);
+  const done = tickets.filter((a) => a.completed).length;
+  const open = tickets.filter((a) => activityState(a) === 'open').length;
+  const shown = tickets.filter((a) => filter === 'all' || (filter === 'done' ? a.completed : activityState(a) === 'open'));
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-auto p-8">
-      {/* Location */}
-      <div className="text-center">
-        <p className="text-xs uppercase text-zinc-500">Respite at</p>
-        <p className="text-lg font-medium text-zinc-100">{location || 'Unknown Location'}</p>
-        {completed && (
-          <span className="mt-1 inline-block rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400">
-            COMPLETED
-          </span>
-        )}
+    <>
+      <div className="md-plate md-place">
+        <small>Respite at</small>
+        <strong>{location || 'Somewhere quiet'}</strong>
       </div>
-
-      {/* Activity cards — prefer live activities from server */}
-      <div className="mx-auto w-full max-w-lg">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2">
-                <Coffee className="size-4 text-cyan-400" />
-                Activities
-              </span>
-              <span className="text-xs font-normal text-zinc-500">
-                {completedCount}/{totalCount} done
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {liveActivities && liveActivities.length > 0 ? (
-              liveActivities.map((a) => (
-                <LiveActivityCard
-                  key={a.activityId}
-                  activity={a}
-                  isDirector={isDirector}
-                  currentUserId={currentUserId}
-                  onClaim={() => handleClaim(a.activityId)}
-                  onComplete={() => handleComplete(a.activityId)}
-                />
-              ))
-            ) : activities.length > 0 ? (
-              activities.map((a, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center justify-between rounded border px-4 py-3 ${
-                    a.completed
-                      ? 'border-emerald-500/30 bg-emerald-500/10'
-                      : 'border-zinc-700 bg-zinc-800'
-                  }`}
-                >
-                  <div>
-                    <p className="text-sm text-zinc-200">{a.heroName}</p>
-                    <p className="text-xs text-zinc-500">
-                      {ACTIVITY_LABELS[a.activityType] ?? a.activityType}
-                    </p>
-                  </div>
-                  {a.completed && <CheckCircle2 className="size-4 text-emerald-400" />}
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-zinc-500">No activities assigned yet.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Projects */}
-      {projects.length > 0 && (
-        <div className="mx-auto w-full max-w-lg">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Projects</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {projects.map((p) => {
-                const pct = p.goalPoints > 0 ? (p.currentPoints / p.goalPoints) * 100 : 0;
-                return (
-                  <div key={p.id} className="rounded border border-zinc-700 bg-zinc-800 px-4 py-3">
-                    <div className="mb-1 flex justify-between text-xs">
-                      <span className="text-zinc-300">{p.name}</span>
-                      <span className="text-zinc-500">
-                        {p.currentPoints}/{p.goalPoints}
-                      </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-zinc-700">
-                      <div
-                        className="h-full rounded-full bg-cyan-500 transition-all"
-                        style={{ width: `${Math.min(100, pct)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+      {!bare && (
+        <Side items={[{ label: 'Done', value: `${done} of ${tickets.length}`, on: !completed }, { label: 'Open', value: `${open}` }]} />
+      )}
+      {shown.length === 0 ? (
+        <div className="md-tks md-tks--empty">
+          <b className="font-display text-[22px]">{tickets.length === 0 ? 'No activities yet' : `No ${filter} activities`}</b>
+          <p className="m-0">{tickets.length === 0 ? 'The Director adds activities in the Builder.' : 'Pick All in the bar to see every ticket.'}</p>
+        </div>
+      ) : (
+        <div className="md-tks">
+          {shown.map((a, index) => {
+            const mine = !isDirector && Boolean(currentUserId) && a.claimedBy === currentUserId;
+            return (
+              <Ticket
+                key={`${a.activityId}-${index}`}
+                a={a}
+                isDirector={isDirector}
+                mine={mine}
+                hero={a.claimedBy ? heroFor?.(a.claimedBy) : undefined}
+                onClaim={live && onClaimActivity ? () => onClaimActivity(a.activityId) : undefined}
+                onComplete={live && onCompleteActivity ? () => onCompleteActivity(a.activityId) : undefined}
+              />
+            );
+          })}
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -241,8 +241,19 @@ export class ViewportSystem {
 
   /** The canvas's size in CSS pixels. */
   getViewSize(): { width: number; height: number } {
+    return this.layoutSize();
+  }
+
+  /**
+   * The canvas's layout size, before any CSS transform. The Display draws the map at laptop
+   * geometry and scales it ×2, where the client rect would report twice the canvas's own size.
+   */
+  private layoutSize(): { width: number; height: number } {
     const rect = this.canvas.getBoundingClientRect();
-    return { width: rect.width, height: rect.height };
+    return {
+      width: this.canvas.clientWidth || rect.width,
+      height: this.canvas.clientHeight || rect.height,
+    };
   }
 
   /** Convert screen coords to grid coords */
@@ -268,7 +279,7 @@ export class ViewportSystem {
   setZoom(zoom: number): void {
     const clamped = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, zoom));
     // Zoom toward canvas center
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.layoutSize();
     const cx = rect.width / 2;
     const cy = rect.height / 2;
     const worldX = (cx - this.panX) / this.zoom;
@@ -282,7 +293,7 @@ export class ViewportSystem {
 
   /** Center the viewport on a grid coordinate, optionally forcing a zoom level. */
   centerOnGrid(gridX: number, gridY: number, cellSize: number, zoom = this.zoom): void {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.layoutSize();
     this.zoom = Math.max(this.config.minZoom, Math.min(this.config.maxZoom, zoom));
     const worldX = gridX * cellSize;
     const worldY = gridY * cellSize;
@@ -304,7 +315,7 @@ export class ViewportSystem {
 
   /** Fit a world-space rectangle into the viewport, centered. */
   fitToRect(worldWidth: number, worldHeight: number): void {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.layoutSize();
     const scaleX = rect.width / worldWidth;
     const scaleY = rect.height / worldHeight;
     // "Show all" must show all: a big map on a small screen may fit only below the wheel's floor.

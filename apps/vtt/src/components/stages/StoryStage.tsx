@@ -1,60 +1,50 @@
-import { useEffect, useState } from 'react';
-import { Button } from '@anvil/ui';
+import { Eye, Volume2 } from 'lucide-react';
+import { Side } from '../session/modes/parts.js';
+import { paragraphs } from './mode-helpers.js';
 
 interface StoryStageProps {
   readAloudText?: string;
+  /** Kept for the Builder's preview. Notes are Director-only and live in the rail, never on the page. */
   directorNotes?: string;
   isDirector: boolean;
-  onUpdateReadAloud?: (text: string) => void;
+  /** The scene's name, set as the page's slug. */
+  slug?: string;
+  directorName?: string | null;
+  /** Hide the corner tracker (the Display draws its own). */
+  bare?: boolean;
 }
 
-export function StoryStage({ readAloudText, directorNotes, isDirector, onUpdateReadAloud }: StoryStageProps) {
-  const [draftText, setDraftText] = useState(readAloudText ?? '');
 
-  useEffect(() => {
-    setDraftText(readAloudText ?? '');
-  }, [readAloudText]);
-
+/** The read-aloud set like a page of script, bound at the left (`story-*`, `md-page`). */
+export function ScriptPage({ text, slug, className = 'md-page' }: { text: string; slug?: string; className?: string }) {
+  const parts = paragraphs(text);
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-8 overflow-auto p-8">
-      {readAloudText ? (
-        <blockquote className="max-w-2xl whitespace-pre-wrap text-center text-2xl font-light italic leading-relaxed text-zinc-200">
-          {readAloudText}
-        </blockquote>
-      ) : (
-        <p className="text-zinc-500">No read-aloud text for this scene.</p>
-      )}
+    <article className={className} aria-label="Read-aloud">
+      <i className="md-holes" aria-hidden="true">
+        <u />
+        <u />
+        <u />
+      </i>
+      {slug && <h3 className={className === 'md-page' ? 'md-slug' : 'dp-slug'}>{slug}</h3>}
+      {parts.length > 0 ? parts.map((part, index) => <p key={index}>{part}</p>) : <p>No read-aloud for this scene yet.</p>}
+    </article>
+  );
+}
 
-      {isDirector && onUpdateReadAloud && (
-        <div className="w-full max-w-2xl rounded border border-zinc-700 bg-zinc-900/80 p-4">
-          <label className="mb-2 block text-xs font-medium uppercase text-zinc-500" htmlFor="story-read-aloud">
-            Read-Aloud
-          </label>
-          <textarea
-            id="story-read-aloud"
-            value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
-            rows={5}
-            className="w-full resize-y rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-amber-500"
-          />
-          <div className="mt-3 flex justify-end">
-            <Button
-              size="sm"
-              onClick={() => onUpdateReadAloud(draftText)}
-              disabled={draftText === (readAloudText ?? '')}
-            >
-              Update
-            </Button>
-          </div>
-        </div>
+/** Story's screen: the scene art, the corner note, the script page (DESIGN.md section 6). */
+export function StoryStage({ readAloudText, isDirector, slug, directorName, bare = false }: StoryStageProps) {
+  return (
+    <>
+      {!bare && (
+        <Side
+          items={[
+            isDirector
+              ? { label: <><Eye size={15} strokeWidth={2.6} aria-hidden="true" />Players see this page</> }
+              : { label: <><Volume2 size={15} strokeWidth={2.6} aria-hidden="true" />Read by {directorName ?? 'the Director'}</> },
+          ]}
+        />
       )}
-
-      {isDirector && directorNotes && (
-        <div className="w-full max-w-2xl rounded border border-zinc-700 bg-zinc-900/80 p-4">
-          <p className="mb-1 text-xs font-medium uppercase text-zinc-500">Director Notes</p>
-          <p className="whitespace-pre-wrap text-sm text-zinc-400">{directorNotes}</p>
-        </div>
-      )}
-    </div>
+      <ScriptPage text={readAloudText ?? ''} slug={slug} />
+    </>
   );
 }

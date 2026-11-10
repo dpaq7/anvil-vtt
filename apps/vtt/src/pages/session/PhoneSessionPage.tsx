@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSessionSocket } from '../../hooks/useSessionSocket.js';
 import { useAuthStore } from '../../stores/authStore.js';
-import { LockedPhone, StatusBanner } from './phone/phone-shared.js';
+import { SessionConnectionProvider } from '../../components/session/shell/connection.js';
+import { LockedPhone, PhoneLoading } from './phone/PhoneFrame.js';
 import { PhonePlayerView } from './phone/PhonePlayerView.js';
 import { PhoneDirectorView } from './phone/PhoneDirectorView.js';
 
+/** The in-session phone. States from the states sheet: Phone locked, Phone short drop, Phone loading. */
 export function PhoneSessionPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
@@ -25,32 +27,25 @@ export function PhoneSessionPage() {
     );
   }, [me?.heroId, state, user?.id]);
   const canMutate = status === 'connected' && phoneAnchorConnected === true;
+  // A drop: the sheet stays readable and the docked action waits, saying so.
+  const waiting = Boolean(state) && status !== 'connected';
 
   // Hard gate: the phone companion only operates while the same account has a
   // desktop/tablet client connected to this session (the "anchor"). The server
   // enforces this for mutations; the client locks the whole UI for clarity.
-  if (phoneAnchorConnected === false) {
-    return (
-      <LockedPhone message="Open this same live session on a desktop or tablet with your account, then this phone companion will unlock automatically." />
-    );
-  }
+  if (phoneAnchorConnected === false) return <LockedPhone />;
 
   if (!state) {
-    return (
-      <main className="flex min-h-[100svh] items-center justify-center bg-zinc-950 p-6 text-center text-zinc-400">
-        {phoneAnchorConnected === null ? 'Checking desktop sync...' : error ?? 'Loading session...'}
-      </main>
-    );
+    return <PhoneLoading label={phoneAnchorConnected === null ? 'Checking your laptop…' : isDirector ? 'Loading the table…' : 'Loading your hero…'} error={error} />;
   }
 
   return (
-    <main className="flex h-[100svh] flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-      <StatusBanner status={status} anchored={phoneAnchorConnected} error={error} />
+    <SessionConnectionProvider status={status}>
       {isDirector ? (
-        <PhoneDirectorView state={state} send={send} canMutate={canMutate} />
+        <PhoneDirectorView state={state} send={send} canMutate={canMutate} waiting={waiting} />
       ) : (
-        <PhonePlayerView state={state} hero={hero} send={send} canMutate={canMutate} />
+        <PhonePlayerView state={state} hero={hero} send={send} canMutate={canMutate} waiting={waiting} />
       )}
-    </main>
+    </SessionConnectionProvider>
   );
 }
